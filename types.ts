@@ -91,6 +91,7 @@ export interface Department {
   name: string;
   companyId: string;
   managerId?: string; // ID of the manager responsible for this department
+  emailNotifications: boolean; // NEW: Toggle for email alerts
 }
 
 export interface Office {
@@ -144,7 +145,8 @@ export interface Timesheet {
 
 export interface CorrectionRequest {
   id: string;
-  timesheetId: string;
+  timesheetId?: string; // Optional if creating a new timesheet
+  requestedDate?: string; // Required if timesheetId is missing
   userId: string;
   requestedStartTime: string;
   requestedEndTime?: string;

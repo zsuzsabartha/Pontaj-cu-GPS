@@ -2,14 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { Timesheet, CorrectionRequest } from '../types';
 import { MOCK_SCHEDULES } from '../constants';
-import { X, Clock, FileText, AlertCircle, CalendarClock } from 'lucide-react';
+import { X, Clock, FileText, AlertCircle, CalendarClock, PlusCircle } from 'lucide-react';
 
 interface TimesheetEditModalProps {
   isOpen: boolean;
   onClose: () => void;
-  timesheet: Timesheet | null;
+  timesheet: Timesheet | null; // If null, it's creation mode
   isManager: boolean;
-  onSave: (tsId: string, start: string, end: string, reason: string, scheduleId?: string) => void;
+  onSave: (data: { tsId?: string, date: string, start: string, end: string, reason: string, scheduleId?: string }) => void;
 }
 
 // Generate 30-minute intervals (00:00, 00:30, ... 23:30)
@@ -20,7 +20,8 @@ const TIME_OPTIONS = Array.from({ length: 48 }).map((_, i) => {
 });
 
 // Helper to snap a specific time to the nearest 30-minute slot
-const snapToNearestSlot = (isoString: string): string => {
+const snapToNearestSlot = (isoString?: string): string => {
+    if (!isoString) return '09:00'; // Default start
     const d = new Date(isoString);
     const m = d.getMinutes();
     let h = d.getHours();
@@ -38,27 +39,33 @@ const snapToNearestSlot = (isoString: string): string => {
 };
 
 const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose, timesheet, isManager, onSave }) => {
+  const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [reason, setReason] = useState('');
   const [scheduleId, setScheduleId] = useState('');
 
   useEffect(() => {
-    if (timesheet) {
-      // Snap existing times to the grid for the initial value
-      setStartTime(snapToNearestSlot(timesheet.startTime));
-      
-      if (timesheet.endTime) {
-        setEndTime(snapToNearestSlot(timesheet.endTime));
-      } else {
-        setEndTime('');
-      }
-      setReason('');
-      setScheduleId(timesheet.detectedScheduleId || '');
+    if (isOpen) {
+        if (timesheet) {
+          // Editing existing
+          setDate(timesheet.date);
+          setStartTime(snapToNearestSlot(timesheet.startTime));
+          setEndTime(timesheet.endTime ? snapToNearestSlot(timesheet.endTime) : '');
+          setScheduleId(timesheet.detectedScheduleId || '');
+        } else {
+          // Creating new
+          const today = new Date().toISOString().split('T')[0];
+          setDate(today);
+          setStartTime('09:00');
+          setEndTime('17:00');
+          setScheduleId('');
+        }
+        setReason('');
     }
-  }, [timesheet]);
+  }, [isOpen, timesheet]);
 
-  if (!isOpen || !timesheet) return null;
+  if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,29 +74,54 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
         return;
     }
     
-    // Convert back to ISO strings preserving the date
-    const dateStr = timesheet.date; // YYYY-MM-DD
-    const newStartISO = `${dateStr}T${startTime}:00`;
-    const newEndISO = endTime ? `${dateStr}T${endTime}:00` : '';
+    // Construct ISO strings
+    const startISO = `${date}T${startTime}:00`;
+    const endISO = endTime ? `${date}T${endTime}:00` : '';
     
-    onSave(timesheet.id, newStartISO, newEndISO, reason, scheduleId);
+    onSave({
+        tsId: timesheet?.id,
+        date: date,
+        start: startISO,
+        end: endISO,
+        reason,
+        scheduleId
+    });
     onClose();
   };
+
+  const isCreation = !timesheet;
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
         <div className={`${isManager ? 'bg-blue-600' : 'bg-orange-500'} p-4 flex justify-between items-center text-white`}>
           <h3 className="font-bold text-lg flex items-center gap-2">
-            <Clock size={20}/>
-            {isManager ? 'Modificare Pontaj (Manager)' : 'Solicitare Corecție'}
+            {isCreation ? <PlusCircle size={20}/> : <Clock size={20}/>}
+            {isCreation 
+                ? (isManager ? 'Adăugare Pontaj Manual' : 'Solicitare Pontaj Lipsă') 
+                : (isManager ? 'Modificare Pontaj' : 'Solicitare Corecție')
+            }
           </h3>
           <button onClick={onClose} className="hover:bg-white/20 p-1 rounded"><X size={20}/></button>
         </div>
         
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 text-sm mb-4">
-              <span className="font-semibold text-gray-700">Data:</span> {timesheet.date}
+          
+          {/* Date Selection */}
+          <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+              {isCreation ? (
+                  <input 
+                    type="date"
+                    required
+                    value={date}
+                    max={new Date().toISOString().split('T')[0]} // Cannot be in future
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+              ) : (
+                  <div className="font-semibold text-gray-800">{date}</div>
+              )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -125,7 +157,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
               * Programul poate fi setat doar la oră fixă sau jumătate de oră.
           </div>
           
-          {/* Admin Schedule Correction */}
+          {/* Admin Schedule Override */}
           {isManager && (
             <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
                 <label className="block text-sm font-medium text-blue-800 mb-1 flex items-center gap-1">
@@ -147,7 +179,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-                {isManager ? 'Motiv Modificare (pentru istoric)' : 'Motiv Solicitare (Obligatoriu)'}
+                {isManager ? 'Motiv (pentru istoric)' : 'Motiv Solicitare (Obligatoriu)'}
             </label>
             <textarea 
               required={!isManager}
@@ -155,7 +187,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-              placeholder={isManager ? "Ex: Eroare sistem..." : "Ex: Am uitat să scanez la plecare..."}
+              placeholder={isManager ? "Ex: Adăugare manuală..." : "Ex: Am uitat să scanez la plecare..."}
             ></textarea>
           </div>
           
@@ -171,7 +203,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
               type="submit" 
               className={`w-full text-white font-semibold py-3 rounded-xl transition-all shadow-lg ${isManager ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-orange-500 hover:bg-orange-600 shadow-orange-200'}`}
             >
-              {isManager ? 'Salvează Modificările' : 'Trimite Solicitarea'}
+              {isManager ? 'Salvează' : 'Trimite Solicitarea'}
             </button>
           </div>
         </form>

@@ -53,9 +53,9 @@ export const MOCK_COMPANIES: Company[] = [
 ];
 
 export const MOCK_DEPARTMENTS: Department[] = [
-  { id: 'd1', name: 'Dezvoltare Software', companyId: 'c1', managerId: 'u1' },
-  { id: 'd2', name: 'Resurse Umane', companyId: 'c1', managerId: 'u4' },
-  { id: 'd3', name: 'Logistică & Transport', companyId: 'c2', managerId: 'u5' }
+  { id: 'd1', name: 'Dezvoltare Software', companyId: 'c1', managerId: 'u1', emailNotifications: true },
+  { id: 'd2', name: 'Resurse Umane', companyId: 'c1', managerId: 'u4', emailNotifications: true },
+  { id: 'd3', name: 'Logistică & Transport', companyId: 'c2', managerId: 'u5', emailNotifications: false }
 ];
 
 export const MOCK_OFFICES: Office[] = [
