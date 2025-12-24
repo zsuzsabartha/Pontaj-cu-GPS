@@ -12,6 +12,31 @@ interface TimesheetEditModalProps {
   onSave: (tsId: string, start: string, end: string, reason: string, scheduleId?: string) => void;
 }
 
+// Generate 30-minute intervals (00:00, 00:30, ... 23:30)
+const TIME_OPTIONS = Array.from({ length: 48 }).map((_, i) => {
+    const h = Math.floor(i / 2).toString().padStart(2, '0');
+    const m = i % 2 === 0 ? '00' : '30';
+    return `${h}:${m}`;
+});
+
+// Helper to snap a specific time to the nearest 30-minute slot
+const snapToNearestSlot = (isoString: string): string => {
+    const d = new Date(isoString);
+    const m = d.getMinutes();
+    let h = d.getHours();
+    
+    // Round to 00 or 30
+    let roundedM = '00';
+    if (m >= 15 && m < 45) {
+        roundedM = '30';
+    } else if (m >= 45) {
+        roundedM = '00';
+        h = (h + 1) % 24;
+    }
+
+    return `${h.toString().padStart(2, '0')}:${roundedM}`;
+};
+
 const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose, timesheet, isManager, onSave }) => {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
@@ -20,13 +45,11 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
 
   useEffect(() => {
     if (timesheet) {
-      // Extract time part for input type="time"
-      const s = new Date(timesheet.startTime);
-      setStartTime(s.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }));
+      // Snap existing times to the grid for the initial value
+      setStartTime(snapToNearestSlot(timesheet.startTime));
       
       if (timesheet.endTime) {
-        const e = new Date(timesheet.endTime);
-        setEndTime(e.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }));
+        setEndTime(snapToNearestSlot(timesheet.endTime));
       } else {
         setEndTime('');
       }
@@ -72,23 +95,34 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Ora Start</label>
-              <input 
-                type="time" 
+              <select 
                 required
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              />
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-mono"
+              >
+                  {TIME_OPTIONS.map(t => (
+                      <option key={`start-${t}`} value={t}>{t}</option>
+                  ))}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Ora Sfârșit</label>
-              <input 
-                type="time" 
+              <select 
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              />
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-mono"
+              >
+                  <option value="">-- În lucru --</option>
+                  {TIME_OPTIONS.map(t => (
+                      <option key={`end-${t}`} value={t}>{t}</option>
+                  ))}
+              </select>
             </div>
+          </div>
+          
+          <div className="text-[11px] text-gray-400 italic text-center">
+              * Programul poate fi setat doar la oră fixă sau jumătate de oră.
           </div>
           
           {/* Admin Schedule Correction */}
