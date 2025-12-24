@@ -1,36 +1,43 @@
+
 import React, { useState } from 'react';
-import { LeaveType, LeaveRequest, LeaveStatus } from '../types';
-import { X, Wand2 } from 'lucide-react';
+import { LeaveRequest, LeaveConfig } from '../types';
+import { X, CheckSquare } from 'lucide-react';
 import { checkComplianceAI } from '../services/geminiService';
 
 interface LeaveModalProps {
   isOpen: boolean;
   onClose: () => void;
+  leaveConfigs: LeaveConfig[];
   onSubmit: (req: Omit<LeaveRequest, 'id' | 'status' | 'userId'>) => void;
 }
 
-const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, onSubmit }) => {
-  const [type, setType] = useState<LeaveType>(LeaveType.ODIHNA);
+const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, onSubmit }) => {
+  const [typeId, setTypeId] = useState<string>(leaveConfigs[0]?.id || '');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [reason, setReason] = useState('');
-  const [aiFeedback, setAiFeedback] = useState<string | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
+  const [validationMsg, setValidationMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ type, startDate, endDate, reason });
+    const selectedConfig = leaveConfigs.find(lc => lc.id === typeId);
+    if (!selectedConfig) return;
+
+    onSubmit({ 
+        typeId, 
+        typeName: selectedConfig.name,
+        startDate, 
+        endDate, 
+        reason 
+    });
     onClose();
   };
 
-  const handleAICheck = async () => {
-      if(!reason) return;
-      setAnalyzing(true);
+  const handleValidate = async () => {
       const result = await checkComplianceAI(reason);
-      setAiFeedback(result.feedback);
-      setAnalyzing(false);
+      setValidationMsg(result.feedback);
   }
 
   return (
@@ -45,12 +52,12 @@ const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, onSubmit }) =>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Tip Concediu</label>
             <select 
-              value={type} 
-              onChange={(e) => setType(e.target.value as LeaveType)}
+              value={typeId} 
+              onChange={(e) => setTypeId(e.target.value)}
               className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             >
-              {Object.values(LeaveType).map((t) => (
-                <option key={t} value={t}>{t}</option>
+              {leaveConfigs.map((cfg) => (
+                <option key={cfg.id} value={cfg.id}>{cfg.name} ({cfg.code})</option>
               ))}
             </select>
           </div>
@@ -91,17 +98,16 @@ const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, onSubmit }) =>
                 ></textarea>
                 <button 
                     type="button"
-                    onClick={handleAICheck}
-                    disabled={analyzing || !reason}
-                    className="absolute bottom-2 right-2 text-purple-600 hover:bg-purple-50 p-1 rounded transition-colors"
-                    title="Verifică cu AI"
+                    onClick={handleValidate}
+                    className="absolute bottom-2 right-2 text-gray-400 hover:text-blue-600 p-1 rounded transition-colors"
+                    title="Verifică validitate"
                 >
-                    <Wand2 size={16} className={analyzing ? 'animate-spin' : ''}/>
+                    <CheckSquare size={16}/>
                 </button>
             </div>
-            {aiFeedback && (
-                <p className="text-xs text-purple-600 mt-1 bg-purple-50 p-2 rounded italic">
-                    AI Feedback: {aiFeedback}
+            {validationMsg && (
+                <p className="text-xs text-gray-500 mt-1 bg-gray-50 p-2 rounded italic">
+                    Info: {validationMsg}
                 </p>
             )}
           </div>

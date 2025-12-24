@@ -1,0 +1,251 @@
+
+import React, { useState } from 'react';
+import { User, Role } from '../types';
+import { MOCK_USERS } from '../constants';
+import { KeyRound, Lock, User as UserIcon, ArrowLeft, Loader2, Sparkles, MailQuestion } from 'lucide-react';
+
+interface LoginScreenProps {
+  users: User[]; // Accept current users state
+  onLogin: (user: User, isNewUser?: boolean) => void;
+  onRequestPinReset?: (email: string) => void;
+}
+
+const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin, onRequestPinReset }) => {
+  const [view, setView] = useState<'main' | 'pin' | 'forgot'>('main');
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
+  const [pin, setPin] = useState('');
+  const [resetEmail, setResetEmail] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Filter users who use PIN and are validated
+  const pinUsers = users.filter(u => u.authType === 'PIN' && u.isValidated);
+
+  const handleMicrosoftLogin = (simulateNew: boolean = false) => {
+    setIsLoading(true);
+    // Simulate OAuth Delay
+    setTimeout(() => {
+        if (simulateNew) {
+             // Create a random new user
+             const randomId = Math.floor(Math.random() * 1000);
+             const newUser: User = {
+                 id: `ms-${Date.now()}`,
+                 name: `New User ${randomId}`,
+                 email: `new.user${randomId}@example.com`,
+                 roles: [Role.EMPLOYEE],
+                 companyId: 'c1', // Default
+                 avatarUrl: `https://ui-avatars.com/api/?name=New+User`,
+                 authType: 'MICROSOFT',
+                 isValidated: false,
+                 requiresGPS: true,
+                 allowedScheduleIds: ['sch1'], // Default schedule
+                 shareBirthday: false
+             };
+             onLogin(newUser, true);
+        } else {
+             // Find the existing Manager (admin) for demo purposes
+             const msUser = users.find(u => u.authType === 'MICROSOFT' && u.isValidated);
+             if (msUser) {
+                 onLogin(msUser);
+             } else {
+                 setError("Nu s-a găsit contul Microsoft demo.");
+                 setIsLoading(false);
+             }
+        }
+    }, 1500);
+  };
+
+  const handlePinLogin = (e: React.FormEvent) => {
+      e.preventDefault();
+      setError('');
+      
+      const user = pinUsers.find(u => u.id === selectedUserId);
+      if (!user) {
+          setError("Selectați un utilizator.");
+          return;
+      }
+
+      if (user.pin === pin) {
+          setIsLoading(true);
+          setTimeout(() => onLogin(user), 800);
+      } else {
+          setError("PIN incorect.");
+          setPin('');
+      }
+  };
+
+  const handleResetSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      if(onRequestPinReset) {
+          onRequestPinReset(resetEmail);
+          alert(`Dacă adresa ${resetEmail} există în sistem, un administrator a fost notificat să vă reseteze PIN-ul.`);
+          setView('main');
+          setResetEmail('');
+      }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 relative overflow-hidden">
+       {/* Background Decoration */}
+       <div className="absolute top-0 left-0 w-full h-1/2 bg-blue-600 transform -skew-y-6 origin-top-left z-0"></div>
+       <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-100 rounded-full blur-3xl opacity-50 z-0"></div>
+
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 relative z-10">
+        
+        <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-blue-600 rounded-xl mx-auto flex items-center justify-center text-white font-bold text-3xl shadow-lg mb-4">P</div>
+            <h1 className="text-2xl font-bold text-gray-800">PontajGroup</h1>
+            <p className="text-gray-500 text-sm">Portal Angajați & Management</p>
+        </div>
+
+        {view === 'main' && (
+            <div className="space-y-4">
+                <button 
+                    onClick={() => handleMicrosoftLogin(false)}
+                    disabled={isLoading}
+                    className="w-full bg-[#2F2F2F] text-white p-3 rounded-lg font-medium flex items-center justify-center gap-3 hover:bg-black transition-all shadow-md group"
+                >
+                    {isLoading ? <Loader2 className="animate-spin" /> : (
+                        <svg className="w-5 h-5" viewBox="0 0 23 23">
+                            <path fill="#f35325" d="M1 1h10v10H1z"/>
+                            <path fill="#81bc06" d="M12 1h10v10H12z"/>
+                            <path fill="#05a6f0" d="M1 12h10v10H1z"/>
+                            <path fill="#ffba08" d="M12 12h10v10H12z"/>
+                        </svg>
+                    )}
+                    Sign in with Microsoft
+                </button>
+
+                <div className="relative flex py-2 items-center">
+                    <div className="flex-grow border-t border-gray-200"></div>
+                    <span className="flex-shrink mx-4 text-gray-400 text-xs uppercase">sau</span>
+                    <div className="flex-grow border-t border-gray-200"></div>
+                </div>
+
+                <button 
+                    onClick={() => setView('pin')}
+                    className="w-full bg-white border border-gray-300 text-gray-700 p-3 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-gray-50 transition-all shadow-sm"
+                >
+                    <KeyRound size={20} className="text-gray-400"/>
+                    Autentificare cu PIN
+                </button>
+
+                {/* DEMO BUTTON FOR TESTING PENDING USERS */}
+                <button 
+                    onClick={() => handleMicrosoftLogin(true)}
+                    disabled={isLoading}
+                    className="w-full mt-6 bg-purple-50 border border-purple-200 text-purple-700 p-2 rounded-lg text-xs font-medium flex items-center justify-center gap-2 hover:bg-purple-100 transition-all"
+                >
+                    <Sparkles size={14}/> (Demo) Simulare User Nou Microsoft
+                </button>
+            </div>
+        )}
+
+        {view === 'pin' && (
+            <form onSubmit={handlePinLogin} className="space-y-4 animate-in fade-in slide-in-from-right-8">
+                 <button 
+                    type="button"
+                    onClick={() => { setView('main'); setError(''); setPin(''); }}
+                    className="text-gray-400 hover:text-gray-600 flex items-center gap-1 text-sm mb-2"
+                >
+                    <ArrowLeft size={16}/> Înapoi
+                </button>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Angajat</label>
+                    <div className="relative">
+                        <UserIcon className="absolute left-3 top-3 text-gray-400" size={18} />
+                        <select 
+                            className="w-full pl-10 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none"
+                            value={selectedUserId}
+                            onChange={(e) => setSelectedUserId(e.target.value)}
+                        >
+                            <option value="">Selectează contul...</option>
+                            {pinUsers.map(u => (
+                                <option key={u.id} value={u.id}>{u.name} - {u.email}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">PIN Securitate</label>
+                    <div className="relative">
+                        <Lock className="absolute left-3 top-3 text-gray-400" size={18} />
+                        <input 
+                            type="password"
+                            maxLength={4}
+                            value={pin}
+                            onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ''))}
+                            className="w-full pl-10 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono tracking-widest text-lg"
+                            placeholder="****"
+                        />
+                    </div>
+                </div>
+
+                <div className="flex justify-end">
+                    <button type="button" onClick={() => setView('forgot')} className="text-xs text-blue-600 hover:underline">Am uitat PIN-ul</button>
+                </div>
+
+                {error && <p className="text-red-500 text-sm text-center font-medium bg-red-50 p-2 rounded">{error}</p>}
+
+                <button 
+                    type="submit" 
+                    disabled={isLoading}
+                    className="w-full bg-blue-600 text-white p-3 rounded-lg font-medium hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 mt-2 flex justify-center"
+                >
+                    {isLoading ? <Loader2 className="animate-spin"/> : 'Accesează Contul'}
+                </button>
+                
+                <div className="text-center mt-4">
+                     <p className="text-xs text-gray-400">Pentru demo, PIN-urile sunt: Elena (1234), Mihai (0000)</p>
+                </div>
+            </form>
+        )}
+
+        {view === 'forgot' && (
+            <form onSubmit={handleResetSubmit} className="space-y-4 animate-in fade-in slide-in-from-right-8">
+                 <button 
+                    type="button"
+                    onClick={() => setView('pin')}
+                    className="text-gray-400 hover:text-gray-600 flex items-center gap-1 text-sm mb-2"
+                >
+                    <ArrowLeft size={16}/> Înapoi
+                </button>
+
+                <div className="text-center mb-4">
+                    <MailQuestion size={48} className="mx-auto text-blue-500 bg-blue-50 p-2 rounded-full mb-2"/>
+                    <h3 className="font-bold text-gray-800">Recuperare PIN</h3>
+                    <p className="text-sm text-gray-500">Introduceți email-ul asociat contului.</p>
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input 
+                        required
+                        type="email"
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                        className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        placeholder="nume@companie.ro"
+                    />
+                </div>
+
+                <button 
+                    type="submit" 
+                    className="w-full bg-blue-600 text-white p-3 rounded-lg font-medium hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 mt-2"
+                >
+                    Solicită Resetare
+                </button>
+            </form>
+        )}
+        
+        <div className="mt-8 text-center text-xs text-gray-400">
+             &copy; 2024 PontajGroup Enterprise. Secure Access.
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default LoginScreen;
