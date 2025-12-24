@@ -1,0 +1,7 @@
+{
+  "name": "PontajGroup - Smart HR Management",
+  "description": "Sistem avansat de management al timpului si prezentei pentru grupuri de companii, cu geolocalizare, suport overnight si integrare ERP.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
