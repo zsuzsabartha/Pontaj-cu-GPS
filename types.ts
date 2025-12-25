@@ -49,6 +49,12 @@ export interface LeaveConfig {
   requiresApproval: boolean;
 }
 
+export interface Holiday {
+  id: string;
+  date: string; // YYYY-MM-DD
+  name: string;
+}
+
 export interface WorkSchedule {
   id: string;
   name: string; // e.g. "Program Standard", "Tura Noapte"

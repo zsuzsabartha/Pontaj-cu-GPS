@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, User as UserIcon, Utensils, Cigarette } from 'lucide-react';
+import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, User as UserIcon, Utensils, Cigarette, Home, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
 import { ShiftStatus, Coordinates, Office, User, BreakConfig } from '../types';
 
@@ -8,25 +8,27 @@ interface ClockWidgetProps {
   user: User;
   offices: Office[];
   currentStatus: ShiftStatus;
-  breakConfigs: BreakConfig[]; // Added Prop
+  breakConfigs: BreakConfig[]; 
   onClockIn: (location: Coordinates, office: Office | null, dist: number) => void;
   onClockOut: (location: Coordinates) => void;
-  onToggleBreak: (breakConfig?: BreakConfig, location?: Coordinates, dist?: number) => void; // Changed signature
+  onToggleBreak: (breakConfig?: BreakConfig, location?: Coordinates, dist?: number) => void;
 }
 
 const ClockWidget: React.FC<ClockWidgetProps> = ({ user, offices, currentStatus, breakConfigs, onClockIn, onClockOut, onToggleBreak }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [nearestInfo, setNearestInfo] = useState<{ office: Office | null, distance: number } | null>(null);
+  const [showMockOption, setShowMockOption] = useState(false);
   const [elapsedTime, setElapsedTime] = useState<string>("00:00:00");
   const [startTime, setStartTime] = useState<number | null>(null);
   const [showBreakSelector, setShowBreakSelector] = useState(false);
+  
+  // States for confirmation UI
+  const [confirmData, setConfirmData] = useState<{ coords: Coordinates, office: Office, distance: number } | null>(null);
+  const [isRemoteWork, setIsRemoteWork] = useState(false);
 
-  // Get localized date string
   const todayDate = new Date().toLocaleDateString('ro-RO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const todayDateCapitalized = todayDate.charAt(0).toUpperCase() + todayDate.slice(1);
 
-  // Determine explicit status text and color
   let statusText = "NEPONTAT";
   let statusColor = "bg-gray-100 text-gray-500 border-gray-200";
   
@@ -41,7 +43,6 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({ user, offices, currentStatus,
       statusColor = "bg-blue-100 text-blue-700 border-blue-200";
   }
 
-  // Simulate timer if working
   useEffect(() => {
     let interval: any;
     if (currentStatus === ShiftStatus.WORKING && startTime) {
@@ -59,7 +60,6 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({ user, offices, currentStatus,
     return () => clearInterval(interval);
   }, [currentStatus, startTime]);
 
-  // When status changes to working, set start time (mocking persistent store for demo)
   useEffect(() => {
     if (currentStatus === ShiftStatus.WORKING && !startTime) {
       setStartTime(Date.now());
@@ -69,86 +69,81 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({ user, offices, currentStatus,
     }
   }, [currentStatus, startTime]);
 
-  const getLocationSafe = async (): Promise<{coords: Coordinates, isMock: boolean}> => {
-      try {
-          const coords = await getCurrentLocation();
-          return { coords, isMock: false };
-      } catch (err) {
-          if (user.requiresGPS) {
-              if (confirm("Localizarea GPS a eșuat. Doriți să continuați folosind o locație simulată (Test Mode)?")) {
-                  // Mock coords near the first office or default
-                  const mock = offices.length > 0 ? offices[0].coordinates : { latitude: 44.4268, longitude: 26.1025 };
-                  return { coords: mock, isMock: true };
-              } else {
-                  throw new Error("Este necesară activarea localizării.");
-              }
-          }
-          return { coords: { latitude: 0, longitude: 0 }, isMock: true };
-      }
-  };
-
   const handleClockIn = async () => {
     setLoading(true);
     setError(null);
+    setConfirmData(null);
+    setShowMockOption(false);
     
     try {
-      const { coords } = await getLocationSafe();
-      const { office, distance } = findNearestOffice(coords, offices);
-      setNearestInfo({ office, distance });
+        if (isRemoteWork) {
+            // Bypass strict location
+            const coords = await getCurrentLocation().catch(() => ({ latitude: 0, longitude: 0 }));
+            onClockIn(coords, null, 0);
+            return;
+        }
 
-      if (coords.latitude !== 0 && office && distance > office.radiusMeters + 500) { 
-         if(!window.confirm(`Ești la ${distance}m de biroul ${office.name}. Confirmă start pontaj remote?`)) {
-             setLoading(false);
-             return;
-         }
-      }
+        const coords = await getCurrentLocation();
+        const { office, distance } = findNearestOffice(coords, offices);
 
-      onClockIn(coords, office, distance);
+        if (office && distance > office.radiusMeters + 500) {
+            // Instead of window.confirm, set state to show UI
+            setConfirmData({ coords, office, distance });
+            setLoading(false); // Stop loading to show UI
+            return;
+        } 
+        
+        onClockIn(coords, office, distance);
+
     } catch (err: any) {
-       setError(err.message || "Eroare localizare.");
+        console.error("GPS Error:", err);
+        setError(err.message || 'Eroare localizare');
+        setShowMockOption(true);
     } finally {
-      setLoading(false);
+        // If we are showing confirmation, don't stop loading yet (handled above)
+        // Otherwise stop
+        if (!confirmData) setLoading(false);
     }
+  };
+
+  const handleConfirmLocation = () => {
+      if (confirmData) {
+          onClockIn(confirmData.coords, confirmData.office, confirmData.distance);
+          setConfirmData(null);
+      }
+  };
+
+  const handleCancelLocation = () => {
+      setConfirmData(null);
+  };
+
+  const handleForceMockClockIn = () => {
+     const mockCoords = offices.length > 0 ? offices[0].coordinates : { latitude: 44.4268, longitude: 26.1025 };
+     const { office, distance } = findNearestOffice(mockCoords, offices);
+     onClockIn(mockCoords, office, distance);
+     setShowMockOption(false);
+     setError(null);
   };
 
   const handleClockOut = async () => {
     setLoading(true);
     try {
-        const { coords } = await getLocationSafe();
+        const coords = await getCurrentLocation().catch(() => ({latitude: 0, longitude: 0}));
         onClockOut(coords);
-    } catch (e) {
-        // Fallback
-        onClockOut({latitude: 0, longitude: 0});
     } finally {
         setLoading(false);
     }
   };
 
-  const handleStartBreak = async (config: BreakConfig) => {
-      setShowBreakSelector(false);
+  const handleToggleBreak = async (config?: BreakConfig) => {
       setLoading(true);
-      setError(null);
       try {
-          const { coords } = await getLocationSafe();
+          const coords = await getCurrentLocation().catch(() => ({latitude: 0, longitude: 0}));
           const { distance } = findNearestOffice(coords, offices);
           onToggleBreak(config, coords, distance);
-      } catch (err: any) {
-          setError(err.message || "Eroare localizare la start pauză.");
       } finally {
           setLoading(false);
-      }
-  };
-
-  const handleEndBreak = async () => {
-      setLoading(true);
-      try {
-          const { coords } = await getLocationSafe();
-          const { distance } = findNearestOffice(coords, offices);
-          onToggleBreak(undefined, coords, distance);
-      } catch (err) {
-          onToggleBreak(undefined, {latitude: 0, longitude: 0}, 0);
-      } finally {
-          setLoading(false);
+          setShowBreakSelector(false);
       }
   };
 
@@ -159,6 +154,34 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({ user, offices, currentStatus,
           case 'cigarette': return <Cigarette size={18} className="mb-1"/>;
           default: return <Coffee size={18} className="mb-1"/>;
       }
+  }
+
+  // --- CONFIRMATION SCREEN ---
+  if (confirmData) {
+      return (
+        <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md mx-auto border-2 border-orange-100">
+             <div className="flex flex-col items-center text-center gap-4">
+                 <div className="bg-orange-100 p-4 rounded-full text-orange-600">
+                     <MapPin size={32} />
+                 </div>
+                 <h3 className="text-lg font-bold text-gray-800">Confirmare Locație</h3>
+                 <p className="text-sm text-gray-600">
+                     Ești la o distanță de <span className="font-bold">{confirmData.distance}m</span> de sediul <span className="font-bold">{confirmData.office.name}</span>.
+                 </p>
+                 <p className="text-xs text-orange-600 bg-orange-50 p-2 rounded">
+                     Această distanță depășește limita permisă. Ești sigur că vrei să pontezi de aici?
+                 </p>
+                 <div className="grid grid-cols-2 gap-3 w-full mt-2">
+                     <button onClick={handleCancelLocation} className="py-3 rounded-xl border border-gray-200 font-medium text-gray-600 hover:bg-gray-50">
+                        Anulează
+                     </button>
+                     <button onClick={handleConfirmLocation} className="py-3 rounded-xl bg-orange-500 text-white font-bold hover:bg-orange-600 shadow-md">
+                        Da, Sunt Aici
+                     </button>
+                 </div>
+             </div>
+        </div>
+      );
   }
 
   return (
@@ -177,14 +200,12 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({ user, offices, currentStatus,
                 </div>
             </div>
             
-            {/* Explicit Status Badge */}
             <div className={`px-3 py-1 rounded-full border text-xs font-bold tracking-wide uppercase flex items-center gap-2 ${statusColor}`}>
                 <div className={`w-2 h-2 rounded-full ${currentStatus === ShiftStatus.WORKING ? 'bg-green-500 animate-pulse' : 'bg-current'}`}></div>
                 {statusText}
             </div>
         </div>
         
-        {/* GPS Status Indicator for User */}
         <div className="flex items-center gap-1 text-[10px] text-gray-400">
              <Satellite size={12} className={user.requiresGPS ? "text-blue-500" : "text-gray-300"}/>
              {user.requiresGPS ? "Localizare obligatorie" : "Localizare opțională"}
@@ -198,16 +219,36 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({ user, offices, currentStatus,
         <div className="text-5xl font-mono font-semibold text-gray-700 tracking-wider mb-8">
           {elapsedTime}
         </div>
+        
+        {/* Remote Work Toggle */}
+        {currentStatus === ShiftStatus.NOT_STARTED && (
+            <label className="flex items-center gap-2 mb-6 cursor-pointer bg-blue-50 px-4 py-2 rounded-lg border border-blue-100 hover:bg-blue-100 transition w-full justify-center">
+                <input 
+                    type="checkbox"
+                    checked={isRemoteWork}
+                    onChange={(e) => setIsRemoteWork(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                    <Home size={16} className="text-blue-500" />
+                    Lucrez de acasă / Remote
+                </span>
+            </label>
+        )}
 
-        {/* Action Buttons */}
+        {/* Buttons Grid */}
         <div className="grid grid-cols-2 gap-4 w-full">
             {currentStatus === ShiftStatus.NOT_STARTED || currentStatus === ShiftStatus.COMPLETED ? (
                  <button 
                  onClick={handleClockIn}
                  disabled={loading}
-                 className="col-span-2 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-semibold transition-all shadow-lg shadow-blue-200 active:scale-95 disabled:opacity-70"
+                 className={`col-span-2 flex items-center justify-center gap-2 text-white py-4 rounded-xl font-semibold transition-all shadow-lg active:scale-95 disabled:opacity-70 ${isRemoteWork ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`}
                >
-                 {loading ? 'Se localizează...' : <><Play size={24} /> START PONTAJ</>}
+                 {loading ? (
+                     <><RefreshCw className="animate-spin" size={24}/> SE LOCALIZEAZĂ...</>
+                 ) : (
+                     isRemoteWork ? <><Home size={24}/> START REMOTE</> : <><Play size={24} /> START PONTAJ</>
+                 )}
                </button>
             ) : (
                 <>
@@ -217,7 +258,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({ user, offices, currentStatus,
                              {breakConfigs.map(config => (
                                  <button 
                                     key={config.id}
-                                    onClick={() => handleStartBreak(config)}
+                                    onClick={() => handleToggleBreak(config)}
                                     className={`flex flex-col items-center justify-center border p-2 rounded-lg text-xs font-bold transition h-20 ${config.isPaid ? 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700' : 'bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700'}`}
                                  >
                                      {getIcon(config.icon)}
@@ -235,7 +276,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({ user, offices, currentStatus,
                         </div>
                     ) : (
                         <button 
-                            onClick={currentStatus === ShiftStatus.ON_BREAK ? handleEndBreak : () => setShowBreakSelector(true)}
+                            onClick={() => currentStatus === ShiftStatus.ON_BREAK ? handleToggleBreak() : setShowBreakSelector(true)}
                             disabled={loading}
                             className={`flex items-center justify-center gap-2 py-4 rounded-xl font-semibold transition-all shadow-sm border-2 ${currentStatus === ShiftStatus.ON_BREAK ? 'bg-orange-100 border-orange-200 text-orange-700 shadow-inner' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
                         >
@@ -256,16 +297,21 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({ user, offices, currentStatus,
         </div>
 
         {error && (
-            <div className="mt-4 flex items-center gap-2 text-red-500 bg-red-50 p-3 rounded-lg text-sm w-full animate-pulse">
-                <AlertTriangle size={16} /> {error}
+            <div className="mt-4 flex flex-col items-center gap-2 w-full animate-in slide-in-from-top-2">
+                <div className="flex items-center gap-2 text-red-500 bg-red-50 p-3 rounded-lg text-sm w-full font-medium border border-red-100">
+                    <AlertTriangle size={16} className="shrink-0" /> {error}
+                </div>
+                
+                {/* Fallback Option */}
+                {showMockOption && (
+                    <button 
+                        onClick={handleForceMockClockIn}
+                        className="text-xs bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition w-full flex items-center justify-center gap-2"
+                    >
+                        <Satellite size={14}/> Forțează Start (Test Mode / Locație Simulată)
+                    </button>
+                )}
             </div>
-        )}
-
-        {nearestInfo && currentStatus === ShiftStatus.WORKING && (
-             <div className="mt-6 flex items-center gap-2 text-gray-500 text-xs bg-gray-50 px-3 py-1 rounded-full border">
-                <MapPin size={12} />
-                {nearestInfo.office ? `Locație: ${nearestInfo.office.name}` : 'Locație: Remote/Nedetectată'}
-             </div>
         )}
       </div>
     </div>

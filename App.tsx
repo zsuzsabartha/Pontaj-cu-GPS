@@ -33,7 +33,10 @@ import {
   LeaveConfig,
   WorkSchedule,
   DailySchedule,
-  Notification
+  Notification,
+  Company,
+  Holiday,
+  Break
 } from './types';
 import ClockWidget from './components/ClockWidget';
 import TimesheetList from './components/TimesheetList';
@@ -47,7 +50,7 @@ import TimesheetEditModal from './components/TimesheetEditModal';
 import RejectionModal from './components/RejectionModal';
 import BirthdayWidget from './components/BirthdayWidget';
 import ScheduleCalendar from './components/ScheduleCalendar';
-import { Users, FileText, Settings, LogOut, CheckCircle, XCircle, BarChart3, CloudLightning, Building, Clock, UserCog, Lock, AlertOctagon, Wifi, WifiOff, Database, AlertCircle, Server, CalendarRange, Bell, PlusCircle } from 'lucide-react';
+import { Users, FileText, Settings, LogOut, CheckCircle, XCircle, BarChart3, CloudLightning, Building, Clock, UserCog, Lock, AlertOctagon, Wifi, WifiOff, Database, AlertCircle, Server, CalendarRange, Bell, PlusCircle, ShieldCheck } from 'lucide-react';
 import { generateWorkSummary } from './services/geminiService';
 import { saveOfflineAction, getOfflineActions, clearOfflineActions } from './services/offlineService';
 
@@ -71,10 +74,12 @@ export default function App() {
   // --- Configuration State (Nomenclatoare) ---
   const [breakConfigs, setBreakConfigs] = useState<BreakConfig[]>(INITIAL_BREAK_CONFIGS);
   const [leaveConfigs, setLeaveConfigs] = useState<LeaveConfig[]>(INITIAL_LEAVE_CONFIGS);
+  const [holidays, setHolidays] = useState<Holiday[]>(HOLIDAYS_RO); // New State for Holidays
 
   // Office & Department Management State
   const [offices, setOffices] = useState<Office[]>(MOCK_OFFICES);
   const [departments, setDepartments] = useState<Department[]>(MOCK_DEPARTMENTS);
+  const [companies, setCompanies] = useState<Company[]>(MOCK_COMPANIES); // Lifted to state
   
   // Navigation State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'team' | 'leaves' | 'offices' | 'users' | 'nomenclator' | 'backend' | 'calendar' | 'notifications'>('dashboard');
@@ -250,9 +255,16 @@ export default function App() {
   // --- User Management Handlers ---
 
   const handleValidateUser = (userId: string) => {
-      // ... logic remains same
       const newPin = Math.floor(1000 + Math.random() * 9000).toString();
+      
+      // Update global list
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, isValidated: true, pin: newPin, employmentStatus: 'ACTIVE' } : u));
+      
+      // Update current session if applicable (fixes the stuck "Pending" screen issue)
+      if (currentUser && currentUser.id === userId) {
+          setCurrentUser(prev => prev ? ({ ...prev, isValidated: true, pin: newPin, employmentStatus: 'ACTIVE' }) : null);
+      }
+
       alert(`Utilizator validat! PIN generat: ${newPin}`);
   };
 
@@ -336,7 +348,28 @@ export default function App() {
              setCorrectionRequests(prev => [...prev, newRequest]);
              alert("Solicitare corecție trimisă!");
           } else {
-             // Request New Entry
+             // Request New Entry (Pontaj Lipsă)
+
+             // VALIDATION: Check existing timesheet
+             const existingTs = timesheets.find(t => t.userId === currentUser.id && t.date === data.date);
+             if (existingTs) {
+                 alert(`Există deja un pontaj înregistrat pentru data de ${data.date}. Vă rugăm să folosiți opțiunea de corecție pe pontajul existent.`);
+                 return;
+             }
+
+             // VALIDATION: Check overlapping leaves
+             const existingLeave = leaves.find(l => 
+                l.userId === currentUser.id && 
+                l.status !== LeaveStatus.REJECTED &&
+                data.date >= l.startDate && 
+                data.date <= l.endDate
+             );
+
+             if (existingLeave) {
+                 alert(`Există deja o cerere de concediu (${existingLeave.typeName}) care acoperă data de ${data.date}.`);
+                 return;
+             }
+
              const newRequest: CorrectionRequest = {
                   id: `cr-${Date.now()}`,
                   // timesheetId undefined for new
@@ -401,26 +434,41 @@ export default function App() {
   const handleClockIn = (location: Coordinates, office: Office | null, dist: number) => {
       // ... logic remains same
       const now = new Date();
+      const dateString = now.toISOString().split('T')[0];
+      const isHoliday = holidays.some(h => h.date === dateString); // Use dynamic holidays
+
       const newShift: Timesheet = {
         id: `ts-${Date.now()}`,
         userId: currentUser!.id,
         startTime: now.toISOString(),
-        date: now.toISOString().split('T')[0],
+        date: dateString,
         breaks: [],
         startLocation: location,
         matchedOfficeId: office?.id,
         distanceToOffice: dist,
         status: ShiftStatus.WORKING,
-        isHoliday: HOLIDAYS_RO.includes(now.toISOString().split('T')[0]),
+        isHoliday: isHoliday,
         logs: [],
         syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC'
       };
+      
+      // Save offline if needed
+      if (!isOnline) {
+          saveOfflineAction('CLOCK_IN', { startTime: now.toISOString(), location, officeId: office?.id }, currentUser!.id);
+      }
+      
       setTimesheets(prev => [newShift, ...prev]);
   };
 
   const handleClockOut = (location: Coordinates) => {
-      // ... logic remains same
       if (!currentShift || !currentUser) return;
+      
+      // Check if user is on break
+      if (currentShift.status === ShiftStatus.ON_BREAK) {
+          alert("Trebuie să închideți pauza curentă înainte de a termina programul.");
+          return;
+      }
+
       const endTime = new Date().toISOString();
       const updatedShift: Timesheet = {
           ...currentShift,
@@ -429,14 +477,74 @@ export default function App() {
           status: ShiftStatus.COMPLETED,
           syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC'
       };
+
+      // Save offline if needed
+      if (!isOnline) {
+          saveOfflineAction('CLOCK_OUT', { endTime, location }, currentUser.id);
+      }
+
       setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedShift : t));
   };
 
   const handleToggleBreak = (config?: BreakConfig, location?: Coordinates, dist?: number) => {
-      // ... logic remains same
       if(!currentShift) return;
-      // ... (simulated toggle)
-      setTimesheets(prev => prev.map(t => t.id === currentShift.id ? { ...t, status: t.status === ShiftStatus.WORKING ? ShiftStatus.ON_BREAK : ShiftStatus.WORKING } : t));
+      const now = new Date().toISOString();
+
+      if (currentShift.status === ShiftStatus.WORKING) {
+          // START BREAK
+          if (!config) return; // Must have config selected
+
+          const newBreak: Break = {
+              id: `br-${Date.now()}`,
+              typeId: config.id,
+              typeName: config.name,
+              status: BreakStatus.PENDING,
+              startTime: now,
+              startLocation: location,
+              startDistanceToOffice: dist
+          };
+
+          const updatedShift: Timesheet = {
+              ...currentShift,
+              status: ShiftStatus.ON_BREAK,
+              breaks: [...currentShift.breaks, newBreak],
+              syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC'
+          };
+
+          if (!isOnline) {
+              saveOfflineAction('START_BREAK', { breakType: config.id, startTime: now }, currentUser!.id);
+          }
+
+          setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedShift : t));
+
+      } else if (currentShift.status === ShiftStatus.ON_BREAK) {
+          // END BREAK
+          // Find the active break (the one without an end time)
+          const activeBreakIndex = currentShift.breaks.findIndex(b => !b.endTime);
+          
+          if (activeBreakIndex !== -1) {
+              const updatedBreaks = [...currentShift.breaks];
+              updatedBreaks[activeBreakIndex] = {
+                  ...updatedBreaks[activeBreakIndex],
+                  endTime: now,
+                  endLocation: location,
+                  endDistanceToOffice: dist
+              };
+
+              const updatedShift: Timesheet = {
+                  ...currentShift,
+                  status: ShiftStatus.WORKING,
+                  breaks: updatedBreaks,
+                  syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC'
+              };
+
+              if (!isOnline) {
+                  saveOfflineAction('END_BREAK', { endTime: now }, currentUser!.id);
+              }
+
+              setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedShift : t));
+          }
+      }
   };
   
   const handleApproveBreak = (timesheetId: string, breakId: string, status: BreakStatus) => {
@@ -462,11 +570,55 @@ export default function App() {
   const handleAddOffice = (office: Office) => setOffices(prev => [...prev, office]);
   const handleDeleteOffice = (id: string) => setOffices(prev => prev.filter(o => o.id !== id));
   const handleUpdateDepartments = (updatedDepartments: Department[]) => setDepartments(updatedDepartments);
+  
+  const handleUpdateCompany = (updatedCompany: Company) => {
+    setCompanies(prev => prev.map(c => c.id === updatedCompany.id ? updatedCompany : c));
+  };
 
   // --- Render Helpers ---
 
   if (!currentUser) return <LoginScreen users={users} onLogin={handleLogin} />;
-  if (!currentUser.isValidated) return <div className="p-10 text-center">Cont in asteptare...</div>;
+  
+  // Custom "Account Pending" Screen
+  if (!currentUser.isValidated) {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+              <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center space-y-6 animate-in fade-in zoom-in duration-300">
+                  <div className="w-20 h-20 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
+                      <Clock size={40} />
+                  </div>
+                  <div>
+                      <h2 className="text-2xl font-bold text-gray-800 mb-2">Cont în Așteptare</h2>
+                      <p className="text-gray-500">
+                          Contul <strong>{currentUser.name}</strong> a fost creat cu succes, dar necesită validarea unui administrator înainte de a putea accesa aplicația.
+                      </p>
+                  </div>
+                  
+                  <div className="bg-blue-50 p-4 rounded-lg text-sm text-blue-800 border border-blue-100">
+                      <p className="font-semibold mb-1">Status: <span className="text-orange-600">PENDING APPROVAL</span></p>
+                      <p>Vă rugăm să contactați departamentul HR sau un Manager pentru activare.</p>
+                  </div>
+
+                  <div className="pt-2 flex flex-col gap-3">
+                      <button 
+                          onClick={handleLogout} 
+                          className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold transition flex items-center justify-center gap-2"
+                      >
+                          <LogOut size={18}/> Înapoi la Login
+                      </button>
+                      
+                      {/* DEMO SHORTCUT */}
+                      <button 
+                          onClick={() => handleValidateUser(currentUser.id)}
+                          className="text-xs text-blue-600 hover:text-blue-800 hover:underline mt-2 flex items-center justify-center gap-1"
+                      >
+                          <ShieldCheck size={12}/> (Demo) Validează Rapid Contul
+                      </button>
+                  </div>
+              </div>
+          </div>
+      );
+  }
 
   const myLeaves = leaves.filter(l => l.userId === currentUser.id);
   const myTimesheets = timesheets.filter(t => t.userId === currentUser.id);
@@ -480,6 +632,13 @@ export default function App() {
   const canManageOffices = hasRole(Role.ADMIN) || hasRole(Role.MANAGER);
   const isAdmin = hasRole(Role.ADMIN);
 
+  // Helper for active tab class
+  const getTabClass = (tabName: string) => {
+    return activeTab === tabName 
+      ? "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-50 bg-blue-50 text-blue-700"
+      : "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-50 text-gray-600";
+  }
+
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-50 text-gray-800">
       
@@ -489,24 +648,49 @@ export default function App() {
           </div>
       )}
 
-      {/* --- Sidebar (Skipped details for brevity, assumed same) --- */}
+      {/* --- Sidebar --- */}
       <aside className="w-full md:w-64 bg-white border-r border-gray-200 flex flex-col sticky top-0 md:h-screen z-10">
-         {/* ... Sidebar content ... */}
          <div className="p-6 border-b border-gray-100 flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">P</div>
             <span className="font-bold text-xl tracking-tight text-gray-900">PontajGroup</span>
          </div>
-         <nav className="flex-1 p-4 space-y-2">
+         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
             <BirthdayWidget users={users} currentUser={currentUser} />
-            <button onClick={() => setActiveTab('notifications')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-50"><Bell size={18}/> Notificări</button>
-            <button onClick={() => setActiveTab('dashboard')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-50 bg-blue-50 text-blue-700"><Clock size={18}/> Pontaj</button>
-            <button onClick={() => setActiveTab('calendar')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-50"><CalendarRange size={18}/> Program</button>
-            <button onClick={() => setActiveTab('leaves')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-50"><Settings size={18}/> Concedii</button>
-            {canViewTeam && <button onClick={() => setActiveTab('team')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-50"><Users size={18}/> Echipa</button>}
-            {canManageUsers && <button onClick={() => setActiveTab('users')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-50"><UserCog size={18}/> Useri</button>}
-            {canManageOffices && <button onClick={() => setActiveTab('offices')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-50"><Building size={18}/> Sedii</button>}
-            {isAdmin && <button onClick={() => setActiveTab('backend')} className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-50"><Server size={18}/> Backend</button>}
+            
+            <button onClick={() => setActiveTab('notifications')} className={getTabClass('notifications')}>
+              <Bell size={18}/> Notificări {myNotifications.length > 0 && <span className="ml-auto bg-red-500 text-white text-xs rounded-full px-2">{myNotifications.length}</span>}
+            </button>
+            <button onClick={() => setActiveTab('dashboard')} className={getTabClass('dashboard')}><Clock size={18}/> Pontaj</button>
+            <button onClick={() => setActiveTab('calendar')} className={getTabClass('calendar')}><CalendarRange size={18}/> Program</button>
+            <button onClick={() => setActiveTab('leaves')} className={getTabClass('leaves')}><Settings size={18}/> Concedii</button>
+            
+            <div className="pt-2 pb-1 border-t border-gray-100 my-1">
+               <p className="px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Management</p>
+            </div>
+
+            {canViewTeam && <button onClick={() => setActiveTab('team')} className={getTabClass('team')}><Users size={18}/> Echipa</button>}
+            {canManageUsers && <button onClick={() => setActiveTab('users')} className={getTabClass('users')}><UserCog size={18}/> Useri</button>}
+            {canManageOffices && <button onClick={() => setActiveTab('offices')} className={getTabClass('offices')}><Building size={18}/> Sedii</button>}
+            {isAdmin && <button onClick={() => setActiveTab('nomenclator')} className={getTabClass('nomenclator')}><Database size={18}/> Nomenclator</button>}
+            {isAdmin && <button onClick={() => setActiveTab('backend')} className={getTabClass('backend')}><Server size={18}/> Backend</button>}
          </nav>
+         
+         {/* User Profile & Logout Footer */}
+         <div className="p-4 border-t border-gray-200 bg-gray-50/50">
+            <div className="flex items-center gap-3 mb-4">
+                <img src={currentUser.avatarUrl} alt="" className="w-10 h-10 rounded-full bg-white border border-gray-200 object-cover"/>
+                <div className="overflow-hidden">
+                    <p className="text-sm font-bold text-gray-900 truncate" title={currentUser.name}>{currentUser.name}</p>
+                    <p className="text-xs text-gray-500 truncate" title={currentUser.email}>{currentUser.email}</p>
+                </div>
+            </div>
+            <button 
+                onClick={handleLogout} 
+                className="w-full flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-700 hover:bg-red-50 hover:text-red-600 hover:border-red-100 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
+            >
+                <LogOut size={16} /> Deconectare
+            </button>
+         </div>
       </aside>
 
       {/* --- Main Content --- */}
@@ -608,9 +792,18 @@ export default function App() {
              </div>
         )}
         {/* ... Other tabs ... */}
-        {activeTab === 'users' && <AdminUserManagement users={users} companies={MOCK_COMPANIES} departments={departments} offices={offices} onValidateUser={handleValidateUser} onCreateUser={handleCreateUser}/>}
-        {activeTab === 'offices' && <OfficeManagement offices={offices} departments={departments} companies={MOCK_COMPANIES} onAddOffice={handleAddOffice} onDeleteOffice={handleDeleteOffice} onUpdateDepartments={handleUpdateDepartments}/>}
-        {activeTab === 'nomenclator' && <NomenclatorManagement breakConfigs={breakConfigs} leaveConfigs={leaveConfigs} onUpdateBreaks={setBreakConfigs} onUpdateLeaves={setLeaveConfigs}/>}
+        {activeTab === 'users' && <AdminUserManagement users={users} companies={companies} departments={departments} offices={offices} onValidateUser={handleValidateUser} onCreateUser={handleCreateUser}/>}
+        {activeTab === 'offices' && <OfficeManagement offices={offices} departments={departments} companies={companies} onAddOffice={handleAddOffice} onDeleteOffice={handleDeleteOffice} onUpdateDepartments={handleUpdateDepartments} onUpdateCompany={handleUpdateCompany}/>}
+        {activeTab === 'nomenclator' && (
+            <NomenclatorManagement 
+                breakConfigs={breakConfigs} 
+                leaveConfigs={leaveConfigs} 
+                holidays={holidays}
+                onUpdateBreaks={setBreakConfigs} 
+                onUpdateLeaves={setLeaveConfigs}
+                onUpdateHolidays={setHolidays}
+            />
+        )}
         {activeTab === 'backend' && <BackendControlPanel />}
 
       </main>

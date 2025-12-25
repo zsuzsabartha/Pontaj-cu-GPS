@@ -1,21 +1,24 @@
 
 import React, { useState } from 'react';
-import { BreakConfig, LeaveConfig } from '../types';
-import { Plus, Trash2, Save, Coffee, FileText, Check, X } from 'lucide-react';
+import { BreakConfig, LeaveConfig, Holiday } from '../types';
+import { Plus, Trash2, Save, Coffee, FileText, Check, X, CalendarDays, PartyPopper } from 'lucide-react';
 
 interface NomenclatorManagementProps {
   breakConfigs: BreakConfig[];
   leaveConfigs: LeaveConfig[];
+  holidays: Holiday[]; // New prop
   onUpdateBreaks: (configs: BreakConfig[]) => void;
   onUpdateLeaves: (configs: LeaveConfig[]) => void;
+  onUpdateHolidays: (configs: Holiday[]) => void; // New handler
 }
 
-const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ breakConfigs, leaveConfigs, onUpdateBreaks, onUpdateLeaves }) => {
-  const [activeTab, setActiveTab] = useState<'breaks' | 'leaves'>('breaks');
+const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ breakConfigs, leaveConfigs, holidays, onUpdateBreaks, onUpdateLeaves, onUpdateHolidays }) => {
+  const [activeTab, setActiveTab] = useState<'breaks' | 'leaves' | 'holidays'>('breaks');
   
   // Local state for editing to avoid constant prop updates
   const [localBreaks, setLocalBreaks] = useState(breakConfigs);
   const [localLeaves, setLocalLeaves] = useState(leaveConfigs);
+  const [localHolidays, setLocalHolidays] = useState(holidays);
 
   // --- Break Handlers ---
   const addBreak = () => {
@@ -65,6 +68,29 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ breakConf
     alert('Nomenclator Concedii actualizat!');
   };
 
+  // --- Holiday Handlers ---
+  const addHoliday = () => {
+    const newHoliday: Holiday = {
+        id: `h-${Date.now()}`,
+        date: new Date().toISOString().split('T')[0],
+        name: 'Sărbătoare Nouă'
+    };
+    setLocalHolidays([...localHolidays, newHoliday]);
+  };
+
+  const updateHoliday = (id: string, field: keyof Holiday, value: any) => {
+      setLocalHolidays(prev => prev.map(h => h.id === id ? { ...h, [field]: value } : h));
+  };
+
+  const deleteHoliday = (id: string) => {
+      setLocalHolidays(prev => prev.filter(h => h.id !== id));
+  };
+
+  const saveHolidays = () => {
+      onUpdateHolidays(localHolidays);
+      alert('Lista Zilelor Libere a fost actualizată!');
+  };
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
       <div className="flex border-b border-gray-200">
@@ -79,6 +105,12 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ breakConf
           className={`flex-1 py-4 text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'leaves' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
         >
           <FileText size={18} /> Tipuri Concedii
+        </button>
+        <button 
+          onClick={() => setActiveTab('holidays')}
+          className={`flex-1 py-4 text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'holidays' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
+        >
+          <CalendarDays size={18} /> Zile Libere
         </button>
       </div>
 
@@ -189,6 +221,64 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ breakConf
               </button>
             </div>
           </div>
+        )}
+
+        {activeTab === 'holidays' && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
+                <div className="bg-purple-50 p-4 rounded-lg border border-purple-100 text-sm text-purple-800 flex items-center gap-2 mb-4">
+                    <PartyPopper size={20}/>
+                    <span>
+                        Zilele definite aici vor fi marcate automat ca "Sărbătoare Legală" în pontajele angajaților. 
+                        Dacă un angajat lucrează într-o astfel de zi, poate beneficia de sporuri (configurabile în ERP).
+                    </span>
+                </div>
+
+                <div className="grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 uppercase mb-2">
+                    <div className="col-span-4">Dată Calendaristică</div>
+                    <div className="col-span-6">Denumire Sărbătoare</div>
+                    <div className="col-span-2 text-right pr-4">Acțiuni</div>
+                </div>
+
+                {localHolidays.sort((a,b) => a.date.localeCompare(b.date)).map(hol => (
+                    <div key={hol.id} className="grid grid-cols-12 gap-4 items-center bg-white p-3 rounded-lg border border-gray-200 hover:border-purple-200 hover:shadow-sm transition">
+                        <div className="col-span-4">
+                            <input 
+                                type="date"
+                                value={hol.date}
+                                onChange={(e) => updateHoliday(hol.id, 'date', e.target.value)}
+                                className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50"
+                            />
+                        </div>
+                        <div className="col-span-6">
+                            <input 
+                                type="text"
+                                placeholder="Ex: Crăciun"
+                                value={hol.name}
+                                onChange={(e) => updateHoliday(hol.id, 'name', e.target.value)}
+                                className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+                            />
+                        </div>
+                        <div className="col-span-2 flex justify-end">
+                            <button 
+                                onClick={() => deleteHoliday(hol.id)}
+                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                                title="Șterge Sărbătoare"
+                            >
+                                <Trash2 size={18}/>
+                            </button>
+                        </div>
+                    </div>
+                ))}
+
+                <div className="flex justify-between pt-4 border-t border-gray-100">
+                    <button onClick={addHoliday} className="flex items-center gap-2 text-purple-600 text-sm font-medium hover:bg-purple-50 px-3 py-2 rounded transition">
+                        <Plus size={16}/> Adaugă Sărbătoare
+                    </button>
+                    <button onClick={saveHolidays} className="flex items-center gap-2 bg-purple-600 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-purple-700 shadow-md shadow-purple-200 transition">
+                        <Save size={16}/> Salvează Calendar
+                    </button>
+                </div>
+            </div>
         )}
       </div>
     </div>

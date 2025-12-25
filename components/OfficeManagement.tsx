@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Office, Company, Coordinates, Department } from '../types';
-import { Building, MapPin, Trash2, Plus, Navigation, FolderTree, Mail, BellOff } from 'lucide-react';
+import { Building, MapPin, Trash2, Plus, Navigation, FolderTree, Mail, BellOff, Briefcase } from 'lucide-react';
 import { getCurrentLocation } from '../services/geoService';
 
 interface OfficeManagementProps {
@@ -11,9 +11,10 @@ interface OfficeManagementProps {
   onAddOffice: (office: Office) => void;
   onDeleteOffice: (id: string) => void;
   onUpdateDepartments: (deps: Department[]) => void; // Added handler
+  onUpdateCompany: (company: Company) => void; // New prop for updating company name
 }
 
-const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies, departments, onAddOffice, onDeleteOffice, onUpdateDepartments }) => {
+const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies, departments, onAddOffice, onDeleteOffice, onUpdateDepartments, onUpdateCompany }) => {
   const [activeTab, setActiveTab] = useState<'offices' | 'departments'>('offices');
   const [isAdding, setIsAdding] = useState(false);
   const [formData, setFormData] = useState({
@@ -229,41 +230,70 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
       )}
 
       {activeTab === 'departments' && (
-          <div className="space-y-4">
-              <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100 text-sm text-yellow-800 mb-4">
-                  <span className="font-bold">Notă:</span> Activarea notificărilor pe email va trimite alerte automate către toți angajații departamentului și manageri atunci când apar evenimente critice (ex: absențe nejustificate).
-              </div>
-              
-              <div className="grid gap-4">
-                  {departments.map(dept => {
-                      const companyName = companies.find(c => c.id === dept.companyId)?.name || 'Companie Necunoscută';
-                      return (
-                          <div key={dept.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-                              <div className="flex items-center gap-4">
-                                  <div className="bg-indigo-50 p-3 rounded-lg text-indigo-600">
-                                      <FolderTree size={24} />
-                                  </div>
-                                  <div>
-                                      <h3 className="font-bold text-gray-800">{dept.name}</h3>
-                                      <p className="text-xs text-gray-500">{companyName}</p>
-                                  </div>
-                              </div>
-                              
-                              <div className="flex items-center gap-3">
-                                  <span className={`text-xs font-medium ${dept.emailNotifications ? 'text-green-600' : 'text-gray-400'}`}>
-                                      {dept.emailNotifications ? 'Notificări Email Active' : 'Doar în Aplicație'}
-                                  </span>
-                                  <button 
-                                      onClick={() => toggleDeptEmail(dept.id)}
-                                      className={`p-2 rounded-lg transition-colors ${dept.emailNotifications ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
-                                      title="Toggle Email Notifications"
-                                  >
-                                      {dept.emailNotifications ? <Mail size={20} /> : <BellOff size={20} />}
-                                  </button>
+          <div className="space-y-8">
+              {/* NEW SECTION: Company Settings */}
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                  <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                      <Briefcase size={20} className="text-blue-600"/> Setări Companii
+                  </h3>
+                  <div className="space-y-4">
+                      {companies.map(comp => (
+                          <div key={comp.id} className="flex items-end gap-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                              <div className="flex-1">
+                                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nume Companie (ID: {comp.id})</label>
+                                  <input 
+                                      type="text" 
+                                      defaultValue={comp.name}
+                                      onBlur={(e) => {
+                                          if(e.target.value !== comp.name && e.target.value.trim() !== '') {
+                                              onUpdateCompany({...comp, name: e.target.value});
+                                          }
+                                      }}
+                                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                  />
                               </div>
                           </div>
-                      );
-                  })}
+                      ))}
+                  </div>
+              </div>
+
+              {/* Department Settings */}
+              <div>
+                  <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100 text-sm text-yellow-800 mb-4">
+                      <span className="font-bold">Notă:</span> Activarea notificărilor pe email va trimite alerte automate către toți angajații departamentului și manageri atunci când apar evenimente critice (ex: absențe nejustificate).
+                  </div>
+                  
+                  <div className="grid gap-4">
+                      {departments.map(dept => {
+                          const companyName = companies.find(c => c.id === dept.companyId)?.name || 'Companie Necunoscută';
+                          return (
+                              <div key={dept.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+                                  <div className="flex items-center gap-4">
+                                      <div className="bg-indigo-50 p-3 rounded-lg text-indigo-600">
+                                          <FolderTree size={24} />
+                                      </div>
+                                      <div>
+                                          <h3 className="font-bold text-gray-800">{dept.name}</h3>
+                                          <p className="text-xs text-gray-500">{companyName}</p>
+                                      </div>
+                                  </div>
+                                  
+                                  <div className="flex items-center gap-3">
+                                      <span className={`text-xs font-medium ${dept.emailNotifications ? 'text-green-600' : 'text-gray-400'}`}>
+                                          {dept.emailNotifications ? 'Notificări Email Active' : 'Doar în Aplicație'}
+                                      </span>
+                                      <button 
+                                          onClick={() => toggleDeptEmail(dept.id)}
+                                          className={`p-2 rounded-lg transition-colors ${dept.emailNotifications ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
+                                          title="Toggle Email Notifications"
+                                      >
+                                          {dept.emailNotifications ? <Mail size={20} /> : <BellOff size={20} />}
+                                      </button>
+                                  </div>
+                              </div>
+                          );
+                      })}
+                  </div>
               </div>
           </div>
       )}

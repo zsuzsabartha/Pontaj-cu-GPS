@@ -1,5 +1,5 @@
 
-import { Company, Office, User, Role, Timesheet, ShiftStatus, LeaveRequest, LeaveStatus, Department, CorrectionRequest, BreakConfig, LeaveConfig, WorkSchedule, AppConfig, DailySchedule, Notification } from './types';
+import { Company, Office, User, Role, Timesheet, ShiftStatus, LeaveRequest, LeaveStatus, Department, CorrectionRequest, BreakConfig, LeaveConfig, WorkSchedule, AppConfig, DailySchedule, Notification, Holiday } from './types';
 
 // --- CONFIGURARE APLICATIE (Hardcodata) ---
 export const APP_CONFIG: AppConfig = {
@@ -218,8 +218,19 @@ export const INITIAL_LEAVE_REQUESTS: LeaveRequest[] = [
 
 export const INITIAL_CORRECTION_REQUESTS: CorrectionRequest[] = [];
 
-export const HOLIDAYS_RO = [
-  '2024-01-01', '2024-01-02', '2024-01-24', '2024-05-01', '2024-05-03', '2024-05-06',
-  '2024-06-01', '2024-06-23', '2024-06-24', '2024-08-15', '2024-11-30', '2024-12-01',
-  '2024-12-25', '2024-12-26'
+export const HOLIDAYS_RO: Holiday[] = [
+  { id: 'h1', date: '2024-01-01', name: 'Anul Nou' },
+  { id: 'h2', date: '2024-01-02', name: 'Anul Nou (Ziua 2)' },
+  { id: 'h3', date: '2024-01-24', name: 'Unirea Principatelor Române' },
+  { id: 'h4', date: '2024-05-01', name: 'Ziua Muncii' },
+  { id: 'h5', date: '2024-05-03', name: 'Vinerea Mare' },
+  { id: 'h6', date: '2024-05-06', name: 'Paște Ortodox' },
+  { id: 'h7', date: '2024-06-01', name: 'Ziua Copilului' },
+  { id: 'h8', date: '2024-06-23', name: 'Rusalii' },
+  { id: 'h9', date: '2024-06-24', name: 'A doua zi de Rusalii' },
+  { id: 'h10', date: '2024-08-15', name: 'Adormirea Maicii Domnului' },
+  { id: 'h11', date: '2024-11-30', name: 'Sfântul Andrei' },
+  { id: 'h12', date: '2024-12-01', name: 'Ziua Națională a României' },
+  { id: 'h13', date: '2024-12-25', name: 'Prima zi de Crăciun' },
+  { id: 'h14', date: '2024-12-26', name: 'A doua zi de Crăciun' }
 ];
