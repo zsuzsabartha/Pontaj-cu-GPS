@@ -1,4 +1,3 @@
-
 import { Coordinates, Office } from '../types';
 
 export const getDistanceInMeters = (coord1: Coordinates, coord2: Coordinates): number => {
@@ -48,19 +47,21 @@ const getPosition = (highAccuracy: boolean, timeout: number): Promise<Geolocatio
 };
 
 /**
- * Tries to get location with High Accuracy first (4s timeout).
- * If it fails or times out, falls back to Low Accuracy (fast).
+ * Tries to get location using Low Accuracy first (fast & reliable).
+ * If explicitly needed, could switch to High Accuracy.
  */
 export const getCurrentLocation = async (): Promise<Coordinates> => {
     try {
-        // Attempt 1: High Accuracy (Short timeout)
-        const pos = await getPosition(true, 4000);
+        // Attempt 1: Low Accuracy (Default as requested)
+        // High accuracy often fails indoors or times out. Low accuracy uses Wifi/Cell towers.
+        console.log("Acquiring GPS (Low Accuracy Mode)...");
+        const pos = await getPosition(false, 15000); // 15s timeout
         return { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
     } catch (error) {
-        console.warn("High Accuracy GPS failed/timeout, trying Low Accuracy...");
+        console.warn("Low Accuracy GPS failed, trying High Accuracy backup...");
         try {
-            // Attempt 2: Low Accuracy (Longer timeout)
-            const pos = await getPosition(false, 10000);
+            // Attempt 2: High Accuracy as backup
+            const pos = await getPosition(true, 10000);
             return { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
         } catch (finalError: any) {
             let msg = 'Eroare localizare.';

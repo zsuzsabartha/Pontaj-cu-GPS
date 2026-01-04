@@ -9,6 +9,38 @@ export const APP_CONFIG: AppConfig = {
     startWorkHourThreshold: 10, // Daca e ora 10:00 si nu s-a pontat -> Alerta Manager
 };
 
+// --- HELPER FUNC: DATE LOCKING (CLOSED MONTH) ---
+// This provides the DEFAULT lock date if no manual override is set
+export const getDefaultLockedDate = (): string => {
+    const today = new Date();
+    const currentDay = today.getDate();
+    const cutoffDay = APP_CONFIG.monthCutoffDay;
+
+    // Logic:
+    // If today > cutoff (e.g. 10th), previous month is fully closed. Lock Date = Last Day of Prev Month.
+    // If today <= cutoff (e.g. 3rd), previous month is still open for corrections. Month BEFORE prev is closed. Lock Date = Last Day of (Month - 2).
+    
+    // Start with last day of previous month
+    // new Date(y, m, 0) returns the last day of month m-1
+    let lockDateObj = new Date(today.getFullYear(), today.getMonth(), 0); 
+    
+    if (currentDay <= cutoffDay) {
+        // Grace period: Go back one more month
+        lockDateObj = new Date(today.getFullYear(), today.getMonth() - 1, 0);
+    }
+    
+    // Format to YYYY-MM-DD using local time logic (simple slice)
+    const offset = lockDateObj.getTimezoneOffset() * 60000;
+    const localISOTime = (new Date(lockDateObj.getTime() - offset)).toISOString().slice(0, 10);
+    return localISOTime;
+};
+
+// Refactored to accept the dynamic locked date from App state
+export const isDateInLockedPeriod = (dateStr: string, lockedDate: string): boolean => {
+    if (!dateStr || !lockedDate) return false;
+    return dateStr <= lockedDate;
+};
+
 // --- API CONNECTION CONFIG ---
 // In a real scenario, this would come from import.meta.env.VITE_API_URL
 export const API_CONFIG = {
@@ -222,25 +254,28 @@ export const INITIAL_LEAVE_REQUESTS: LeaveRequest[] = [
     startDate: '2024-06-10',
     endDate: '2024-06-15',
     reason: 'Concediu de vară planificat.',
-    status: LeaveStatus.PENDING
+    status: LeaveStatus.PENDING,
+    createdAt: '2024-05-20T10:00:00.000Z'
   }
 ];
 
 export const INITIAL_CORRECTION_REQUESTS: CorrectionRequest[] = [];
 
+// Updated for 2025 to ensure visibility in current calendar view
 export const HOLIDAYS_RO: Holiday[] = [
-  { id: 'h1', date: '2024-01-01', name: 'Anul Nou' },
-  { id: 'h2', date: '2024-01-02', name: 'Anul Nou (Ziua 2)' },
-  { id: 'h3', date: '2024-01-24', name: 'Unirea Principatelor Române' },
-  { id: 'h4', date: '2024-05-01', name: 'Ziua Muncii' },
-  { id: 'h5', date: '2024-05-03', name: 'Vinerea Mare' },
-  { id: 'h6', date: '2024-05-06', name: 'Paște Ortodox' },
-  { id: 'h7', date: '2024-06-01', name: 'Ziua Copilului' },
-  { id: 'h8', date: '2024-06-23', name: 'Rusalii' },
-  { id: 'h9', date: '2024-06-24', name: 'A doua zi de Rusalii' },
-  { id: 'h10', date: '2024-08-15', name: 'Adormirea Maicii Domnului' },
-  { id: 'h11', date: '2024-11-30', name: 'Sfântul Andrei' },
-  { id: 'h12', date: '2024-12-01', name: 'Ziua Națională a României' },
-  { id: 'h13', date: '2024-12-25', name: 'Prima zi de Crăciun' },
-  { id: 'h14', date: '2024-12-26', name: 'A doua zi de Crăciun' }
+  { id: 'h1', date: '2025-01-01', name: 'Anul Nou' },
+  { id: 'h2', date: '2025-01-02', name: 'Anul Nou (Ziua 2)' },
+  { id: 'h3', date: '2025-01-24', name: 'Unirea Principatelor Române' },
+  { id: 'h4', date: '2025-04-18', name: 'Vinerea Mare' },
+  { id: 'h5', date: '2025-04-20', name: 'Paște Ortodox' },
+  { id: 'h6', date: '2025-04-21', name: 'A doua zi de Paște' },
+  { id: 'h7', date: '2025-05-01', name: 'Ziua Muncii' },
+  { id: 'h8', date: '2025-06-01', name: 'Ziua Copilului' },
+  { id: 'h9', date: '2025-06-08', name: 'Rusalii' },
+  { id: 'h10', date: '2025-06-09', name: 'A doua zi de Rusalii' },
+  { id: 'h11', date: '2025-08-15', name: 'Adormirea Maicii Domnului' },
+  { id: 'h12', date: '2025-11-30', name: 'Sfântul Andrei' },
+  { id: 'h13', date: '2025-12-01', name: 'Ziua Națională a României' },
+  { id: 'h14', date: '2025-12-25', name: 'Prima zi de Crăciun' },
+  { id: 'h15', date: '2025-12-26', name: 'A doua zi de Crăciun' }
 ];

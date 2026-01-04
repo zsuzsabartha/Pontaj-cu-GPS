@@ -1,17 +1,19 @@
 
 import React, { useState } from 'react';
 import { LeaveRequest, LeaveConfig } from '../types';
-import { X, CheckSquare } from 'lucide-react';
+import { X, CheckSquare, Lock } from 'lucide-react';
 import { checkComplianceAI } from '../services/geminiService';
+import { isDateInLockedPeriod } from '../constants';
 
 interface LeaveModalProps {
   isOpen: boolean;
   onClose: () => void;
   leaveConfigs: LeaveConfig[];
+  lockedDate: string; // Dynamic locked date
   onSubmit: (req: Omit<LeaveRequest, 'id' | 'status' | 'userId'>) => void;
 }
 
-const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, onSubmit }) => {
+const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, lockedDate, onSubmit }) => {
   const [typeId, setTypeId] = useState<string>(leaveConfigs[0]?.id || '');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -22,6 +24,12 @@ const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isDateInLockedPeriod(startDate, lockedDate)) {
+        setValidationMsg("Data de început se află într-o lună închisă. Nu se pot adăuga concedii retroactiv.");
+        return;
+    }
+
     const selectedConfig = leaveConfigs.find(lc => lc.id === typeId);
     if (!selectedConfig) return;
 
@@ -69,8 +77,15 @@ const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, 
                 type="date" 
                 required
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                onChange={(e) => {
+                    setStartDate(e.target.value);
+                    if(isDateInLockedPeriod(e.target.value, lockedDate)) {
+                        setValidationMsg("Data este într-o perioadă închisă!");
+                    } else {
+                        setValidationMsg(null);
+                    }
+                }}
+                className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none ${isDateInLockedPeriod(startDate, lockedDate) ? 'border-red-500 bg-red-50 text-red-900' : ''}`}
               />
             </div>
             <div>
@@ -106,7 +121,8 @@ const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, 
                 </button>
             </div>
             {validationMsg && (
-                <p className="text-xs text-gray-500 mt-1 bg-gray-50 p-2 rounded italic">
+                <p className={`text-xs mt-1 p-2 rounded flex items-center gap-1 ${validationMsg.includes('închisă') || validationMsg.includes('invalid') ? 'bg-red-50 text-red-600 font-bold' : 'bg-gray-50 text-gray-500 italic'}`}>
+                    {validationMsg.includes('închisă') && <Lock size={12}/>}
                     Info: {validationMsg}
                 </p>
             )}
@@ -115,7 +131,8 @@ const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, 
           <div className="pt-2">
             <button 
               type="submit" 
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-all shadow-lg shadow-blue-200"
+              disabled={isDateInLockedPeriod(startDate, lockedDate)}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-all shadow-lg shadow-blue-200 disabled:opacity-50 disabled:grayscale"
             >
               Trimite Cererea
             </button>

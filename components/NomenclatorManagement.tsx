@@ -1,25 +1,31 @@
 import React, { useState } from 'react';
 import { BreakConfig, LeaveConfig, Holiday } from '../types';
-import { Plus, Trash2, Save, Coffee, FileText, Check, X, CalendarDays, PartyPopper, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, Save, Coffee, FileText, Check, X, CalendarDays, PartyPopper, RefreshCw, Settings, Lock } from 'lucide-react';
 import { API_CONFIG } from '../constants';
 
 interface NomenclatorManagementProps {
   breakConfigs: BreakConfig[];
   leaveConfigs: LeaveConfig[];
-  holidays: Holiday[]; // New prop
+  holidays: Holiday[];
+  currentLockedDate: string;
   onUpdateBreaks: (configs: BreakConfig[]) => void;
   onUpdateLeaves: (configs: LeaveConfig[]) => void;
-  onUpdateHolidays: (configs: Holiday[]) => void; // New handler
+  onUpdateHolidays: (configs: Holiday[]) => void;
+  onUpdateLockedDate: (date: string) => void;
 }
 
-const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ breakConfigs, leaveConfigs, holidays, onUpdateBreaks, onUpdateLeaves, onUpdateHolidays }) => {
-  const [activeTab, setActiveTab] = useState<'breaks' | 'leaves' | 'holidays'>('breaks');
+const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ 
+  breakConfigs, leaveConfigs, holidays, currentLockedDate,
+  onUpdateBreaks, onUpdateLeaves, onUpdateHolidays, onUpdateLockedDate 
+}) => {
+  const [activeTab, setActiveTab] = useState<'breaks' | 'leaves' | 'holidays' | 'settings'>('breaks');
   const [isSaving, setIsSaving] = useState(false);
   
   // Local state for editing to avoid constant prop updates
   const [localBreaks, setLocalBreaks] = useState(breakConfigs);
   const [localLeaves, setLocalLeaves] = useState(leaveConfigs);
   const [localHolidays, setLocalHolidays] = useState(holidays);
+  const [localLockedDate, setLocalLockedDate] = useState(currentLockedDate);
 
   // Helper to save to backend
   const saveToSQL = async (endpoint: string, data: any[]) => {
@@ -125,27 +131,39 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ breakConf
       const synced = await saveToSQL('holidays', localHolidays);
       alert(`Lista Zilelor Libere a fost actualizată! ${synced ? '(Sincronizat cu SQL Server)' : '(Doar Local - Bridge Offline)'}`);
   };
+  
+  // --- General Settings Handlers ---
+  const saveGeneralSettings = () => {
+      onUpdateLockedDate(localLockedDate);
+      alert(`Setări Generale Actualizate! Luna este închisă până la: ${localLockedDate}`);
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-      <div className="flex border-b border-gray-200">
+      <div className="flex border-b border-gray-200 overflow-x-auto">
         <button 
           onClick={() => setActiveTab('breaks')}
-          className={`flex-1 py-4 text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'breaks' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
+          className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'breaks' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
         >
           <Coffee size={18} /> Tipuri Pauze
         </button>
         <button 
           onClick={() => setActiveTab('leaves')}
-          className={`flex-1 py-4 text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'leaves' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
+          className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'leaves' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
         >
           <FileText size={18} /> Tipuri Concedii
         </button>
         <button 
           onClick={() => setActiveTab('holidays')}
-          className={`flex-1 py-4 text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'holidays' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
+          className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'holidays' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
         >
           <CalendarDays size={18} /> Zile Libere
+        </button>
+        <button 
+          onClick={() => setActiveTab('settings')}
+          className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'settings' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
+        >
+          <Settings size={18} /> Configurări Generale
         </button>
       </div>
 
@@ -324,6 +342,38 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ breakConf
                     >
                         {isSaving ? <RefreshCw className="animate-spin" size={16}/> : <Save size={16}/>} Salvează Calendar
                     </button>
+                </div>
+            </div>
+        )}
+
+        {activeTab === 'settings' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
+                 <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 text-sm text-orange-800 flex items-start gap-3">
+                    <Lock size={20} className="shrink-0 mt-0.5"/>
+                    <div>
+                        <span className="font-bold block mb-1">Control Închidere Lună (Lock Date)</span>
+                        Data specificată mai jos blochează orice modificare asupra pontajelor, cererilor de concediu sau programărilor anterioare acestei date.
+                        Această dată este folosită pentru a proteja perioadele fiscale închise.
+                    </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm max-w-md">
+                     <label className="block text-sm font-bold text-gray-700 mb-2">Dată Blocare Sistem (Closed Month)</label>
+                     <div className="flex gap-4 items-center">
+                         <input 
+                            type="date"
+                            value={localLockedDate}
+                            onChange={(e) => setLocalLockedDate(e.target.value)}
+                            className="flex-1 p-3 border rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
+                         />
+                         <button 
+                            onClick={saveGeneralSettings}
+                            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md"
+                         >
+                             Aplică
+                         </button>
+                     </div>
+                     <p className="text-xs text-gray-400 mt-2 italic">Ex: Dacă setați 30-04-2024, nimeni nu mai poate modifica date din Aprilie sau mai vechi.</p>
                 </div>
             </div>
         )}

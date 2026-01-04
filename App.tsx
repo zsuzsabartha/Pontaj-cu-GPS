@@ -14,7 +14,9 @@ import {
   APP_CONFIG,
   INITIAL_SCHEDULE_PLANS,
   INITIAL_NOTIFICATIONS,
-  API_CONFIG
+  API_CONFIG,
+  isDateInLockedPeriod,
+  getDefaultLockedDate
 } from './constants';
 import { 
   User, 
@@ -51,7 +53,7 @@ import RejectionModal from './components/RejectionModal';
 import BirthdayWidget from './components/BirthdayWidget';
 import ScheduleCalendar from './components/ScheduleCalendar';
 import CompanyManagement from './components/CompanyManagement';
-import { Users, FileText, Settings, LogOut, CheckCircle, XCircle, BarChart3, CloudLightning, Building, Clock, UserCog, Lock, AlertOctagon, Wifi, WifiOff, Database, AlertCircle, Server, CalendarRange, Bell, PlusCircle, ShieldCheck, Filter, Briefcase, Calendar, ChevronRight } from 'lucide-react';
+import { Users, FileText, Settings, LogOut, CheckCircle, XCircle, BarChart3, CloudLightning, Building, Clock, UserCog, Lock, AlertOctagon, Wifi, WifiOff, Database, AlertCircle, Server, CalendarRange, Bell, PlusCircle, ShieldCheck, Filter, Briefcase, Calendar, ChevronRight, RefreshCw, Clock4 } from 'lucide-react';
 import { generateWorkSummary } from './services/geminiService';
 import { saveOfflineAction, getOfflineActions, clearOfflineActions } from './services/offlineService';
 
@@ -98,7 +100,10 @@ export default function App() {
   // --- Configuration State (Nomenclatoare) (Persisted) ---
   const [breakConfigs, setBreakConfigs] = usePersistedState<BreakConfig[]>('pontaj_break_configs', INITIAL_BREAK_CONFIGS);
   const [leaveConfigs, setLeaveConfigs] = usePersistedState<LeaveConfig[]>('pontaj_leave_configs', INITIAL_LEAVE_CONFIGS);
-  const [holidays, setHolidays] = usePersistedState<Holiday[]>('pontaj_holidays', HOLIDAYS_RO); 
+  const [holidays, setHolidays] = usePersistedState<Holiday[]>('pontaj_holidays_2025', HOLIDAYS_RO); 
+  
+  // --- Locked Date State (Persisted) ---
+  const [lockedDate, setLockedDate] = usePersistedState<string>('pontaj_locked_date', getDefaultLockedDate());
 
   // Office & Department Management State (Persisted)
   const [companies, setCompanies] = usePersistedState<Company[]>('pontaj_companies', MOCK_COMPANIES);
@@ -279,7 +284,12 @@ export default function App() {
     const active = timesheets.find(t => t.userId === currentUser.id && t.status !== ShiftStatus.COMPLETED);
     if (active) setCurrentShift(active);
     else setCurrentShift(null);
-  }, [currentUser, timesheets]);
+    
+    // Auto-sync on login to ensure user exists
+    if(isOnline) {
+        ensureBackendConsistency().catch(err => console.warn("Background sync warning:", err));
+    }
+  }, [currentUser, timesheets, isOnline]); 
 
   // --- Timer Calculations ---
   const calculateShiftTiming = () => {
@@ -305,6 +315,34 @@ export default function App() {
   const { accumulatedPauseMs, activeBreakStart } = calculateShiftTiming();
 
   // --- Handlers ---
+
+  const ensureBackendConsistency = async () => {
+      if (!isOnline || !currentUser) return;
+      
+      // Helper to push and CHECK response
+      const push = async (endpoint: string, data: any[]) => {
+          try {
+              const res = await fetch(`${API_CONFIG.BASE_URL}/config/${endpoint}`, {
+                  method: 'POST', headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify(data)
+              });
+              if (!res.ok) {
+                  const errText = await res.text();
+                  throw new Error(`Server error on ${endpoint}: ${errText}`);
+              }
+          } catch(e) {
+              throw e; // Rethrow to stop the chain
+          }
+      };
+
+      // Send Comp, Office, Dept, User in order to satisfy FKs
+      console.log("Starting DB Consistency Check...");
+      await push('companies', companies);
+      await push('offices', offices);
+      await push('departments', departments);
+      await push('users', users);
+      console.log("DB Consistency Check Passed.");
+  };
 
   const handleLogin = (user: User, isNewUser?: boolean) => {
       const freshUser = users.find(u => u.id === user.id) || user;
@@ -386,6 +424,13 @@ export default function App() {
 
   const handleTimesheetSave = async (data: { tsId?: string, date: string, start: string, end: string, reason: string, scheduleId?: string }) => {
       if (!currentUser) return;
+      
+      // Global Lock Check
+      if (isDateInLockedPeriod(data.date, lockedDate)) {
+          alert("Eroare: Nu se pot efectua modificări pentru o lună închisă din punct de vedere contabil.");
+          return;
+      }
+
       const hasRole = (role: Role) => currentUser.roles.includes(role);
       const isManagerOrAdmin = hasRole(Role.MANAGER) || hasRole(Role.ADMIN);
       
@@ -507,202 +552,27 @@ export default function App() {
       setCorrectionRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: 'APPROVED' } : r));
   };
 
-  // Clock In/Out & Breaks
-  const handleClockIn = async (location: Coordinates, office: Office | null, dist: number) => {
-      const now = new Date();
-      const dateString = now.toISOString().split('T')[0];
-      const isHoliday = holidays.some(h => h.date === dateString);
-
-      const newShift: Timesheet = {
-        id: `ts-${Date.now()}`,
-        userId: currentUser!.id,
-        startTime: now.toISOString(),
-        date: dateString,
-        breaks: [],
-        startLocation: location,
-        matchedOfficeId: office?.id,
-        distanceToOffice: dist,
-        status: ShiftStatus.WORKING,
-        isHoliday: isHoliday,
-        logs: [],
-        syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC'
-      };
-      
-      if (!isOnline) {
-          saveOfflineAction('CLOCK_IN', { startTime: now.toISOString(), location, officeId: office?.id }, currentUser!.id);
-      } else if (isBackendOnline) {
-          try {
-              await fetch(`${API_CONFIG.BASE_URL}/clock-in`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  // UPDATED: Sending client-generated ID to prevent FK conflict
-                  body: JSON.stringify({ id: newShift.id, userId: currentUser!.id, location, officeId: office?.id })
-              });
-          } catch(e) { console.error("Clock-in sync failed", e); }
-      }
-      setTimesheets(prev => [newShift, ...prev]);
-  };
-
-  const handleClockOut = async (location: Coordinates) => {
-      if (!currentShift || !currentUser) return;
-      if (currentShift.status === ShiftStatus.ON_BREAK) {
-          alert("Trebuie să închideți pauza curentă înainte de a termina programul.");
-          return;
-      }
-
-      const endTime = new Date().toISOString();
-      const updatedShift: Timesheet = {
-          ...currentShift,
-          endTime: endTime,
-          endLocation: location,
-          status: ShiftStatus.COMPLETED,
-          syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC'
-      };
-
-      if (!isOnline) {
-          saveOfflineAction('CLOCK_OUT', { endTime, location }, currentUser.id);
-      } else if (isBackendOnline) {
-          try {
-              await fetch(`${API_CONFIG.BASE_URL}/clock-out`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ timesheetId: currentShift.id, location })
-              });
-          } catch(e) { console.error("Clock-out sync failed", e); }
-      }
-      setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedShift : t));
-  };
-
-  const handleToggleBreak = async (config?: BreakConfig, location?: Coordinates, dist?: number) => {
-      if(!currentShift || !currentUser) return;
-      const now = new Date().toISOString();
-      
-      // Look up Department Manager for notifications
-      const userDept = departments.find(d => d.id === currentUser.departmentId);
-      const managerId = userDept?.managerId;
-
-      if (currentShift.status === ShiftStatus.WORKING) {
-          if (!config) return; 
-          
-          const newBreak: Break = {
-              id: `br-${Date.now()}`,
-              typeId: config.id,
-              typeName: config.name,
-              status: BreakStatus.PENDING,
-              startTime: now,
-              startLocation: location,
-              startDistanceToOffice: dist
-          };
-          
-          const updatedShift: Timesheet = {
-              ...currentShift,
-              status: ShiftStatus.ON_BREAK,
-              breaks: [...currentShift.breaks, newBreak],
-              syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC'
-          };
-          
-          // Notify Manager
-          if (managerId && managerId !== currentUser.id) {
-              addNotification(managerId, "Pauză Inițiată", `${currentUser.name} a început o pauză (${config.name}). Locație: ${dist}m de sediu.`, "INFO");
-          }
-
-          if (!isOnline) {
-              saveOfflineAction('START_BREAK', { breakType: config.id, startTime: now }, currentUser.id);
-          } else if (isBackendOnline) {
-              try {
-                  await fetch(`${API_CONFIG.BASE_URL}/breaks/start`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ id: newBreak.id, timesheetId: currentShift.id, typeId: config.id, location })
-                  });
-              } catch(e) { console.error("Break start sync failed", e); }
-          }
-          setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedShift : t));
-
-      } else if (currentShift.status === ShiftStatus.ON_BREAK) {
-          const activeBreakIndex = currentShift.breaks.findIndex(b => !b.endTime);
-          if (activeBreakIndex !== -1) {
-              const updatedBreaks = [...currentShift.breaks];
-              const activeBreak = updatedBreaks[activeBreakIndex];
-              updatedBreaks[activeBreakIndex] = {
-                  ...activeBreak,
-                  endTime: now,
-                  endLocation: location,
-                  endDistanceToOffice: dist
-              };
-              const updatedShift: Timesheet = {
-                  ...currentShift,
-                  status: ShiftStatus.WORKING,
-                  breaks: updatedBreaks,
-                  syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC'
-              };
-              
-              // Notify Manager
-              if (managerId && managerId !== currentUser.id) {
-                  const durationMs = new Date(now).getTime() - new Date(activeBreak.startTime).getTime();
-                  const mins = Math.round(durationMs / 60000);
-                  addNotification(managerId, "Pauză Încheiată", `${currentUser.name} a revenit din pauza ${activeBreak.typeName} (${mins} min).`, "INFO");
-              }
-
-              if (!isOnline) {
-                  saveOfflineAction('END_BREAK', { endTime: now }, currentUser.id);
-              } else if (isBackendOnline) {
-                  try {
-                      await fetch(`${API_CONFIG.BASE_URL}/breaks/end`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ id: activeBreak.id })
-                      });
-                  } catch(e) { console.error("Break end sync failed", e); }
-              }
-              setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedShift : t));
-          }
-      }
-  };
-  
-  const handleApproveBreak = (timesheetId: string, breakId: string, status: BreakStatus) => {
-      setTimesheets(prev => prev.map(ts => {
-          if (ts.id !== timesheetId) return ts;
-          return { ...ts, breaks: ts.breaks.map(br => br.id === breakId ? { ...br, status } : br) }
-      }));
-  }
-
-  const handleLeaveSubmit = async (req: Omit<LeaveRequest, 'id' | 'status' | 'userId'>) => {
-      const newReq: LeaveRequest = { ...req, id: `lr-${Date.now()}`, userId: currentUser!.id, status: LeaveStatus.PENDING };
-      setLeaves(prev => [newReq, ...prev]);
-      if (isOnline && isBackendOnline) {
-          try {
-              await fetch(`${API_CONFIG.BASE_URL}/leaves`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ ...newReq })
-              });
-          } catch (e) { console.error("Failed to sync leave request", e); }
-      }
-  };
-
-  const handleApproveLeave = async (id: string) => {
-      setLeaves(prev => prev.map(l => l.id === id ? { ...l, status: LeaveStatus.APPROVED } : l));
-      
-      if (isBackendOnline) {
-          try {
-              await fetch(`${API_CONFIG.BASE_URL}/leaves/${id}/status`, {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ status: LeaveStatus.APPROVED })
-              });
-          } catch (e) { console.error("Failed to sync leave approval", e); }
-      }
-  };
-
   const handleSyncERP = () => { setIsErpSyncing(true); setTimeout(() => setIsErpSyncing(false), 1000); };
   
   const handleAssignSchedule = (userId: string, date: string, scheduleId: string) => { 
+      // Global Lock Check
+      if (isDateInLockedPeriod(date, lockedDate)) {
+          alert("Eroare: Nu se poate modifica orarul pentru o lună închisă.");
+          return;
+      }
+
       const exists = schedulePlans.findIndex(s => s.userId === userId && s.date === date);
       if (exists !== -1) {
-          setSchedulePlans(prev => prev.map((s, idx) => idx === exists ? { ...s, scheduleId } : s));
+          // If scheduleId is empty string, remove it
+          if (!scheduleId) {
+              setSchedulePlans(prev => prev.filter((_, idx) => idx !== exists));
+          } else {
+              setSchedulePlans(prev => prev.map((s, idx) => idx === exists ? { ...s, scheduleId } : s));
+          }
       } else {
-          setSchedulePlans(prev => [...prev, { id: `ds-${Date.now()}`, userId, date, scheduleId }]); 
+          if (scheduleId) {
+              setSchedulePlans(prev => [...prev, { id: `ds-${Date.now()}`, userId, date, scheduleId }]); 
+          }
       }
   };
 
@@ -713,6 +583,240 @@ export default function App() {
   const handleAddCompany = (company: Company) => { setCompanies(prev => [...prev, company]); };
   const handleUpdateCompany = (company: Company) => { setCompanies(prev => prev.map(c => c.id === company.id ? company : c)); };
   const handleDeleteCompany = (id: string) => { setCompanies(prev => prev.filter(c => c.id !== id)); };
+
+  // --- MISSING HANDLERS ADDED ---
+  const handleClockIn = async (location: Coordinates, office: Office | null, dist: number) => {
+      if (!currentUser) return;
+      
+      // Determine schedule
+      const today = new Date().toISOString().split('T')[0];
+      const dailySchedule = schedulePlans.find(s => s.userId === currentUser.id && s.date === today);
+      let detectedScheduleId = dailySchedule?.scheduleId;
+      let detectedScheduleName = dailySchedule ? MOCK_SCHEDULES.find(s => s.id === dailySchedule.scheduleId)?.name : undefined;
+
+      if (!detectedScheduleId && currentUser.allowedScheduleIds.length > 0) {
+          detectedScheduleId = currentUser.allowedScheduleIds[0];
+          detectedScheduleName = MOCK_SCHEDULES.find(s => s.id === detectedScheduleId)?.name;
+      }
+
+      const newTimesheet: Timesheet = {
+          id: `ts-${Date.now()}`,
+          userId: currentUser.id,
+          startTime: new Date().toISOString(),
+          date: today,
+          status: ShiftStatus.WORKING,
+          breaks: [],
+          startLocation: location,
+          matchedOfficeId: office?.id,
+          distanceToOffice: dist,
+          detectedScheduleId,
+          detectedScheduleName,
+          syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC',
+          logs: [{
+              id: `log-${Date.now()}`,
+              changedByUserId: currentUser.id,
+              changeDate: new Date().toISOString(),
+              details: `Clock In at ${office ? office.name : 'Unknown Location'}`
+          }]
+      };
+
+      setTimesheets(prev => [newTimesheet, ...prev]);
+      setCurrentShift(newTimesheet);
+
+      if (isOnline) {
+          try {
+              await fetch(`${API_CONFIG.BASE_URL}/clock-in`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                      id: newTimesheet.id,
+                      userId: currentUser.id,
+                      location,
+                      officeId: office?.id
+                  })
+              });
+          } catch (e) {
+              console.error("Clock In Sync failed", e);
+              saveOfflineAction('CLOCK_IN', { id: newTimesheet.id, location, officeId: office?.id }, currentUser.id);
+          }
+      } else {
+          saveOfflineAction('CLOCK_IN', { id: newTimesheet.id, location, officeId: office?.id }, currentUser.id);
+      }
+  };
+
+  const handleClockOut = async (location: Coordinates) => {
+      if (!currentUser || !currentShift) return;
+      
+      const updatedTs: Timesheet = {
+          ...currentShift,
+          endTime: new Date().toISOString(),
+          status: ShiftStatus.COMPLETED,
+          endLocation: location,
+          syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC'
+      };
+
+      setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedTs : t));
+      setCurrentShift(null);
+
+      if (isOnline) {
+          try {
+              await fetch(`${API_CONFIG.BASE_URL}/clock-out`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                      timesheetId: currentShift.id,
+                      location
+                  })
+              });
+          } catch (e) {
+              saveOfflineAction('CLOCK_OUT', { timesheetId: currentShift.id, location }, currentUser.id);
+          }
+      } else {
+          saveOfflineAction('CLOCK_OUT', { timesheetId: currentShift.id, location }, currentUser.id);
+      }
+  };
+
+  const handleToggleBreak = async (breakConfig?: BreakConfig, location?: Coordinates, dist?: number) => {
+      if (!currentUser || !currentShift) return;
+
+      if (currentShift.status === ShiftStatus.ON_BREAK) {
+          // End Break
+          const activeBreakIndex = currentShift.breaks.findIndex(b => !b.endTime);
+          if (activeBreakIndex === -1) return;
+
+          const activeBreak = currentShift.breaks[activeBreakIndex];
+          const updatedBreak: Break = {
+              ...activeBreak,
+              endTime: new Date().toISOString(),
+              endLocation: location,
+              endDistanceToOffice: dist,
+              status: BreakStatus.PENDING
+          };
+
+          const updatedBreaks = [...currentShift.breaks];
+          updatedBreaks[activeBreakIndex] = updatedBreak;
+
+          const updatedTs: Timesheet = {
+              ...currentShift,
+              status: ShiftStatus.WORKING,
+              breaks: updatedBreaks,
+              syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC'
+          };
+          
+          setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedTs : t));
+          setCurrentShift(updatedTs);
+
+          if (isOnline) {
+               try {
+                  await fetch(`${API_CONFIG.BASE_URL}/breaks/end`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ id: activeBreak.id })
+                  });
+              } catch (e) {
+                  saveOfflineAction('END_BREAK', { id: activeBreak.id }, currentUser.id);
+              }
+          } else {
+              saveOfflineAction('END_BREAK', { id: activeBreak.id }, currentUser.id);
+          }
+
+      } else {
+          // Start Break
+          if (!breakConfig) return;
+
+          const newBreak: Break = {
+              id: `br-${Date.now()}`,
+              typeId: breakConfig.id,
+              typeName: breakConfig.name,
+              startTime: new Date().toISOString(),
+              status: BreakStatus.PENDING,
+              startLocation: location,
+              startDistanceToOffice: dist
+          };
+
+          const updatedTs: Timesheet = {
+              ...currentShift,
+              status: ShiftStatus.ON_BREAK,
+              breaks: [...currentShift.breaks, newBreak],
+              syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC'
+          };
+
+          setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedTs : t));
+          setCurrentShift(updatedTs);
+
+          if (isOnline) {
+              try {
+                  await fetch(`${API_CONFIG.BASE_URL}/breaks/start`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                          id: newBreak.id,
+                          timesheetId: currentShift.id,
+                          typeId: breakConfig.id,
+                          location
+                      })
+                  });
+              } catch (e) {
+                  saveOfflineAction('START_BREAK', { id: newBreak.id, timesheetId: currentShift.id, typeId: breakConfig.id, location }, currentUser.id);
+              }
+          } else {
+              saveOfflineAction('START_BREAK', { id: newBreak.id, timesheetId: currentShift.id, typeId: breakConfig.id, location }, currentUser.id);
+          }
+      }
+  };
+
+  const handleApproveLeave = async (reqId: string) => {
+      // Add approval timestamp
+      setLeaves(prev => prev.map(l => l.id === reqId ? { ...l, status: LeaveStatus.APPROVED, approvedAt: new Date().toISOString() } : l));
+      if (isOnline) {
+          try {
+              await fetch(`${API_CONFIG.BASE_URL}/leaves/${reqId}/status`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ status: LeaveStatus.APPROVED })
+              });
+          } catch (e) { console.error("Sync failed", e); }
+      }
+  };
+
+  const handleApproveBreak = async (timesheetId: string, breakId: string, status: BreakStatus) => {
+      setTimesheets(prev => prev.map(ts => {
+          if (ts.id !== timesheetId) return ts;
+          return {
+              ...ts,
+              breaks: ts.breaks.map(br => br.id === breakId ? { ...br, status } : br)
+          };
+      }));
+  };
+
+  const handleLeaveSubmit = async (req: Omit<LeaveRequest, 'id' | 'status' | 'userId'>) => {
+      if (!currentUser) return;
+      
+      // Global Lock Check
+      if (isDateInLockedPeriod(req.startDate, lockedDate)) {
+          alert("Eroare: Nu se pot adăuga cereri de concediu pentru o lună închisă.");
+          return;
+      }
+
+      const newLeave: LeaveRequest = {
+          id: `lr-${Date.now()}`,
+          userId: currentUser.id,
+          status: LeaveStatus.PENDING,
+          createdAt: new Date().toISOString(), // TIMESTAMP ADDED
+          ...req
+      };
+      setLeaves(prev => [newLeave, ...prev]);
+
+      if (isOnline) {
+          try {
+              await fetch(`${API_CONFIG.BASE_URL}/leaves`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(newLeave)
+              });
+          } catch (e) { console.error("Leave Sync failed", e); }
+      }
+  };
 
   // --- Render ---
 
@@ -843,9 +947,15 @@ export default function App() {
                 <header className="flex justify-between items-center">
                     <h1 className="text-2xl font-bold text-gray-800">Pontaj</h1>
                     {(hasRole(Role.MANAGER) || hasRole(Role.ADMIN)) && (
-                         <button onClick={handleSyncERP} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-slate-900 transition">
-                             <CloudLightning size={16}/> Sync ERP
-                         </button>
+                         <div className="flex gap-2">
+                             {/* Manual sync button fallback */}
+                             <button onClick={ensureBackendConsistency} className="bg-white border border-gray-200 text-gray-600 px-3 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-gray-50 transition" title="Sincronizează datele structurale cu serverul">
+                                 <RefreshCw size={16} className={isSyncingData ? "animate-spin" : ""}/>
+                             </button>
+                             <button onClick={handleSyncERP} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:bg-slate-900 transition">
+                                 <CloudLightning size={16}/> Sync ERP
+                             </button>
+                         </div>
                     )}
                 </header>
                 <ClockWidget 
@@ -873,7 +983,7 @@ export default function App() {
             </div>
         )}
 
-        {activeTab === 'calendar' && <ScheduleCalendar currentUser={currentUser} users={users} schedules={schedulePlans} holidays={holidays} onAssignSchedule={handleAssignSchedule}/>}
+        {activeTab === 'calendar' && <ScheduleCalendar currentUser={currentUser} users={users} schedules={schedulePlans} holidays={holidays} lockedDate={lockedDate} onAssignSchedule={handleAssignSchedule}/>}
         
         {activeTab === 'leaves' && (
             <div className="max-w-4xl mx-auto space-y-6">
@@ -904,6 +1014,11 @@ export default function App() {
                                                 <Calendar size={14} className="text-gray-400"/>
                                                 <span>{new Date(req.startDate).toLocaleDateString()} - {new Date(req.endDate).toLocaleDateString()}</span>
                                             </div>
+                                            {req.createdAt && (
+                                                <div className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
+                                                    <Clock4 size={10}/> Solicitat: {new Date(req.createdAt).toLocaleString('ro-RO')}
+                                                </div>
+                                            )}
                                             <p className="text-xs text-gray-500 italic mt-1">{req.reason}</p>
                                         </div>
                                         <div className="flex gap-2">
@@ -946,6 +1061,10 @@ export default function App() {
                                             <span>{new Date(leave.startDate).toLocaleDateString('ro-RO')}</span>
                                             <ChevronRight size={12} className="text-gray-300"/>
                                             <span>{new Date(leave.endDate).toLocaleDateString('ro-RO')}</span>
+                                        </div>
+                                        <div className="text-[10px] text-gray-400 mt-1 space-y-0.5">
+                                            {leave.createdAt && <div>Solicitat: {new Date(leave.createdAt).toLocaleString('ro-RO')}</div>}
+                                            {leave.approvedAt && <div className="text-green-600">Aprobat: {new Date(leave.approvedAt).toLocaleString('ro-RO')}</div>}
                                         </div>
                                         {leave.reason && (
                                             <p className="text-xs text-gray-400 mt-1 max-w-md truncate">"{leave.reason}"</p>
@@ -1037,17 +1156,19 @@ export default function App() {
                 breakConfigs={breakConfigs} 
                 leaveConfigs={leaveConfigs} 
                 holidays={holidays}
+                currentLockedDate={lockedDate}
                 onUpdateBreaks={setBreakConfigs} 
                 onUpdateLeaves={setLeaveConfigs}
                 onUpdateHolidays={setHolidays}
+                onUpdateLockedDate={setLockedDate}
             />
         )}
         {activeTab === 'backend' && <BackendControlPanel />}
 
       </main>
 
-      <LeaveModal isOpen={isLeaveModalOpen} onClose={() => setLeaveModalOpen(false)} leaveConfigs={leaveConfigs} onSubmit={handleLeaveSubmit} />
-      <TimesheetEditModal isOpen={editModalData.isOpen} onClose={() => setEditModalData({isOpen: false, timesheet: null})} timesheet={editModalData.timesheet} isManager={hasRole(Role.MANAGER) || hasRole(Role.ADMIN)} onSave={handleTimesheetSave} />
+      <LeaveModal isOpen={isLeaveModalOpen} onClose={() => setLeaveModalOpen(false)} leaveConfigs={leaveConfigs} lockedDate={lockedDate} onSubmit={handleLeaveSubmit} />
+      <TimesheetEditModal isOpen={editModalData.isOpen} onClose={() => setEditModalData({isOpen: false, timesheet: null})} timesheet={editModalData.timesheet} isManager={hasRole(Role.MANAGER) || hasRole(Role.ADMIN)} lockedDate={lockedDate} onSave={handleTimesheetSave} />
       <RejectionModal isOpen={rejectionModal.isOpen} onClose={() => setRejectionModal({ ...rejectionModal, isOpen: false })} onSubmit={handleConfirmRejection} />
     </div>
   );

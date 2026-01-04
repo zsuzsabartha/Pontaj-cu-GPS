@@ -171,6 +171,8 @@ export interface LeaveRequest {
   reason: string;
   status: LeaveStatus;
   managerComment?: string;
+  createdAt?: string; // ISO String - When requested
+  approvedAt?: string; // ISO String - When approved
 }
 
 export interface User {
