@@ -211,9 +211,16 @@ export default function App() {
               }
           }
           
-          // Add fetch for timesheets if backend supports it later
+          // Fetch Timesheets
+          const tRes = await fetch(`${API_CONFIG.BASE_URL}/timesheets`);
+          if (tRes.ok) {
+              const dbTimesheets = await tRes.json();
+              if (Array.isArray(dbTimesheets) && dbTimesheets.length > 0) {
+                  setTimesheets(dbTimesheets);
+              }
+          }
       } catch (err) {
-          console.log("Failed to fetch transactional data (leaves) from SQL.");
+          console.log("Failed to fetch transactional data from SQL.");
       }
   };
 

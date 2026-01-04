@@ -437,6 +437,64 @@ app.get('/health', async (req, res) => {
 
 // --- CLOCK IN/OUT ENDPOINTS ---
 
+// GET All Timesheets (for loading history)
+app.get('/api/v1/timesheets', async (req, res) => {
+  try {
+    const pool = await connectDB();
+    
+    // Fetch Timesheets
+    const tsResult = await pool.request().query(\`
+      SELECT 
+        t.id, t.user_id as userId, t.start_time as startTime, t.end_time as endTime, 
+        t.date, t.status, t.matched_office_id as matchedOfficeId, 
+        t.start_lat, t.start_long, t.end_lat, t.end_long
+      FROM timesheets t
+      ORDER BY t.start_time DESC
+    \`);
+    
+    const timesheets = tsResult.recordset;
+
+    // Fetch Breaks
+    const brResult = await pool.request().query(\`
+      SELECT 
+        b.id, b.timesheet_id as timesheetId, b.type_id as typeId, bc.name as typeName,
+        b.start_time as startTime, b.end_time as endTime, b.status
+      FROM breaks b
+      LEFT JOIN break_configs bc ON b.type_id = bc.id
+    \`);
+    const breaks = brResult.recordset;
+
+    // Merge breaks into timesheets
+    const finalData = timesheets.map(ts => ({
+        ...ts,
+        // Convert SQL Dates to ISO strings for JS
+        startTime: ts.startTime ? new Date(ts.startTime).toISOString() : null,
+        endTime: ts.endTime ? new Date(ts.endTime).toISOString() : null,
+        date: ts.date ? new Date(ts.date).toISOString().split('T')[0] : null,
+        
+        // Reconstruct Location Objects
+        startLocation: (ts.start_lat != null && ts.start_long != null) ? { latitude: ts.start_lat, longitude: ts.start_long } : undefined,
+        endLocation: (ts.end_lat != null && ts.end_long != null) ? { latitude: ts.end_lat, longitude: ts.end_long } : undefined,
+        
+        // Attach Breaks
+        breaks: breaks.filter(b => b.timesheetId === ts.id).map(b => ({
+            ...b,
+            startTime: b.startTime ? new Date(b.startTime).toISOString() : null,
+            endTime: b.endTime ? new Date(b.endTime).toISOString() : null
+        })),
+        
+        // Defaults
+        logs: [], // Logs not stored in DB yet
+        syncStatus: 'SYNCED'
+    }));
+
+    res.json(finalData);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database fetch failed' });
+  }
+});
+
 app.post('/api/v1/clock-in', async (req, res) => {
   const { id, userId, location, officeId } = req.body;
   try {
@@ -542,11 +600,6 @@ app.get('/api/v1/leaves', async (req, res) => {
       FROM leave_requests
       LEFT JOIN leave_configs ON leave_requests.type_id = leave_configs.id
     \`);
-    
-    // Enrich with typeName which is expected by frontend but stored in leave_configs
-    // For simplicity here, we assume frontend can match typeId.
-    // However, the frontend 'LeaveRequest' type has 'typeName'. 
-    // Let's do a join or let frontend handle. Join is better.
     
     // RE-QUERY with JOIN for typeName
     const richResult = await pool.request().query(\`
