@@ -49,7 +49,7 @@ import TimesheetEditModal from './components/TimesheetEditModal';
 import RejectionModal from './components/RejectionModal';
 import BirthdayWidget from './components/BirthdayWidget';
 import ScheduleCalendar from './components/ScheduleCalendar';
-import { Users, FileText, Settings, LogOut, CheckCircle, XCircle, BarChart3, CloudLightning, Building, Clock, UserCog, Lock, AlertOctagon, Wifi, WifiOff, Database, AlertCircle, Server, CalendarRange, Bell, PlusCircle, ShieldCheck } from 'lucide-react';
+import { Users, FileText, Settings, LogOut, CheckCircle, XCircle, BarChart3, CloudLightning, Building, Clock, UserCog, Lock, AlertOctagon, Wifi, WifiOff, Database, AlertCircle, Server, CalendarRange, Bell, PlusCircle, ShieldCheck, Filter } from 'lucide-react';
 import { generateWorkSummary } from './services/geminiService';
 import { saveOfflineAction, getOfflineActions, clearOfflineActions } from './services/offlineService';
 
@@ -83,6 +83,9 @@ export default function App() {
   // Navigation State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'team' | 'leaves' | 'offices' | 'users' | 'nomenclator' | 'backend' | 'calendar' | 'notifications'>('dashboard');
   const [isLeaveModalOpen, setLeaveModalOpen] = useState(false);
+  
+  // Team View Filter State
+  const [selectedTeamCompany, setSelectedTeamCompany] = useState<string>('ALL');
   
   // Edit Timesheet State
   const [editModalData, setEditModalData] = useState<{isOpen: boolean, timesheet: Timesheet | null}>({isOpen: false, timesheet: null});
@@ -576,7 +579,7 @@ export default function App() {
 
   // --- Render Helpers ---
 
-  if (!currentUser) return <LoginScreen users={users} onLogin={handleLogin} />;
+  if (!currentUser) return <LoginScreen users={users} companies={companies} onLogin={handleLogin} />;
   
   // Custom "Account Pending" Screen
   if (!currentUser.isValidated) {
@@ -642,6 +645,26 @@ export default function App() {
   // Admin sees all, Employee sees only their company's offices
   const userOffices = isAdmin ? offices : offices.filter(o => o.companyId === currentUser.companyId);
   const userCompany = companies.find(c => c.id === currentUser.companyId);
+
+  // Team Filter Logic
+  const teamTimesheets = timesheets.filter(t => {
+      // Logic for filtering:
+      // 1. Don't show my own timesheet in "Team" view
+      if (t.userId === currentUser.id) return false;
+      
+      const user = users.find(u => u.id === t.userId);
+      if (!user) return false;
+
+      // 2. Filter by selected company (if Admin)
+      if (isAdmin && selectedTeamCompany !== 'ALL' && user.companyId !== selectedTeamCompany) return false;
+
+      // 3. If I am just a manager, only show my company's employees
+      if (!isAdmin && hasRole(Role.MANAGER)) {
+          return user.companyId === currentUser.companyId;
+      }
+
+      return true;
+  });
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-50 text-gray-800">
@@ -754,7 +777,25 @@ export default function App() {
         )}
         {activeTab === 'team' && canViewTeam && (
              <div className="max-w-4xl mx-auto space-y-8">
-                 <h1 className="text-2xl font-bold text-gray-800">Management Echipă</h1>
+                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                     <h1 className="text-2xl font-bold text-gray-800">Management Echipă</h1>
+                     
+                     {/* ADMIN: Company Filter */}
+                     {isAdmin && (
+                         <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+                             <Filter size={16} className="text-gray-400"/>
+                             <span className="text-xs font-bold text-gray-600">Companie:</span>
+                             <select 
+                                value={selectedTeamCompany}
+                                onChange={(e) => setSelectedTeamCompany(e.target.value)}
+                                className="text-sm bg-transparent outline-none font-medium text-blue-600"
+                             >
+                                 <option value="ALL">Toate Companiile</option>
+                                 {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                             </select>
+                         </div>
+                     )}
+                 </div>
                  
                  {/* CORRECTION REQUESTS SECTION */}
                  {pendingCorrections.length > 0 && (
@@ -763,6 +804,10 @@ export default function App() {
                         <div className="grid gap-4">
                             {pendingCorrections.map(req => {
                                 const requester = users.find(u => u.id === req.userId);
+                                // Filter Logic for Requests too
+                                if (isAdmin && selectedTeamCompany !== 'ALL' && requester?.companyId !== selectedTeamCompany) return null;
+                                if (!isAdmin && hasRole(Role.MANAGER) && requester?.companyId !== currentUser.companyId) return null;
+
                                 const ts = req.timesheetId ? timesheets.find(t => t.id === req.timesheetId) : null;
                                 const dateDisplay = ts ? ts.date : req.requestedDate;
                                 
@@ -793,7 +838,7 @@ export default function App() {
                      </div>
                  )}
                  {/* ... Team Timesheets ... */}
-                 <TimesheetList timesheets={timesheets.filter(t => t.userId !== currentUser.id)} isManagerView={true} onApproveBreak={handleApproveBreak} onEditTimesheet={openTimesheetModal}/>
+                 <TimesheetList timesheets={teamTimesheets} isManagerView={true} onApproveBreak={handleApproveBreak} onEditTimesheet={openTimesheetModal}/>
              </div>
         )}
         {/* ... Other tabs ... */}

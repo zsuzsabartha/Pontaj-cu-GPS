@@ -1,16 +1,15 @@
-
 import React, { useState } from 'react';
-import { User, Role } from '../types';
-import { MOCK_USERS } from '../constants';
+import { User, Role, Company } from '../types';
 import { KeyRound, Lock, User as UserIcon, ArrowLeft, Loader2, Sparkles, MailQuestion, Shield, Users, Briefcase } from 'lucide-react';
 
 interface LoginScreenProps {
   users: User[]; // Accept current users state
+  companies?: Company[]; // Accept companies for display
   onLogin: (user: User, isNewUser?: boolean) => void;
   onRequestPinReset?: (email: string) => void;
 }
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin, onRequestPinReset }) => {
+const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, onRequestPinReset }) => {
   const [view, setView] = useState<'main' | 'pin' | 'forgot'>('main');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [pin, setPin] = useState('');
@@ -197,14 +196,19 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, onLogin, onRequestPinR
                     <div className="relative">
                         <UserIcon className="absolute left-3 top-3 text-gray-400" size={18} />
                         <select 
-                            className="w-full pl-10 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none"
+                            className="w-full pl-10 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none text-sm"
                             value={selectedUserId}
                             onChange={(e) => setSelectedUserId(e.target.value)}
                         >
                             <option value="">Selectează contul...</option>
-                            {pinUsers.map(u => (
-                                <option key={u.id} value={u.id}>{u.name} - {u.email}</option>
-                            ))}
+                            {pinUsers.map(u => {
+                                const compName = companies?.find(c => c.id === u.companyId)?.name;
+                                return (
+                                    <option key={u.id} value={u.id}>
+                                        {u.name} {compName ? `(${compName})` : ''}
+                                    </option>
+                                );
+                            })}
                         </select>
                     </div>
                 </div>
