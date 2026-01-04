@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen, Plug, Wifi, FileText, Clipboard } from 'lucide-react';
+import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen, Plug, Wifi, FileText, Clipboard, Lock } from 'lucide-react';
 
 const BackendControlPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'status' | 'sql' | 'bridge' | 'swagger'>('status');
@@ -10,12 +10,21 @@ const BackendControlPanel: React.FC = () => {
   
   // --- CONNECTION CONFIGURATION STATE ---
   const [dbConfig, setDbConfig] = useState({
-      server: 'be-sql01',
+      server: 'localhost',
       database: 'PontajSmart',
       user: 'PontajAppUser',
       password: 'StrongPass123!',
       port: '1433'
   });
+
+  const [jwtSecret, setJwtSecret] = useState('production_secret_key_change_me');
+
+  const generateNewSecret = () => {
+      const array = new Uint8Array(32);
+      crypto.getRandomValues(array);
+      const secret = Array.from(array, dec => dec.toString(16).padStart(2, '0')).join('');
+      setJwtSecret(secret);
+  };
 
   // --- CONNECTION TEST STATE ---
   const [isTesting, setIsTesting] = useState(false);
@@ -49,8 +58,8 @@ const BackendControlPanel: React.FC = () => {
                   userMsg = 'Lipsă Configurare (.env): Serverul nu găsește adresa bazei de date. Verificați dacă fișierul .env există și nu are extensia .txt ascunsă.';
               } else if (err.includes('Login failed')) {
                   userMsg = 'Eroare Login: Utilizator sau parolă incorectă în .env.';
-              } else if (err.includes('Failed to connect')) {
-                  userMsg = 'Eroare Rețea: Nu se poate conecta la serverul SQL. Verificați adresa (host) și portul.';
+              } else if (err.includes('Failed to connect') || err.includes('ETIMEDOUT') || err.includes('instance name')) {
+                  userMsg = `Eroare Rețea: Nu se poate conecta la ${dbConfig.server}. Dacă folosiți instanță numită (ex: \\SQLEXPRESS), asigurați-vă că serviciul 'SQL Server Browser' este pornit.`;
               }
 
               setTestResult({ type: 'error', message: userMsg });
@@ -59,7 +68,7 @@ const BackendControlPanel: React.FC = () => {
       } catch (error) {
           setTestResult({ 
             type: 'error', 
-            message: 'Eșec Conexiune Server. Verificați consola. Dacă vedeți "Cannot find module ./db.js", descărcați fișierul db.js.' 
+            message: 'Eșec Conexiune Server (Port 3001). Verificați consola. Dacă vedeți "Cannot find module ./db.js", descărcați fișierul db.js.' 
           });
           setConnectionStatus('OFFLINE');
       } finally {
@@ -275,7 +284,7 @@ DB_USER=${dbConfig.user}
 DB_PASS=${dbConfig.password}
 
 # Security
-JWT_SECRET=production_secret_key_change_me
+JWT_SECRET=${jwtSecret}
 FRONTEND_URL=http://localhost:3000`,
     db: `import sql from 'mssql';
 import dotenv from 'dotenv';
@@ -287,22 +296,42 @@ if (result.error) {
   console.warn("⚠️ WARNING: .env file not found or could not be loaded!");
 }
 
+const rawServer = process.env.DB_SERVER || 'localhost';
+let serverName = rawServer;
+let instanceName = undefined;
+
+// AUTOMATICALLY HANDLE "HOST\\INSTANCE" FORMAT
+// e.g. "DESKTOP-ABC\\SQLEXPRESS" -> server: "DESKTOP-ABC", instance: "SQLEXPRESS"
+if (rawServer.includes('\\\\')) {
+    const parts = rawServer.split('\\\\');
+    serverName = parts[0];
+    instanceName = parts[1];
+    console.log(\`ℹ️  Named Instance Detected: Host='\${serverName}', Instance='\${instanceName}'\`);
+}
+
 // Debug: Check if critical variables exist
 if (!process.env.DB_SERVER) {
-    console.error("❌ ERROR: DB_SERVER is missing. Please check your .env file.");
+    console.error("❌ ERROR: DB_SERVER is missing in .env.");
 }
 
 const config = {
   user: process.env.DB_USER,
   password: process.env.DB_PASS,
-  server: process.env.DB_SERVER,
-  port: parseInt(process.env.DB_PORT) || 1433,
+  server: serverName, // Hostname only
   database: process.env.DB_NAME,
   options: {
     encrypt: true, 
-    trustServerCertificate: true
+    trustServerCertificate: true,
+    // Add instanceName if detected (Note: Port is typically ignored when instanceName is used, unless specified)
+    ...(instanceName ? { instanceName } : {})
   }
 };
+
+// Only add port if NO instance name is used, or if specifically needed.
+// Standard SQL Browser resolves port for named instances.
+if (!instanceName && process.env.DB_PORT) {
+    config.port = parseInt(process.env.DB_PORT);
+}
 
 export const connectDB = async () => {
   try {
@@ -311,7 +340,9 @@ export const connectDB = async () => {
     return pool;
   } catch (err) {
     console.error('❌ Database Connection Failed!', err.message);
-    if (!config.server) console.error("   HINT: 'config.server' is missing. .env file might be missing or empty.");
+    if (instanceName) {
+        console.error("   HINT: You are using a Named Instance. Ensure 'SQL Server Browser' service is RUNNING in Windows Services.");
+    }
     throw err;
   }
 };`,
@@ -393,6 +424,7 @@ app.listen(PORT, async () => {
     console.log("\\x1b[31m%s\\x1b[0m", "❌ ERROR: Database connection failed.");
     console.log("   Details:", err.message);
     console.log("   Check your .env file and ensure SQL Server is running.");
+    console.log("   If using SSMS Login, make sure you enabled TCP/IP in SQL Configuration Manager.");
   }
 });`
   };
@@ -544,13 +576,23 @@ app.listen(PORT, async () => {
                          </div>
                          <div className="space-y-3">
                              <div>
-                                 <label className="text-[10px] text-slate-400 font-bold block mb-1">Server Address</label>
+                                 <label className="text-[10px] text-slate-400 font-bold block mb-1">Server Address (from SSMS)</label>
                                  <input 
                                     type="text" 
                                     value={dbConfig.server} 
                                     onChange={(e) => setDbConfig({...dbConfig, server: e.target.value})}
                                     className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white focus:border-blue-500 outline-none placeholder-slate-600"
-                                    placeholder="localhost"
+                                    placeholder="localhost sau DESKTOP\SQLEXPRESS"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-[10px] text-slate-400 font-bold block mb-1">DB Port (TCP/IP)</label>
+                                 <input 
+                                    type="text" 
+                                    value={dbConfig.port} 
+                                    onChange={(e) => setDbConfig({...dbConfig, port: e.target.value})}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white focus:border-blue-500 outline-none placeholder-slate-600"
+                                    placeholder="1433"
                                  />
                              </div>
                              <div>
@@ -599,6 +641,32 @@ app.listen(PORT, async () => {
                                      {testResult.message}
                                  </div>
                              )}
+                         </div>
+                         
+                         {/* JWT SECRET SECTION */}
+                         <div className="mt-4 pt-4 border-t border-slate-800">
+                             <div className="flex items-center gap-1 text-yellow-400 text-xs font-bold uppercase mb-2 bg-yellow-900/20 p-1.5 rounded">
+                                 <Lock size={12}/> Security (JWT)
+                             </div>
+                             <div>
+                                 <label className="text-[10px] text-slate-400 font-bold block mb-1">JWT Secret</label>
+                                 <div className="flex gap-1">
+                                     <input 
+                                        type="text" 
+                                        value={jwtSecret} 
+                                        onChange={(e) => setJwtSecret(e.target.value)}
+                                        className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-[10px] text-white focus:border-blue-500 outline-none placeholder-slate-600 font-mono"
+                                     />
+                                     <button 
+                                        onClick={generateNewSecret}
+                                        title="Generate Random Secret"
+                                        className="bg-slate-700 hover:bg-slate-600 text-white p-1.5 rounded border border-slate-600 transition"
+                                     >
+                                         <RefreshCw size={12}/>
+                                     </button>
+                                 </div>
+                                 <p className="text-[9px] text-slate-500 mt-1 leading-tight">Cheia privată folosită pentru semnarea token-urilor.</p>
+                             </div>
                          </div>
 
                          {/* QUICK INSTALL SECTION */}
