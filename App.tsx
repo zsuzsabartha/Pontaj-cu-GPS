@@ -51,7 +51,7 @@ import RejectionModal from './components/RejectionModal';
 import BirthdayWidget from './components/BirthdayWidget';
 import ScheduleCalendar from './components/ScheduleCalendar';
 import CompanyManagement from './components/CompanyManagement';
-import { Users, FileText, Settings, LogOut, CheckCircle, XCircle, BarChart3, CloudLightning, Building, Clock, UserCog, Lock, AlertOctagon, Wifi, WifiOff, Database, AlertCircle, Server, CalendarRange, Bell, PlusCircle, ShieldCheck, Filter, Briefcase } from 'lucide-react';
+import { Users, FileText, Settings, LogOut, CheckCircle, XCircle, BarChart3, CloudLightning, Building, Clock, UserCog, Lock, AlertOctagon, Wifi, WifiOff, Database, AlertCircle, Server, CalendarRange, Bell, PlusCircle, ShieldCheck, Filter, Briefcase, Calendar, ChevronRight } from 'lucide-react';
 import { generateWorkSummary } from './services/geminiService';
 import { saveOfflineAction, getOfflineActions, clearOfflineActions } from './services/offlineService';
 
@@ -145,6 +145,7 @@ export default function App() {
 
     // Initial SQL Sync Attempt
     fetchBackendConfig();
+    fetchTransactionalData(); // Fetch leaves/timesheets from SQL
 
     const backendCheckInterval = setInterval(() => {
         setIsBackendOnline(navigator.onLine); 
@@ -196,6 +197,23 @@ export default function App() {
 
       } catch (err) {
           console.log("Backend offline or unreachable, using local data.");
+      }
+  };
+  
+  const fetchTransactionalData = async () => {
+      try {
+          // Fetch Leaves
+          const lRes = await fetch(`${API_CONFIG.BASE_URL}/leaves`);
+          if (lRes.ok) {
+              const dbLeaves = await lRes.json();
+              if (Array.isArray(dbLeaves) && dbLeaves.length > 0) {
+                  setLeaves(dbLeaves);
+              }
+          }
+          
+          // Add fetch for timesheets if backend supports it later
+      } catch (err) {
+          console.log("Failed to fetch transactional data (leaves) from SQL.");
       }
   };
 
@@ -311,10 +329,20 @@ export default function App() {
       setRejectionModal({ isOpen: true, type, itemId, parentId });
   };
 
-  const handleConfirmRejection = (reason: string) => {
+  const handleConfirmRejection = async (reason: string) => {
       const { type, itemId, parentId } = rejectionModal;
       if (type === 'LEAVE' && itemId) {
           setLeaves(prev => prev.map(l => l.id === itemId ? { ...l, status: LeaveStatus.REJECTED, managerComment: reason } : l));
+          
+          if (isBackendOnline) {
+             try {
+                await fetch(`${API_CONFIG.BASE_URL}/leaves/${itemId}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: LeaveStatus.REJECTED, managerComment: reason })
+                });
+             } catch(e) { console.error("Failed to sync rejection", e); }
+          }
       } 
       else if (type === 'CORRECTION' && itemId) {
           setCorrectionRequests(prev => prev.map(r => r.id === itemId ? { ...r, status: 'REJECTED', managerNote: reason } : r));
@@ -645,8 +673,18 @@ export default function App() {
       }
   };
 
-  const handleApproveLeave = (id: string) => {
+  const handleApproveLeave = async (id: string) => {
       setLeaves(prev => prev.map(l => l.id === id ? { ...l, status: LeaveStatus.APPROVED } : l));
+      
+      if (isBackendOnline) {
+          try {
+              await fetch(`${API_CONFIG.BASE_URL}/leaves/${id}/status`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ status: LeaveStatus.APPROVED })
+              });
+          } catch (e) { console.error("Failed to sync leave approval", e); }
+      }
   };
 
   const handleSyncERP = () => { setIsErpSyncing(true); setTimeout(() => setIsErpSyncing(false), 1000); };
@@ -694,9 +732,21 @@ export default function App() {
       );
   }
 
-  const myLeaves = leaves.filter(l => l.userId === currentUser.id);
+  // Derived State for Leaves View
+  const myLeaves = leaves.filter(l => l.userId === currentUser.id).sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+  
+  // Pending leaves for managers (Team Only) or Admins (All)
+  const teamPendingLeaves = leaves.filter(l => {
+      if (l.status !== LeaveStatus.PENDING) return false;
+      const requester = users.find(u => u.id === l.userId);
+      if (!requester || requester.id === currentUser.id) return false; // Don't show self in approval list
+      
+      if (isAdmin) return true;
+      if (hasRole(Role.MANAGER)) return requester.companyId === currentUser.companyId; // Simplified manager logic (Company level)
+      return false;
+  });
+
   const myTimesheets = timesheets.filter(t => t.userId === currentUser.id);
-  const pendingLeaves = leaves.filter(l => l.status === LeaveStatus.PENDING);
   const pendingCorrections = correctionRequests.filter(r => r.status === 'PENDING');
   const myNotifications = notifications.filter(n => n.userId === currentUser.id && !n.isRead);
 
@@ -815,14 +865,97 @@ export default function App() {
         )}
 
         {activeTab === 'calendar' && <ScheduleCalendar currentUser={currentUser} users={users} schedules={schedulePlans} holidays={holidays} onAssignSchedule={handleAssignSchedule}/>}
+        
         {activeTab === 'leaves' && (
             <div className="max-w-4xl mx-auto space-y-6">
                 <div className="flex justify-between items-center">
                     <h1 className="text-2xl font-bold text-gray-800">Concedii</h1>
-                    <button onClick={() => setLeaveModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg">+ Cerere</button>
+                    <button onClick={() => setLeaveModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center gap-2">
+                        <PlusCircle size={18}/> Cerere Nouă
+                    </button>
+                </div>
+
+                {/* Manager: Pending Requests */}
+                {canViewTeam && teamPendingLeaves.length > 0 && (
+                    <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 shadow-sm animate-in slide-in-from-top-2">
+                        <h3 className="font-bold text-orange-800 mb-3 flex items-center gap-2"><AlertCircle size={18}/> Cereri de Aprobat ({teamPendingLeaves.length})</h3>
+                        <div className="space-y-3">
+                            {teamPendingLeaves.map(req => {
+                                const requester = users.find(u => u.id === req.userId);
+                                return (
+                                    <div key={req.id} className="bg-white p-3 rounded-lg border border-orange-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <img src={requester?.avatarUrl} className="w-5 h-5 rounded-full bg-gray-100"/>
+                                                <span className="font-bold text-gray-800 text-sm">{requester?.name}</span>
+                                            </div>
+                                            <div className="text-sm text-gray-600 flex items-center gap-2">
+                                                <span className="font-medium bg-gray-100 px-2 rounded text-xs">{req.typeName}</span>
+                                                <span className="text-gray-400">|</span>
+                                                <Calendar size={14} className="text-gray-400"/>
+                                                <span>{new Date(req.startDate).toLocaleDateString()} - {new Date(req.endDate).toLocaleDateString()}</span>
+                                            </div>
+                                            <p className="text-xs text-gray-500 italic mt-1">{req.reason}</p>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => handleApproveLeave(req.id)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs font-bold transition">Aprobă</button>
+                                            <button onClick={() => initiateRejection('LEAVE', req.id)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs font-bold transition">Respinge</button>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* My Leaves History */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+                        <h3 className="font-bold text-gray-700 flex items-center gap-2"><FileText size={18}/> Istoric Cererile Mele</h3>
+                    </div>
+                    {myLeaves.length === 0 ? (
+                        <div className="p-8 text-center text-gray-400 text-sm italic">
+                            Nu ai trimis nicio cerere de concediu.
+                        </div>
+                    ) : (
+                        <div className="divide-y divide-gray-100">
+                            {myLeaves.map(leave => (
+                                <div key={leave.id} className="p-4 hover:bg-gray-50 transition flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                    <div>
+                                        <div className="flex items-center gap-3 mb-1">
+                                            <span className="font-bold text-gray-800">{leave.typeName}</span>
+                                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                                                leave.status === LeaveStatus.APPROVED ? 'bg-green-50 text-green-600 border-green-100' :
+                                                leave.status === LeaveStatus.REJECTED ? 'bg-red-50 text-red-600 border-red-100' :
+                                                'bg-yellow-50 text-yellow-600 border-yellow-100'
+                                            }`}>
+                                                {leave.status === LeaveStatus.PENDING ? 'ÎN AȘTEPTARE' : leave.status === LeaveStatus.APPROVED ? 'APROBAT' : 'RESPINS'}
+                                            </span>
+                                        </div>
+                                        <div className="text-sm text-gray-500 flex items-center gap-2">
+                                            <Calendar size={14} className="text-blue-400"/>
+                                            <span>{new Date(leave.startDate).toLocaleDateString('ro-RO')}</span>
+                                            <ChevronRight size={12} className="text-gray-300"/>
+                                            <span>{new Date(leave.endDate).toLocaleDateString('ro-RO')}</span>
+                                        </div>
+                                        {leave.reason && (
+                                            <p className="text-xs text-gray-400 mt-1 max-w-md truncate">"{leave.reason}"</p>
+                                        )}
+                                        {leave.status === LeaveStatus.REJECTED && leave.managerComment && (
+                                            <p className="text-xs text-red-500 mt-1 font-medium bg-red-50 p-1 rounded inline-block">Motiv refuz: {leave.managerComment}</p>
+                                        )}
+                                    </div>
+                                    <div className="text-xs text-gray-300 font-mono">
+                                        ID: {leave.id.slice(-6)}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
         )}
+
         {activeTab === 'team' && canViewTeam && (
              <div className="max-w-4xl mx-auto space-y-8">
                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">

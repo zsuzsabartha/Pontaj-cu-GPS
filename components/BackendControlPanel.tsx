@@ -523,6 +523,52 @@ app.post('/api/v1/breaks/end', async (req, res) => {
 
 // --- LEAVE & CORRECTIONS ---
 
+// GET All Leaves (Load on Init)
+app.get('/api/v1/leaves', async (req, res) => {
+  try {
+    const pool = await connectDB();
+    const result = await pool.request().query(\`
+      SELECT 
+        id, 
+        user_id as userId, 
+        type_id as typeId, 
+        start_date as startDate, 
+        end_date as endDate, 
+        reason, 
+        status, 
+        manager_comment as managerComment 
+      FROM leave_requests
+      LEFT JOIN leave_configs ON leave_requests.type_id = leave_configs.id
+    \`);
+    
+    // Enrich with typeName which is expected by frontend but stored in leave_configs
+    // For simplicity here, we assume frontend can match typeId.
+    // However, the frontend 'LeaveRequest' type has 'typeName'. 
+    // Let's do a join or let frontend handle. Join is better.
+    
+    // RE-QUERY with JOIN for typeName
+    const richResult = await pool.request().query(\`
+        SELECT 
+            lr.id, 
+            lr.user_id as userId, 
+            lr.type_id as typeId, 
+            lc.name as typeName,
+            lr.start_date as startDate, 
+            lr.end_date as endDate, 
+            lr.reason, 
+            lr.status, 
+            lr.manager_comment as managerComment 
+        FROM leave_requests lr
+        LEFT JOIN leave_configs lc ON lr.type_id = lc.id
+    \`);
+
+    res.json(richResult.recordset);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database fetch failed' });
+  }
+});
+
 app.post('/api/v1/leaves', async (req, res) => {
   const { id, userId, typeId, startDate, endDate, reason, status } = req.body;
   try {
@@ -547,6 +593,24 @@ app.post('/api/v1/leaves', async (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'Database transaction failed' });
   }
+});
+
+// Update Leave Status (Approve/Reject)
+app.put('/api/v1/leaves/:id/status', async (req, res) => {
+    const { id } = req.params;
+    const { status, managerComment } = req.body;
+    try {
+        const pool = await connectDB();
+        await pool.request()
+            .input('id', sql.NVarChar, id)
+            .input('status', sql.NVarChar, status)
+            .input('comment', sql.NVarChar, managerComment || null)
+            .query('UPDATE leave_requests SET status = @status, manager_comment = @comment WHERE id = @id');
+        res.json({ success: true });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Database transaction failed' });
+    }
 });
 
 app.post('/api/v1/corrections', async (req, res) => {
