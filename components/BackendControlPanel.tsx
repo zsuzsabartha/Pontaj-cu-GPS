@@ -45,7 +45,10 @@ const BackendControlPanel: React.FC = () => {
               setConnectionStatus('OFFLINE');
           }
       } catch (error) {
-          setTestResult({ type: 'error', message: 'Nu s-a putut contacta Bridge-ul (localhost:3001). Verificați dacă ați rulat "node server.js".' });
+          setTestResult({ 
+            type: 'error', 
+            message: 'Eșec Conexiune. Verificați consola. Dacă vedeți "Cannot find module ./db.js", descărcați fișierul db.js.' 
+          });
           setConnectionStatus('OFFLINE');
       } finally {
           setIsTesting(false);
@@ -214,23 +217,30 @@ PRINT 'Installation Complete. Database ${dbConfig.database} is ready.';
     readme: `---------------------------------------------------------
  PONTAJ API BRIDGE - DOCUMENTATION
 ---------------------------------------------------------
-!!! WARNING: DO NOT RUN THIS FILE WITH NODE.JS !!!
-This is a text file. The executable code is in 'server.js'.
+
+*** REQUIRED FILES CHECKSHEET ***
+Ensure you have ALL 4 files in your folder:
+[ ] server.js    (Main app)
+[ ] db.js        (Database logic) <--- MISSING?
+[ ] .env         (Configuration)
+[ ] package.json (Dependencies)
+
 ---------------------------------------------------------
+ERROR TROUBLESHOOTING:
 
-1. INSTALLATION
-   - Make sure Node.js is installed.
-   - Run: npm install
+1. Error: "Cannot find module '.../db.js'"
+   -> You forgot to download 'db.js'.
+   -> Click 'db.js' in the menu and download it.
 
-2. CONFIGURATION
-   - Verify .env file matches your SQL Server credentials.
-   - Server: ${dbConfig.server}
-   - User: ${dbConfig.user}
-   - Database: ${dbConfig.database}
+2. Error: "Cannot find package 'express'"
+   -> You didn't install dependencies.
+   -> Run command: npm install
 
-3. RUNNING THE SERVER
-   - Run: node server.js
-   - The server will start on Port 3001.
+---------------------------------------------------------
+HOW TO START:
+1. Download ALL 4 files into one folder.
+2. Run: npm install
+3. Run: node server.js
 `,
     package: `{
   "name": "pontaj-api-bridge-mssql",
@@ -555,6 +565,25 @@ app.listen(PORT, () => {
                                      {testResult.message}
                                  </div>
                              )}
+                         </div>
+
+                         {/* QUICK INSTALL SECTION */}
+                         <div className="mt-4 pt-4 border-t border-slate-800">
+                             <div className="text-[10px] text-slate-500 font-bold uppercase mb-2">Instalare Rapidă (Dependințe)</div>
+                             <div className="bg-black p-2 rounded border border-slate-700 flex items-center justify-between group">
+                                 <code className="text-green-400 text-[10px] font-mono truncate mr-2">npm i express mssql cors dotenv jsonwebtoken</code>
+                                 <button 
+                                     onClick={() => handleCopy("npm install express mssql cors dotenv jsonwebtoken")}
+                                     className="text-slate-400 hover:text-white"
+                                     title="Copy Install Command"
+                                 >
+                                     <Copy size={12}/>
+                                 </button>
+                             </div>
+                             <div className="mt-2 text-[10px] text-orange-400 bg-orange-900/20 p-2 rounded border border-orange-900/50">
+                                <strong>MISSING FILES?</strong><br/>
+                                Dacă primiți eroarea "Cannot find module './db.js'", înseamnă că nu ați descărcat fișierul <strong>db.js</strong>. Descărcați-l din meniul de mai sus.
+                             </div>
                          </div>
                      </div>
 
