@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { DailySchedule, WorkSchedule, User, Role, Holiday } from '../types';
 import { MOCK_SCHEDULES, isDateInLockedPeriod } from '../constants';
@@ -82,25 +83,27 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
           <div 
             key={day} 
             onClick={() => handleDayClick(day)}
-            className={`h-28 border border-gray-100 p-2 relative transition group ${
+            className={`h-28 border p-2 relative transition group flex flex-col ${
                 isManager ? 'hover:bg-blue-50 cursor-pointer' : 'cursor-default'
             } ${
-                holiday ? 'bg-purple-50/60' : (isToday ? 'bg-blue-50/30' : 'bg-white')
+                holiday 
+                  ? 'bg-red-50 border-red-200 shadow-inner' // Stronger Holiday Style
+                  : (isToday ? 'bg-blue-50/30 border-blue-200' : 'bg-white border-gray-100')
             }`}
           >
-              <div className="flex justify-between items-start">
-                  <span className={`text-sm font-semibold ${isToday ? 'text-blue-600' : 'text-gray-700'}`}>{day}</span>
-                  {holiday && <PartyPopper size={14} className="text-purple-500" />}
+              <div className="flex justify-between items-start mb-1">
+                  <span className={`text-sm font-semibold ${isToday ? 'text-blue-600' : (holiday ? 'text-red-600' : 'text-gray-700')}`}>{day}</span>
+                  {holiday && <PartyPopper size={14} className="text-red-500 animate-pulse" />}
               </div>
 
               {holiday && (
-                  <div className="text-[10px] text-purple-700 font-bold leading-tight bg-white/50 p-1 rounded border border-purple-100 mb-1">
+                  <div className="text-[10px] text-red-800 font-bold leading-tight bg-white/80 p-1.5 rounded border border-red-100 mb-1 shadow-sm text-center">
                       {holiday.name}
                   </div>
               )}
 
               {schedule ? (
-                  <div className={`p-1 rounded text-[10px] border flex flex-col gap-0.5 items-center mt-1 ${schedule.crossesMidnight ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-green-100 text-green-800 border-green-200'}`}>
+                  <div className={`p-1 rounded text-[10px] border flex flex-col gap-0.5 items-center mt-1 w-full ${schedule.crossesMidnight ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-green-100 text-green-800 border-green-200'}`}>
                       {schedule.crossesMidnight ? <Moon size={10}/> : <Sun size={10}/>}
                       <span className="font-bold truncate w-full text-center">{schedule.name.split(' ')[0]}</span>
                       <span>{schedule.startTime}-{schedule.endTime}</span>
@@ -151,7 +154,7 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
         {/* Legend */}
         <div className="bg-gray-50 px-4 py-2 text-xs flex gap-4 text-gray-500 flex-wrap">
              <div className="flex items-center gap-1">
-                 <span className="w-2 h-2 rounded-full bg-purple-500"></span> Sărbătoare Legală
+                 <span className="w-2 h-2 rounded-full bg-red-500"></span> Sărbătoare Legală
              </div>
              <div className="flex items-center gap-1">
                  <span className="w-2 h-2 rounded-full bg-indigo-500"></span> Tură Noapte
@@ -213,7 +216,7 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
 
                             if (holiday) {
                                 return (
-                                    <div className={`p-3 rounded-lg border text-xs mb-3 flex items-start gap-2 ${isEssentialStaff ? 'bg-indigo-50 border-indigo-100 text-indigo-800' : 'bg-purple-50 border-purple-100 text-purple-800'}`}>
+                                    <div className={`p-3 rounded-lg border text-xs mb-3 flex items-start gap-2 ${isEssentialStaff ? 'bg-indigo-50 border-indigo-100 text-indigo-800' : 'bg-red-50 border-red-100 text-red-800'}`}>
                                         {isEssentialStaff ? <ShieldCheck size={16} className="shrink-0 mt-0.5"/> : <PartyPopper size={16} className="shrink-0 mt-0.5"/>}
                                         <div>
                                             <p className="font-bold">Sărbătoare Legală: {holiday.name}</p>

@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
-import { Office, Company, Department, User } from '../types';
-import { Building, MapPin, Trash2, Plus, Navigation, FolderTree, Mail, BellOff, RefreshCw, Edit2 } from 'lucide-react';
+import { Office, Company, Department, User, Role } from '../types';
+import { Building, MapPin, Trash2, Plus, Navigation, FolderTree, Mail, BellOff, RefreshCw, Edit2, User as UserIcon } from 'lucide-react';
 import { getCurrentLocation } from '../services/geoService';
 import { API_CONFIG } from '../constants';
 
@@ -34,7 +35,8 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
   const [editingDeptId, setEditingDeptId] = useState<string | null>(null);
   const [deptFormData, setDeptFormData] = useState({
       name: '',
-      companyId: companies[0]?.id || ''
+      companyId: companies[0]?.id || '',
+      managerId: ''
   });
 
   const [locLoading, setLocLoading] = useState(false);
@@ -136,6 +138,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
           id: editingDeptId || `d-${Date.now()}`,
           name: deptFormData.name,
           companyId: deptFormData.companyId,
+          managerId: deptFormData.managerId || undefined,
           emailNotifications: true // default
       };
 
@@ -150,14 +153,15 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
           syncToSQL('departments', updated);
           setIsAddingDept(false);
       }
-      setDeptFormData({ name: '', companyId: companies[0]?.id || '' });
+      setDeptFormData({ name: '', companyId: companies[0]?.id || '', managerId: '' });
   };
 
   const startEditDept = (dept: Department) => {
       setEditingDeptId(dept.id);
       setDeptFormData({
           name: dept.name,
-          companyId: dept.companyId
+          companyId: dept.companyId,
+          managerId: dept.managerId || ''
       });
       setIsAddingDept(true);
   };
@@ -333,7 +337,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                     onClick={() => {
                         setIsAddingDept(!isAddingDept);
                         setEditingDeptId(null);
-                        setDeptFormData({ name: '', companyId: companies[0]?.id || '' });
+                        setDeptFormData({ name: '', companyId: companies[0]?.id || '', managerId: '' });
                     }}
                     className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition flex items-center gap-2"
                   >
@@ -344,32 +348,53 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
               {isAddingDept && (
                   <div className="bg-white p-6 rounded-xl shadow-md border border-blue-100 animate-in fade-in slide-in-from-top-4">
                       <h3 className="font-semibold text-gray-700 mb-4">{editingDeptId ? 'Editare Departament' : 'Departament Nou'}</h3>
-                      <form onSubmit={handleDeptSubmit} className="flex flex-col md:flex-row gap-4 items-end">
-                          <div className="flex-1 w-full">
-                              <label className="block text-sm font-medium text-gray-600 mb-1">Nume Departament</label>
-                              <input 
-                                required
-                                type="text" 
-                                value={deptFormData.name}
-                                onChange={e => setDeptFormData({...deptFormData, name: e.target.value})}
-                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                placeholder="Ex: Vânzări"
-                              />
+                      <form onSubmit={handleDeptSubmit} className="space-y-4">
+                          <div className="flex flex-col md:flex-row gap-4 items-end">
+                              <div className="flex-1 w-full">
+                                  <label className="block text-sm font-medium text-gray-600 mb-1">Nume Departament</label>
+                                  <input 
+                                    required
+                                    type="text" 
+                                    value={deptFormData.name}
+                                    onChange={e => setDeptFormData({...deptFormData, name: e.target.value})}
+                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="Ex: Vânzări"
+                                  />
+                              </div>
+                              <div className="flex-1 w-full">
+                                  <label className="block text-sm font-medium text-gray-600 mb-1">Companie</label>
+                                  <select 
+                                    value={deptFormData.companyId}
+                                    onChange={e => setDeptFormData({...deptFormData, companyId: e.target.value, managerId: ''})}
+                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                  >
+                                    {companies.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                  </select>
+                              </div>
                           </div>
-                          <div className="flex-1 w-full">
-                              <label className="block text-sm font-medium text-gray-600 mb-1">Companie</label>
+                          
+                          {/* Manager Selection */}
+                          <div>
+                              <label className="block text-sm font-medium text-gray-600 mb-1">Manager Departament (Aprobator Concedii)</label>
                               <select 
-                                value={deptFormData.companyId}
-                                onChange={e => setDeptFormData({...deptFormData, companyId: e.target.value})}
+                                value={deptFormData.managerId}
+                                onChange={e => setDeptFormData({...deptFormData, managerId: e.target.value})}
                                 className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                               >
-                                {companies.map(c => (
-                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                ))}
+                                  <option value="">-- Selectează Manager --</option>
+                                  {users
+                                    .filter(u => u.companyId === deptFormData.companyId && u.roles.includes(Role.MANAGER))
+                                    .map(u => (
+                                      <option key={u.id} value={u.id}>{u.name}</option>
+                                  ))}
                               </select>
+                              <p className="text-[10px] text-gray-400 mt-1 italic">Doar utilizatorii cu rolul "MANAGER" din aceeași companie sunt afișați.</p>
                           </div>
-                          <button type="submit" className="bg-green-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-green-700 transition">
-                              {editingDeptId ? 'Salvează' : 'Adaugă'}
+
+                          <button type="submit" className="w-full bg-green-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-green-700 transition">
+                              {editingDeptId ? 'Salvează Modificările' : 'Adaugă Departament'}
                           </button>
                       </form>
                   </div>
@@ -378,8 +403,10 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
               <div className="grid gap-4">
                   {departments.map(dept => {
                       const companyName = companies.find(c => c.id === dept.companyId)?.name || 'Companie Necunoscută';
+                      const manager = users.find(u => u.id === dept.managerId);
+                      
                       return (
-                          <div key={dept.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between group hover:shadow-md transition">
+                          <div key={dept.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between group hover:shadow-md transition gap-4">
                               <div className="flex items-center gap-4">
                                   <div className="bg-indigo-50 p-3 rounded-lg text-indigo-600">
                                       <FolderTree size={24} />
@@ -387,10 +414,19 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                                   <div>
                                       <h3 className="font-bold text-gray-800">{dept.name}</h3>
                                       <p className="text-xs text-gray-500">{companyName}</p>
+                                      
+                                      {manager ? (
+                                          <div className="flex items-center gap-1.5 mt-1.5 text-xs text-indigo-600 bg-indigo-50/50 px-2 py-1 rounded w-fit">
+                                              <UserIcon size={12}/>
+                                              <span className="font-medium">Manager: {manager.name}</span>
+                                          </div>
+                                      ) : (
+                                          <div className="mt-1.5 text-xs text-orange-400 italic">Fără Manager Alocat</div>
+                                      )}
                                   </div>
                               </div>
                               
-                              <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-3 self-end sm:self-auto">
                                   <div className="flex items-center gap-2 mr-4 opacity-0 group-hover:opacity-100 transition">
                                       <button onClick={() => startEditDept(dept)} className="text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50"><Edit2 size={16}/></button>
                                       <button onClick={() => handleDeleteDept(dept.id)} className="text-gray-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50"><Trash2 size={16}/></button>

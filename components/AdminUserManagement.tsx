@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, Role, Company, Department, Office } from '../types';
-import { UserPlus, CheckCircle, XCircle, Mail, ShieldAlert, MapPinOff, Building, Database, RefreshCw, Server, Cake, Fingerprint, Clock, Briefcase, FileInput, Upload, Users, BellRing, Eye, AlertTriangle, UserMinus, Filter, Edit2, X, Save } from 'lucide-react';
+import { UserPlus, CheckCircle, XCircle, Mail, ShieldAlert, MapPinOff, Building, Database, RefreshCw, Server, Cake, Fingerprint, Clock, Briefcase, FileInput, Upload, Users, BellRing, Eye, AlertTriangle, UserMinus, Filter, Edit2, X, Save, Search, MoreHorizontal } from 'lucide-react';
 import UserValidationModal from './UserValidationModal';
 import { API_CONFIG } from '../constants';
 
@@ -20,8 +20,9 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
   const [isDbSyncing, setIsDbSyncing] = useState(false);
   const [dbStatus, setDbStatus] = useState<'connected' | 'error'>('connected');
   
-  // Filtering State
+  // Filtering & Search State
   const [selectedCompanyFilter, setSelectedCompanyFilter] = useState<string>('ALL');
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Validation Modal State
   const [validationUser, setValidationUser] = useState<User | null>(null);
@@ -49,8 +50,19 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
 
   // Filter Logic
   const filteredUsers = users.filter(u => {
-      if (selectedCompanyFilter === 'ALL') return true;
-      return u.companyId === selectedCompanyFilter;
+      // 1. Company Filter
+      if (selectedCompanyFilter !== 'ALL' && u.companyId !== selectedCompanyFilter) return false;
+      
+      // 2. Search Filter
+      if (searchTerm) {
+          const lowerTerm = searchTerm.toLowerCase();
+          const matchesName = u.name.toLowerCase().includes(lowerTerm);
+          const matchesEmail = u.email.toLowerCase().includes(lowerTerm);
+          const matchesErp = u.erpId?.toLowerCase().includes(lowerTerm);
+          return matchesName || matchesEmail || matchesErp;
+      }
+      
+      return true;
   });
 
   const pendingUsers = filteredUsers.filter(u => !u.isValidated);
@@ -66,10 +78,10 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
   // Helper to translate status
   const getStatusLabel = (status?: string) => {
       switch(status) {
-          case 'ACTIVE': return 'ACTIV';
-          case 'SUSPENDED': return 'SUSPENDAT';
-          case 'TERMINATED': return 'ÎNCETAT';
-          default: return 'ACTIV';
+          case 'ACTIVE': return <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold border border-green-200">ACTIV</span>;
+          case 'SUSPENDED': return <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold border border-red-200">SUSPENDAT</span>;
+          case 'TERMINATED': return <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-[10px] font-bold border border-gray-200">ÎNCETAT</span>;
+          default: return <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold border border-green-200">ACTIV</span>;
       }
   };
 
@@ -241,25 +253,33 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
           </button>
       </div>
       
-      {/* Company Filter */}
-      <div className="bg-white p-4 rounded-xl border border-gray-100 flex items-center gap-3 shadow-sm">
-          <Filter size={20} className="text-gray-400" />
-          <span className="text-sm font-bold text-gray-700">Filtrează Grup Companii:</span>
-          <select 
-            value={selectedCompanyFilter}
-            onChange={(e) => setSelectedCompanyFilter(e.target.value)}
-            className="p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none min-w-[200px]"
-          >
-              <option value="ALL">Toate Companiile</option>
-              {companies.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-          </select>
-          {selectedCompanyFilter !== 'ALL' && (
-              <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full border border-blue-100 font-medium">
-                  {filteredUsers.length} angajați găsiți
-              </span>
-          )}
+      {/* Filters & Search Row */}
+      <div className="flex flex-col md:flex-row gap-4">
+          <div className="bg-white p-4 rounded-xl border border-gray-100 flex items-center gap-3 shadow-sm flex-1">
+              <Filter size={20} className="text-gray-400" />
+              <span className="text-sm font-bold text-gray-700 whitespace-nowrap">Filtru Companie:</span>
+              <select 
+                value={selectedCompanyFilter}
+                onChange={(e) => setSelectedCompanyFilter(e.target.value)}
+                className="p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full"
+              >
+                  <option value="ALL">Toate Companiile</option>
+                  {companies.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+              </select>
+          </div>
+
+          <div className="bg-white p-4 rounded-xl border border-gray-100 flex items-center gap-3 shadow-sm flex-1">
+              <Search size={20} className="text-gray-400" />
+              <input 
+                type="text"
+                placeholder="Caută după nume, email sau ID..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-transparent outline-none text-sm text-gray-700 placeholder-gray-400"
+              />
+          </div>
       </div>
 
       <div className="flex gap-4 border-b border-gray-200 pb-2 overflow-x-auto">
@@ -291,84 +311,109 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
 
       {activeSubTab === 'pending' && (
         <div className="space-y-4">
-          <h3 className="font-bold text-gray-800 flex items-center gap-2">
-            <ShieldAlert className="text-orange-500"/> Gestionare Acces
-          </h3>
+          <div className="flex justify-between items-center">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                <Users className="text-blue-500" size={20}/> Gestiune Personal
+              </h3>
+              <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full border border-blue-100 font-medium">
+                  {activeListUsers.length} înregistrări găsite
+              </span>
+          </div>
           
-          <div className="mt-6">
-              <h4 className="text-sm font-semibold text-gray-500 uppercase mb-3">Utilizatori Activi ({activeListUsers.length})</h4>
-              <div className="grid gap-4">
-                {activeListUsers.length === 0 ? (
-                    <p className="text-gray-400 italic text-sm">Nu există angajați activi pentru filtrul selectat.</p>
-                ) : (
-                    activeListUsers.map(user => {
-                        const dept = departments.find(d => d.id === user.departmentId)?.name || 'N/A';
-                        const companyName = companies.find(c => c.id === user.companyId)?.name || 'N/A';
-                        const statusLabel = getStatusLabel(user.employmentStatus);
-                        
-                        return (
-                            <div key={user.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                <div className="flex items-center gap-3">
-                                    <img src={user.avatarUrl} className="w-10 h-10 rounded-full bg-gray-100" />
-                                    <div>
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <p className="font-bold text-gray-800">{user.name}</p>
-                                            <span className={`text-[10px] px-1.5 py-0.5 rounded border font-bold ${
-                                                user.employmentStatus === 'ACTIVE' ? 'bg-green-100 text-green-700 border-green-200' :
-                                                user.employmentStatus === 'SUSPENDED' ? 'bg-red-100 text-red-700 border-red-200' :
-                                                'bg-gray-100 text-gray-700 border-gray-200'
-                                            }`}>
-                                                {statusLabel}
-                                            </span>
-                                        </div>
-                                        <p className="text-xs text-gray-500 flex items-center gap-1">
-                                            {user.email} • <Briefcase size={10} className="inline"/> {companyName} • {dept}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="text-xs text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded">
-                                        Auth: {user.authType}
-                                    </div>
-                                    <button 
-                                        onClick={() => setEditingUser(user)}
-                                        className="text-gray-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg transition"
-                                        title="Editează Utilizator"
-                                    >
-                                        <Edit2 size={18}/>
-                                    </button>
-                                </div>
-                            </div>
-                        )
-                    })
-                )}
-              </div>
+          <div className="mt-4 overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-100">
+              {activeListUsers.length === 0 ? (
+                  <p className="text-gray-400 italic text-sm p-8 text-center">Nu există angajați activi pentru criteriile selectate.</p>
+              ) : (
+                  <table className="w-full text-left border-collapse">
+                      <thead>
+                          <tr className="bg-gray-50 text-xs text-gray-500 uppercase font-bold border-b border-gray-200">
+                              <th className="p-4">Angajat</th>
+                              <th className="p-4">ID ERP</th>
+                              <th className="p-4">Structură (Comp/Dept)</th>
+                              <th className="p-4">Roluri</th>
+                              <th className="p-4">Status</th>
+                              <th className="p-4 text-right">Acțiuni</th>
+                          </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                          {activeListUsers.map(user => {
+                              const dept = departments.find(d => d.id === user.departmentId)?.name || 'N/A';
+                              const companyName = companies.find(c => c.id === user.companyId)?.name || 'N/A';
+                              
+                              return (
+                                  <tr key={user.id} className="hover:bg-blue-50/50 transition">
+                                      <td className="p-4">
+                                          <div className="flex items-center gap-3">
+                                              <img src={user.avatarUrl} className="w-9 h-9 rounded-full bg-gray-100 object-cover border border-gray-200" />
+                                              <div>
+                                                  <p className="font-bold text-sm text-gray-800">{user.name}</p>
+                                                  <p className="text-xs text-gray-500">{user.email}</p>
+                                              </div>
+                                          </div>
+                                      </td>
+                                      <td className="p-4">
+                                          <span className="font-mono text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded">{user.erpId || '-'}</span>
+                                      </td>
+                                      <td className="p-4">
+                                          <div className="flex flex-col">
+                                              <span className="text-xs font-bold text-gray-700">{companyName}</span>
+                                              <span className="text-xs text-gray-500">{dept}</span>
+                                          </div>
+                                      </td>
+                                      <td className="p-4">
+                                          <div className="flex flex-wrap gap-1">
+                                              {user.roles.map(r => (
+                                                  <span key={r} className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded border border-blue-100">
+                                                      {r}
+                                                  </span>
+                                              ))}
+                                          </div>
+                                      </td>
+                                      <td className="p-4">
+                                          {getStatusLabel(user.employmentStatus)}
+                                      </td>
+                                      <td className="p-4 text-right">
+                                          <button 
+                                              onClick={() => setEditingUser(user)}
+                                              className="text-gray-400 hover:text-blue-600 p-2 hover:bg-white rounded-lg transition border border-transparent hover:border-gray-200"
+                                              title="Editează Utilizator"
+                                          >
+                                              <Edit2 size={16}/>
+                                          </button>
+                                      </td>
+                                  </tr>
+                              );
+                          })}
+                      </tbody>
+                  </table>
+              )}
           </div>
 
           <div className="border-t border-gray-200 my-4"></div>
 
           {pendingUsers.length > 0 && (
             <div className="grid gap-4">
-              <h4 className="text-sm font-semibold text-orange-500 uppercase">În Așteptare ({pendingUsers.length})</h4>
+              <h4 className="text-sm font-semibold text-orange-500 uppercase flex items-center gap-2">
+                  <ShieldAlert size={16}/> Necesită Validare ({pendingUsers.length})
+              </h4>
               {pendingUsers.map(user => {
                   const companyName = companies.find(c => c.id === user.companyId)?.name || 'N/A';
                   return (
-                    <div key={user.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <img src={user.avatarUrl} className="w-10 h-10 rounded-full bg-gray-100" />
-                        <div>
-                            <p className="font-bold text-gray-800">{user.name}</p>
-                            <p className="text-sm text-gray-500">{user.email}</p>
-                            <p className="text-xs text-blue-500 font-medium">{companyName}</p>
-                            <span className="text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded border border-orange-100">Necesită Validare HR</span>
+                    <div key={user.id} className="bg-orange-50 p-4 rounded-xl shadow-sm border border-orange-100 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <img src={user.avatarUrl} className="w-10 h-10 rounded-full bg-white" />
+                            <div>
+                                <p className="font-bold text-gray-800">{user.name}</p>
+                                <p className="text-sm text-gray-500">{user.email}</p>
+                                <p className="text-xs text-blue-500 font-medium">{companyName}</p>
+                            </div>
                         </div>
-                    </div>
-                    <button 
-                        onClick={() => setValidationUser(user)}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center gap-2 transition shadow-lg shadow-blue-100"
-                    >
-                        <Eye size={16}/> Verifică & Validează
-                    </button>
+                        <button 
+                            onClick={() => setValidationUser(user)}
+                            className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-700 flex items-center gap-2 transition shadow-md"
+                        >
+                            <Eye size={16}/> Validează Accesul
+                        </button>
                     </div>
                   );
               })}

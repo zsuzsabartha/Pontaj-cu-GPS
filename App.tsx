@@ -53,7 +53,7 @@ import RejectionModal from './components/RejectionModal';
 import BirthdayWidget from './components/BirthdayWidget';
 import ScheduleCalendar from './components/ScheduleCalendar';
 import CompanyManagement from './components/CompanyManagement';
-import { Users, FileText, Settings, LogOut, CheckCircle, XCircle, BarChart3, CloudLightning, Building, Clock, UserCog, Lock, AlertOctagon, Wifi, WifiOff, Database, AlertCircle, Server, CalendarRange, Bell, PlusCircle, ShieldCheck, Filter, Briefcase, Calendar, ChevronRight, RefreshCw, Clock4 } from 'lucide-react';
+import { Users, FileText, Settings, LogOut, CheckCircle, XCircle, BarChart3, CloudLightning, Building, Clock, UserCog, Lock, AlertOctagon, Wifi, WifiOff, Database, AlertCircle, Server, CalendarRange, Bell, PlusCircle, ShieldCheck, Filter, Briefcase, Calendar, ChevronRight, RefreshCw, Clock4, Coffee, LayoutList } from 'lucide-react';
 import { generateWorkSummary } from './services/geminiService';
 import { saveOfflineAction, getOfflineActions, clearOfflineActions } from './services/offlineService';
 
@@ -100,7 +100,9 @@ export default function App() {
   // --- Configuration State (Nomenclatoare) (Persisted) ---
   const [breakConfigs, setBreakConfigs] = usePersistedState<BreakConfig[]>('pontaj_break_configs', INITIAL_BREAK_CONFIGS);
   const [leaveConfigs, setLeaveConfigs] = usePersistedState<LeaveConfig[]>('pontaj_leave_configs', INITIAL_LEAVE_CONFIGS);
-  const [holidays, setHolidays] = usePersistedState<Holiday[]>('pontaj_holidays_2025', HOLIDAYS_RO); 
+  
+  // UPDATED KEY: Force refresh of holidays to include new years (2024/2026)
+  const [holidays, setHolidays] = usePersistedState<Holiday[]>('pontaj_holidays_v2', HOLIDAYS_RO); 
   
   // --- Locked Date State (Persisted) ---
   const [lockedDate, setLockedDate] = usePersistedState<string>('pontaj_locked_date', getDefaultLockedDate());
@@ -116,6 +118,7 @@ export default function App() {
   
   // Team View Filter State
   const [selectedTeamCompany, setSelectedTeamCompany] = useState<string>('ALL');
+  const [teamSubTab, setTeamSubTab] = useState<'timesheets' | 'breaks'>('timesheets');
   
   // Edit Timesheet State
   const [editModalData, setEditModalData] = useState<{isOpen: boolean, timesheet: Timesheet | null}>({isOpen: false, timesheet: null});
@@ -868,7 +871,20 @@ export default function App() {
       if (!requester || requester.id === currentUser.id) return false; // Don't show self in approval list
       
       if (isAdmin) return true;
-      if (hasRole(Role.MANAGER)) return requester.companyId === currentUser.companyId; // Simplified manager logic (Company level)
+      
+      const requesterDept = departments.find(d => d.id === requester.departmentId);
+      
+      // PRIMARY CHECK: Is current user the assigned manager of the requester's department?
+      if (requesterDept && requesterDept.managerId === currentUser.id) return true;
+
+      // FALLBACK 1: HR sees all in their company
+      if (hasRole(Role.HR) && requester.companyId === currentUser.companyId) return true;
+      
+      // FALLBACK 2: If user is a generic Manager but NOT assigned to specific dept, allow seeing own company (Legacy/General Manager mode)
+      if (!requesterDept?.managerId && hasRole(Role.MANAGER) && requester.companyId === currentUser.companyId) {
+          return true; 
+      }
+
       return false;
   });
 
@@ -899,6 +915,14 @@ export default function App() {
       return true;
   });
 
+  // Filter for Pause Module: Only timesheets with breaks
+  const teamTimesheetsWithBreaks = teamTimesheets.filter(ts => ts.breaks.length > 0);
+  
+  // Count Pending Breaks
+  const pendingBreaksCount = teamTimesheetsWithBreaks.reduce((count, ts) => {
+      return count + ts.breaks.filter(b => b.status === BreakStatus.PENDING).length;
+  }, 0);
+
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-50 text-gray-800">
       
@@ -927,7 +951,7 @@ export default function App() {
             {canViewTeam && <button onClick={() => setActiveTab('team')} className={getTabClass('team')}><Users size={18}/> Echipa</button>}
             {canManageUsers && <button onClick={() => setActiveTab('users')} className={getTabClass('users')}><UserCog size={18}/> Useri</button>}
             {isAdmin && <button onClick={() => setActiveTab('companies')} className={getTabClass('companies')}><Briefcase size={18}/> Companii</button>}
-            {canManageOffices && <button onClick={() => setActiveTab('offices')} className={getTabClass('offices')}><Building size={18}/> Sedii</button>}
+            {canManageOffices && <button onClick={() => setActiveTab('offices')} className={getTabClass('offices')}><Building size={18}/> Structură (Sedii & Dept)</button>}
             {isAdmin && <button onClick={() => setActiveTab('nomenclator')} className={getTabClass('nomenclator')}><Database size={18}/> Nomenclator</button>}
             {isAdmin && <button onClick={() => setActiveTab('backend')} className={getTabClass('backend')}><Server size={18}/> Backend</button>}
          </nav>
@@ -1093,56 +1117,129 @@ export default function App() {
 
         {activeTab === 'team' && canViewTeam && (
              <div className="max-w-4xl mx-auto space-y-8">
-                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                     <h1 className="text-2xl font-bold text-gray-800">Management Echipă</h1>
-                     {isAdmin && (
-                         <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
-                             <Filter size={16} className="text-gray-400"/>
-                             <span className="text-xs font-bold text-gray-600">Companie:</span>
-                             <select value={selectedTeamCompany} onChange={(e) => setSelectedTeamCompany(e.target.value)} className="text-sm bg-transparent outline-none font-medium text-blue-600">
-                                 <option value="ALL">Toate Companiile</option>
-                                 {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                             </select>
-                         </div>
-                     )}
+                 <div className="flex flex-col gap-6">
+                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                         <h1 className="text-2xl font-bold text-gray-800">Management Echipă</h1>
+                         {isAdmin && (
+                             <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
+                                 <Filter size={16} className="text-gray-400"/>
+                                 <span className="text-xs font-bold text-gray-600">Companie:</span>
+                                 <select value={selectedTeamCompany} onChange={(e) => setSelectedTeamCompany(e.target.value)} className="text-sm bg-transparent outline-none font-medium text-blue-600">
+                                     <option value="ALL">Toate Companiile</option>
+                                     {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                 </select>
+                             </div>
+                         )}
+                     </div>
+
+                     {/* Team Sub-Navigation */}
+                     <div className="flex gap-4 border-b border-gray-200 pb-2">
+                        <button
+                            onClick={() => setTeamSubTab('timesheets')}
+                            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors border-b-2 ${teamSubTab === 'timesheets' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        >
+                            <LayoutList size={16}/> Pontaje & Corecții
+                        </button>
+                        <button
+                            onClick={() => setTeamSubTab('breaks')}
+                            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors border-b-2 ${teamSubTab === 'breaks' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                        >
+                            <Coffee size={16}/> Monitorizare Pauze
+                            {pendingBreaksCount > 0 && (
+                                <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">{pendingBreaksCount}</span>
+                            )}
+                        </button>
+                     </div>
                  </div>
-                 {pendingCorrections.length > 0 && (
-                     <div className="space-y-4">
-                        <h3 className="text-lg font-semibold text-gray-700 flex items-center gap-2"><AlertOctagon className="text-orange-500" size={20}/> Cereri Corecție / Pontaj Lipsă</h3>
-                        <div className="grid gap-4">
-                            {pendingCorrections.map(req => {
-                                const requester = users.find(u => u.id === req.userId);
-                                if (isAdmin && selectedTeamCompany !== 'ALL' && requester?.companyId !== selectedTeamCompany) return null;
-                                if (!isAdmin && hasRole(Role.MANAGER) && requester?.companyId !== currentUser.companyId) return null;
-                                const ts = req.timesheetId ? timesheets.find(t => t.id === req.timesheetId) : null;
-                                const dateDisplay = ts ? ts.date : req.requestedDate;
-                                return (
-                                    <div key={req.id} className="bg-orange-50 border border-orange-200 p-4 rounded-xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                                        <div>
-                                            <div className="flex items-center gap-2 mb-1">
-                                                 <img src={requester?.avatarUrl} className="w-6 h-6 rounded-full"/>
-                                                 <span className="font-bold text-gray-900">{requester?.name}</span>
+
+                 {teamSubTab === 'timesheets' && (
+                     <>
+                        {pendingCorrections.length > 0 && (
+                            <div className="space-y-4">
+                                <h3 className="text-lg font-semibold text-gray-700 flex items-center gap-2"><AlertOctagon className="text-orange-500" size={20}/> Cereri Corecție / Pontaj Lipsă</h3>
+                                <div className="grid gap-4">
+                                    {pendingCorrections.map(req => {
+                                        const requester = users.find(u => u.id === req.userId);
+                                        if (isAdmin && selectedTeamCompany !== 'ALL' && requester?.companyId !== selectedTeamCompany) return null;
+                                        if (!isAdmin && hasRole(Role.MANAGER) && requester?.companyId !== currentUser.companyId) return null;
+                                        const ts = req.timesheetId ? timesheets.find(t => t.id === req.timesheetId) : null;
+                                        const dateDisplay = ts ? ts.date : req.requestedDate;
+                                        return (
+                                            <div key={req.id} className="bg-orange-50 border border-orange-200 p-4 rounded-xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <img src={requester?.avatarUrl} className="w-6 h-6 rounded-full"/>
+                                                        <span className="font-bold text-gray-900">{requester?.name}</span>
+                                                    </div>
+                                                    <p className="text-sm text-gray-800 font-medium">Data: {dateDisplay} {req.timesheetId ? '(Modificare)' : '(Pontaj Nou)'}</p>
+                                                    <p className="text-xs text-gray-600">
+                                                        {req.timesheetId ? (
+                                                            <span className="line-through text-gray-400">{new Date(ts?.startTime || '').toLocaleTimeString()} - {ts?.endTime ? new Date(ts.endTime).toLocaleTimeString() : '...'}</span>
+                                                        ) : <span className="text-blue-600 font-semibold">Creează:</span>}
+                                                        {' '} {'->'} <span className="font-bold">{new Date(req.requestedStartTime).toLocaleTimeString()} - {req.requestedEndTime ? new Date(req.requestedEndTime).toLocaleTimeString() : '...'}</span>
+                                                    </p>
+                                                    <p className="text-xs text-gray-500 italic mt-1">Motiv: "{req.reason}"</p>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => handleApproveCorrection(req.id)} className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold">Aprobă</button>
+                                                    <button onClick={() => initiateRejection('CORRECTION', req.id)} className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold">Respinge</button>
+                                                </div>
                                             </div>
-                                            <p className="text-sm text-gray-800 font-medium">Data: {dateDisplay} {req.timesheetId ? '(Modificare)' : '(Pontaj Nou)'}</p>
-                                            <p className="text-xs text-gray-600">
-                                                {req.timesheetId ? (
-                                                    <span className="line-through text-gray-400">{new Date(ts?.startTime || '').toLocaleTimeString()} - {ts?.endTime ? new Date(ts.endTime).toLocaleTimeString() : '...'}</span>
-                                                ) : <span className="text-blue-600 font-semibold">Creează:</span>}
-                                                {' '} {'->'} <span className="font-bold">{new Date(req.requestedStartTime).toLocaleTimeString()} - {req.requestedEndTime ? new Date(req.requestedEndTime).toLocaleTimeString() : '...'}</span>
-                                            </p>
-                                            <p className="text-xs text-gray-500 italic mt-1">Motiv: "{req.reason}"</p>
-                                        </div>
-                                        <div className="flex gap-2">
-                                             <button onClick={() => handleApproveCorrection(req.id)} className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold">Aprobă</button>
-                                             <button onClick={() => initiateRejection('CORRECTION', req.id)} className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold">Respinge</button>
-                                        </div>
-                                    </div>
-                                )
-                            })}
-                        </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                        <TimesheetList timesheets={teamTimesheets} isManagerView={true} onApproveBreak={handleApproveBreak} onEditTimesheet={openTimesheetModal}/>
+                     </>
+                 )}
+
+                 {teamSubTab === 'breaks' && (
+                     <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
+                         {/* Filter Toggle for Breaks */}
+                         <div className="flex justify-between items-center bg-blue-50 p-4 rounded-xl border border-blue-100">
+                             <div className="flex items-center gap-3">
+                                 <Coffee size={24} className="text-blue-600"/>
+                                 <div>
+                                     <h3 className="font-bold text-gray-800">Modul Monitorizare Pauze</h3>
+                                     <p className="text-xs text-gray-500">Vizualizați și confirmați pauzele efectuate de angajați.</p>
+                                 </div>
+                             </div>
+                         </div>
+
+                         {/* Pending Breaks Section */}
+                         {pendingBreaksCount > 0 ? (
+                             <div className="space-y-4">
+                                 <h4 className="font-bold text-orange-600 flex items-center gap-2">
+                                     <AlertCircle size={18}/> De Revizuit ({pendingBreaksCount})
+                                 </h4>
+                                 {/* Only pass timesheets that have PENDING breaks */}
+                                 <TimesheetList 
+                                    timesheets={teamTimesheetsWithBreaks.filter(ts => ts.breaks.some(b => b.status === BreakStatus.PENDING))} 
+                                    isManagerView={true} 
+                                    onApproveBreak={handleApproveBreak}
+                                 />
+                             </div>
+                         ) : (
+                             <div className="text-center p-8 bg-white rounded-xl border border-gray-100 text-gray-400">
+                                 <CheckCircle size={32} className="mx-auto mb-2 text-green-100"/>
+                                 <p>Toate pauzele au fost confirmate.</p>
+                             </div>
+                         )}
+
+                         {/* Historical Breaks (Approved/Rejected) */}
+                         <div className="pt-4 border-t border-gray-200">
+                             <h4 className="font-bold text-gray-500 mb-4 flex items-center gap-2">
+                                 <Clock size={18}/> Istoric Pauze Recente
+                             </h4>
+                             <TimesheetList 
+                                timesheets={teamTimesheetsWithBreaks.filter(ts => !ts.breaks.some(b => b.status === BreakStatus.PENDING))} 
+                                isManagerView={true} 
+                                onApproveBreak={handleApproveBreak}
+                             />
+                         </div>
                      </div>
                  )}
-                 <TimesheetList timesheets={teamTimesheets} isManagerView={true} onApproveBreak={handleApproveBreak} onEditTimesheet={openTimesheetModal}/>
              </div>
         )}
         {activeTab === 'users' && (
