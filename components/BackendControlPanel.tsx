@@ -450,7 +450,7 @@ app.listen(PORT, async () => {
   }, [dbConfig]);
 
   return (
-    <div className="bg-slate-900 text-slate-200 rounded-xl overflow-hidden shadow-2xl border border-slate-700 font-mono text-sm h-[600px] flex flex-col">
+    <div className="bg-slate-900 text-slate-200 rounded-xl overflow-hidden shadow-2xl border border-slate-700 font-mono text-sm h-[calc(100vh-5rem)] flex flex-col">
        {/* Header */}
        <div className="bg-slate-950 p-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -575,6 +575,34 @@ app.listen(PORT, async () => {
                              <Settings size={12}/> Configurare Conexiune
                          </div>
                          <div className="space-y-3">
+                             {/* JWT SECRET SECTION MOVED TO TOP */}
+                             <div className="mb-2 pb-2 border-b border-slate-800">
+                                 <div className="flex items-center gap-1 text-yellow-400 text-[10px] font-bold uppercase mb-1">
+                                     <Lock size={10}/> JWT Secret
+                                 </div>
+                                 <div className="flex gap-1">
+                                     <input 
+                                        type="text" 
+                                        value={jwtSecret} 
+                                        onChange={(e) => setJwtSecret(e.target.value)}
+                                        className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-[10px] text-white focus:border-blue-500 outline-none placeholder-slate-600 font-mono truncate"
+                                     />
+                                     <button 
+                                        onClick={() => handleCopy(jwtSecret)}
+                                        title="Copy Secret"
+                                        className="bg-slate-700 hover:bg-slate-600 text-white px-2 py-1.5 rounded text-[10px] border border-slate-600 transition flex items-center justify-center shrink-0"
+                                     >
+                                         <Copy size={10}/>
+                                     </button>
+                                     <button 
+                                        onClick={generateNewSecret}
+                                        className="bg-yellow-700 hover:bg-yellow-600 text-white px-2 py-1.5 rounded text-[10px] font-bold border border-yellow-600 transition flex items-center gap-1 shrink-0"
+                                     >
+                                         <RefreshCw size={10}/> Generare
+                                     </button>
+                                 </div>
+                             </div>
+
                              <div>
                                  <label className="text-[10px] text-slate-400 font-bold block mb-1">Server Address (from SSMS)</label>
                                  <input 
@@ -643,32 +671,6 @@ app.listen(PORT, async () => {
                              )}
                          </div>
                          
-                         {/* JWT SECRET SECTION */}
-                         <div className="mt-4 pt-4 border-t border-slate-800">
-                             <div className="flex items-center gap-1 text-yellow-400 text-xs font-bold uppercase mb-2 bg-yellow-900/20 p-1.5 rounded">
-                                 <Lock size={12}/> Security (JWT)
-                             </div>
-                             <div>
-                                 <label className="text-[10px] text-slate-400 font-bold block mb-1">JWT Secret</label>
-                                 <div className="flex gap-1">
-                                     <input 
-                                        type="text" 
-                                        value={jwtSecret} 
-                                        onChange={(e) => setJwtSecret(e.target.value)}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-[10px] text-white focus:border-blue-500 outline-none placeholder-slate-600 font-mono"
-                                     />
-                                     <button 
-                                        onClick={generateNewSecret}
-                                        title="Generate Random Secret"
-                                        className="bg-slate-700 hover:bg-slate-600 text-white p-1.5 rounded border border-slate-600 transition"
-                                     >
-                                         <RefreshCw size={12}/>
-                                     </button>
-                                 </div>
-                                 <p className="text-[9px] text-slate-500 mt-1 leading-tight">Cheia privată folosită pentru semnarea token-urilor.</p>
-                             </div>
-                         </div>
-
                          {/* QUICK INSTALL SECTION */}
                          <div className="mt-4 pt-4 border-t border-slate-800">
                              <div className="text-[10px] text-slate-500 font-bold uppercase mb-2">Instalare Rapidă (Dependințe)</div>
