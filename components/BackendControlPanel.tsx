@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen, Plug, Wifi, FileText, Clipboard, Lock, Package, UploadCloud } from 'lucide-react';
 import { API_CONFIG, MOCK_COMPANIES, MOCK_DEPARTMENTS, MOCK_OFFICES, MOCK_USERS, INITIAL_BREAK_CONFIGS, INITIAL_LEAVE_CONFIGS, HOLIDAYS_RO } from '../constants';
@@ -587,21 +588,8 @@ app.post('/api/v1/breaks/end', async (req, res) => {
 app.get('/api/v1/leaves', async (req, res) => {
   try {
     const pool = await connectDB();
-    const result = await pool.request().query(\`
-      SELECT 
-        id, 
-        user_id as userId, 
-        type_id as typeId, 
-        start_date as startDate, 
-        end_date as endDate, 
-        reason, 
-        status, 
-        manager_comment as managerComment 
-      FROM leave_requests
-      LEFT JOIN leave_configs ON leave_requests.type_id = leave_configs.id
-    \`);
     
-    // RE-QUERY with JOIN for typeName
+    // FETCH leaves with joined config name using strict aliasing
     const richResult = await pool.request().query(\`
         SELECT 
             lr.id, 
