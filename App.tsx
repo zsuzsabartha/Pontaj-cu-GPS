@@ -49,7 +49,8 @@ import TimesheetEditModal from './components/TimesheetEditModal';
 import RejectionModal from './components/RejectionModal';
 import BirthdayWidget from './components/BirthdayWidget';
 import ScheduleCalendar from './components/ScheduleCalendar';
-import { Users, FileText, Settings, LogOut, CheckCircle, XCircle, BarChart3, CloudLightning, Building, Clock, UserCog, Lock, AlertOctagon, Wifi, WifiOff, Database, AlertCircle, Server, CalendarRange, Bell, PlusCircle, ShieldCheck, Filter } from 'lucide-react';
+import CompanyManagement from './components/CompanyManagement';
+import { Users, FileText, Settings, LogOut, CheckCircle, XCircle, BarChart3, CloudLightning, Building, Clock, UserCog, Lock, AlertOctagon, Wifi, WifiOff, Database, AlertCircle, Server, CalendarRange, Bell, PlusCircle, ShieldCheck, Filter, Briefcase } from 'lucide-react';
 import { generateWorkSummary } from './services/geminiService';
 import { saveOfflineAction, getOfflineActions, clearOfflineActions } from './services/offlineService';
 
@@ -81,7 +82,7 @@ export default function App() {
   const [companies, setCompanies] = useState<Company[]>(MOCK_COMPANIES); // Lifted to state
   
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'team' | 'leaves' | 'offices' | 'users' | 'nomenclator' | 'backend' | 'calendar' | 'notifications'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'team' | 'leaves' | 'offices' | 'users' | 'nomenclator' | 'backend' | 'calendar' | 'notifications' | 'companies'>('dashboard');
   const [isLeaveModalOpen, setLeaveModalOpen] = useState(false);
   
   // Team View Filter State
@@ -573,8 +574,16 @@ export default function App() {
   const handleDeleteOffice = (id: string) => setOffices(prev => prev.filter(o => o.id !== id));
   const handleUpdateDepartments = (updatedDepartments: Department[]) => setDepartments(updatedDepartments);
   
-  const handleUpdateCompany = (updatedCompany: Company) => {
-    setCompanies(prev => prev.map(c => c.id === updatedCompany.id ? updatedCompany : c));
+  const handleAddCompany = (company: Company) => {
+      setCompanies(prev => [...prev, company]);
+  };
+  
+  const handleUpdateCompany = (company: Company) => {
+    setCompanies(prev => prev.map(c => c.id === company.id ? company : c));
+  };
+  
+  const handleDeleteCompany = (id: string) => {
+      setCompanies(prev => prev.filter(c => c.id !== id));
   };
 
   // --- Render Helpers ---
@@ -697,6 +706,7 @@ export default function App() {
 
             {canViewTeam && <button onClick={() => setActiveTab('team')} className={getTabClass('team')}><Users size={18}/> Echipa</button>}
             {canManageUsers && <button onClick={() => setActiveTab('users')} className={getTabClass('users')}><UserCog size={18}/> Useri</button>}
+            {isAdmin && <button onClick={() => setActiveTab('companies')} className={getTabClass('companies')}><Briefcase size={18}/> Companii</button>}
             {canManageOffices && <button onClick={() => setActiveTab('offices')} className={getTabClass('offices')}><Building size={18}/> Sedii</button>}
             {isAdmin && <button onClick={() => setActiveTab('nomenclator')} className={getTabClass('nomenclator')}><Database size={18}/> Nomenclator</button>}
             {isAdmin && <button onClick={() => setActiveTab('backend')} className={getTabClass('backend')}><Server size={18}/> Backend</button>}
@@ -843,6 +853,17 @@ export default function App() {
         )}
         {/* ... Other tabs ... */}
         {activeTab === 'users' && <AdminUserManagement users={users} companies={companies} departments={departments} offices={offices} onValidateUser={handleValidateUser} onCreateUser={handleCreateUser}/>}
+        {activeTab === 'companies' && (
+             <CompanyManagement 
+                companies={companies}
+                users={users}
+                departments={departments}
+                offices={offices}
+                onAddCompany={handleAddCompany}
+                onUpdateCompany={handleUpdateCompany}
+                onDeleteCompany={handleDeleteCompany}
+             />
+        )}
         {activeTab === 'offices' && <OfficeManagement offices={offices} departments={departments} companies={companies} onAddOffice={handleAddOffice} onDeleteOffice={handleDeleteOffice} onUpdateDepartments={handleUpdateDepartments} onUpdateCompany={handleUpdateCompany}/>}
         {activeTab === 'nomenclator' && (
             <NomenclatorManagement 

@@ -1,8 +1,8 @@
-
 import React, { useState } from 'react';
 import { Office, Company, Coordinates, Department } from '../types';
-import { Building, MapPin, Trash2, Plus, Navigation, FolderTree, Mail, BellOff, Briefcase } from 'lucide-react';
+import { Building, MapPin, Trash2, Plus, Navigation, FolderTree, Mail, BellOff, Briefcase, RefreshCw } from 'lucide-react';
 import { getCurrentLocation } from '../services/geoService';
+import { API_CONFIG } from '../constants';
 
 interface OfficeManagementProps {
   offices: Office[];
@@ -11,7 +11,7 @@ interface OfficeManagementProps {
   onAddOffice: (office: Office) => void;
   onDeleteOffice: (id: string) => void;
   onUpdateDepartments: (deps: Department[]) => void; // Added handler
-  onUpdateCompany: (company: Company) => void; // New prop for updating company name
+  onUpdateCompany: (company: Company) => void; // Kept for compatibility but unused in UI
 }
 
 const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies, departments, onAddOffice, onDeleteOffice, onUpdateDepartments, onUpdateCompany }) => {
@@ -25,6 +25,22 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
     radiusMeters: '100'
   });
   const [locLoading, setLocLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const syncToSQL = async (endpoint: 'offices' | 'departments', data: any[]) => {
+      setIsSyncing(true);
+      try {
+          await fetch(`${API_CONFIG.BASE_URL}/config/${endpoint}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data)
+          });
+      } catch (e) {
+          console.error("Sync failed", e);
+      } finally {
+          setIsSyncing(false);
+      }
+  };
 
   const handleGetLocation = async () => {
     setLocLoading(true);
@@ -64,9 +80,16 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
       radiusMeters: parseInt(formData.radiusMeters)
     };
     onAddOffice(newOffice);
+    syncToSQL('offices', [...offices, newOffice]);
+    
     setIsAdding(false);
     setFormData({ ...formData, name: '', latitude: '', longitude: '' });
   };
+  
+  const handleDeleteOfficeSafe = (id: string) => {
+      onDeleteOffice(id);
+      // Note: Backend uses upsert, delete logic not fully implemented in bridge for simplicity, but UI updates
+  }
 
   const toggleDeptEmail = (deptId: string) => {
       const updated = departments.map(d => {
@@ -76,6 +99,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
           return d;
       });
       onUpdateDepartments(updated);
+      syncToSQL('departments', updated);
   };
 
   return (
@@ -85,6 +109,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
           <Building className="text-blue-600" />
           Structură Organizațională
         </h2>
+        {isSyncing && <span className="text-xs text-blue-500 flex items-center gap-1"><RefreshCw size={12} className="animate-spin"/> Syncing SQL...</span>}
       </div>
 
       <div className="flex border-b border-gray-200">
@@ -98,7 +123,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
           onClick={() => setActiveTab('departments')}
           className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'departments' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
-          Departamente & Setări
+          Departamente
         </button>
       </div>
 
@@ -201,7 +226,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                 return (
                     <div key={office.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition relative group">
                     <button 
-                        onClick={() => onDeleteOffice(office.id)}
+                        onClick={() => handleDeleteOfficeSafe(office.id)}
                         className="absolute top-4 right-4 text-gray-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100"
                         title="Șterge Sediu"
                     >
@@ -231,32 +256,6 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
 
       {activeTab === 'departments' && (
           <div className="space-y-8">
-              {/* NEW SECTION: Company Settings */}
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                  <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                      <Briefcase size={20} className="text-blue-600"/> Setări Companii
-                  </h3>
-                  <div className="space-y-4">
-                      {companies.map(comp => (
-                          <div key={comp.id} className="flex items-end gap-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
-                              <div className="flex-1">
-                                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nume Companie (ID: {comp.id})</label>
-                                  <input 
-                                      type="text" 
-                                      defaultValue={comp.name}
-                                      onBlur={(e) => {
-                                          if(e.target.value !== comp.name && e.target.value.trim() !== '') {
-                                              onUpdateCompany({...comp, name: e.target.value});
-                                          }
-                                      }}
-                                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                                  />
-                              </div>
-                          </div>
-                      ))}
-                  </div>
-              </div>
-
               {/* Department Settings */}
               <div>
                   <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100 text-sm text-yellow-800 mb-4">
