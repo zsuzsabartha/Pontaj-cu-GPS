@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen, Plug, Wifi } from 'lucide-react';
+import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen, Plug, Wifi, FileText, Clipboard } from 'lucide-react';
 
 const BackendControlPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'status' | 'sql' | 'bridge' | 'swagger'>('status');
   const [connectionStatus, setConnectionStatus] = useState<'ONLINE' | 'CONNECTING' | 'OFFLINE'>('ONLINE');
   const [generatedSQL, setGeneratedSQL] = useState('');
-  const [bridgeFile, setBridgeFile] = useState<'server' | 'db' | 'package' | 'env' | 'readme'>('readme'); // Default to readme
+  const [bridgeFile, setBridgeFile] = useState<'server' | 'db' | 'package' | 'env' | 'readme'>('server');
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   
   // --- CONNECTION CONFIGURATION STATE ---
   const [dbConfig, setDbConfig] = useState({
@@ -26,10 +27,8 @@ const BackendControlPanel: React.FC = () => {
       setConnectionStatus('CONNECTING');
 
       try {
-          // Attempt to fetch the health endpoint of the local bridge
-          // Note: This assumes the user has started the bridge on the default port 3001
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout
+          const timeoutId = setTimeout(() => controller.abort(), 3000); 
 
           const response = await fetch('http://localhost:3001/health', {
               signal: controller.signal
@@ -53,7 +52,7 @@ const BackendControlPanel: React.FC = () => {
       }
   };
 
-  // --- ARTIFACT GENERATORS (MSSQL VERSION) ---
+  // --- ARTIFACT GENERATORS ---
 
   const generateSQLScript = () => {
     const script = `
@@ -79,7 +78,6 @@ USE ${dbConfig.database};
 GO
 
 -- 2. Security Setup (Login & User)
--- NOTE: We use the configured password from the panel
 IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = '${dbConfig.user}')
 BEGIN
     CREATE LOGIN ${dbConfig.user} WITH PASSWORD = '${dbConfig.password}', CHECK_POLICY = OFF;
@@ -90,7 +88,6 @@ BEGIN
     CREATE USER ${dbConfig.user} FOR LOGIN ${dbConfig.user};
 END
 
--- Grant permissions
 ALTER ROLE db_datareader ADD MEMBER ${dbConfig.user};
 ALTER ROLE db_datawriter ADD MEMBER ${dbConfig.user};
 GO
@@ -138,7 +135,7 @@ CREATE TABLE users (
     email NVARCHAR(255) UNIQUE NOT NULL,
     password_hash NVARCHAR(255), 
     auth_type NVARCHAR(20),
-    roles NVARCHAR(MAX), -- JSON Array e.g. '["EMPLOYEE", "MANAGER"]'
+    roles NVARCHAR(MAX),
     contract_hours INT DEFAULT 8,
     is_validated BIT DEFAULT 0,
     requires_gps BIT DEFAULT 1,
@@ -204,7 +201,6 @@ CREATE TABLE leave_requests (
     manager_comment NVARCHAR(MAX)
 );
 
--- Indexes
 CREATE INDEX idx_timesheets_user_date ON timesheets(user_id, date);
 CREATE INDEX idx_users_email ON users(email);
 GO
@@ -215,31 +211,26 @@ PRINT 'Installation Complete. Database ${dbConfig.database} is ready.';
   };
 
   const bridgeSources = {
-    readme: `# Pontaj API Bridge - Instalare
+    readme: `---------------------------------------------------------
+ PONTAJ API BRIDGE - DOCUMENTATION
+---------------------------------------------------------
+!!! WARNING: DO NOT RUN THIS FILE WITH NODE.JS !!!
+This is a text file. The executable code is in 'server.js'.
+---------------------------------------------------------
 
-Acesta este serverul backend (Node.js) care face legătura între aplicația React și Microsoft SQL Server.
+1. INSTALLATION
+   - Make sure Node.js is installed.
+   - Run: npm install
 
-## 1. Instalare
-1. Asigură-te că ai **Node.js** instalat.
-2. Deschide un terminal în acest folder.
-3. Rulează comanda:
-   \`\`\`bash
-   npm install
-   \`\`\`
+2. CONFIGURATION
+   - Verify .env file matches your SQL Server credentials.
+   - Server: ${dbConfig.server}
+   - User: ${dbConfig.user}
+   - Database: ${dbConfig.database}
 
-## 2. Configurare
-Verifică fișierul \`.env\` pentru a te asigura că datele de conectare la SQL Server sunt corecte:
-- Server: ${dbConfig.server}
-- User: ${dbConfig.user}
-- Database: ${dbConfig.database}
-
-## 3. Pornire Server
-Rulează comanda:
-\`\`\`bash
-node server.js
-\`\`\`
-
-Serverul va porni pe portul 3001.
+3. RUNNING THE SERVER
+   - Run: node server.js
+   - The server will start on Port 3001.
 `,
     package: `{
   "name": "pontaj-api-bridge-mssql",
@@ -259,7 +250,7 @@ Serverul va porni pe portul 3001.
   }
 }`,
     env: `PORT=3001
-# Database Connection Configured via Admin Panel
+# Database Connection
 DB_SERVER=${dbConfig.server}
 DB_PORT=${dbConfig.port}
 DB_NAME=${dbConfig.database}
@@ -281,8 +272,8 @@ const config = {
   port: parseInt(process.env.DB_PORT) || 1433,
   database: process.env.DB_NAME,
   options: {
-    encrypt: true, // Use true for Azure, false for local dev if self-signed
-    trustServerCertificate: true // Change to false for production with valid certs
+    encrypt: true, 
+    trustServerCertificate: true
   }
 };
 
@@ -295,10 +286,20 @@ export const connectDB = async () => {
     throw err;
   }
 };`,
-    server: `import express from 'express';
+    server: `/* 
+  =============================================================
+  PONTAJ API BRIDGE - SERVER ENTRY POINT
+  File: server.js
+  Usage: node server.js
+  =============================================================
+*/
+
+import express from 'express';
 import cors from 'cors';
 import sql from 'mssql';
 import { connectDB } from './db.js';
+
+console.log("Starting Pontaj Bridge Server...");
 
 const app = express();
 app.use(cors());
@@ -311,6 +312,7 @@ app.get('/health', async (req, res) => {
     const result = await pool.request().query('SELECT GETDATE() as now');
     res.json({ status: 'ONLINE', db_time: result.recordset[0].now, server: 'MSSQL' });
   } catch (err) {
+    console.error("Health check failed:", err.message);
     res.status(500).json({ status: 'ERROR', error: err.message });
   }
 });
@@ -319,12 +321,9 @@ app.get('/health', async (req, res) => {
 app.post('/api/v1/clock-in', async (req, res) => {
   const { userId, location, officeId } = req.body;
   
-  // Real implementation would validate JWT token here
-  
   try {
     const pool = await connectDB();
     
-    // MSSQL Query using Parameters and OUTPUT for returning data
     const query = \`
       INSERT INTO timesheets (id, user_id, start_time, date, start_lat, start_long, matched_office_id, status)
       OUTPUT INSERTED.*
@@ -359,12 +358,17 @@ app.listen(PORT, () => {
     const file = new Blob([content], {type: 'text/plain'});
     element.href = URL.createObjectURL(file);
     element.download = filename;
-    document.body.appendChild(element); // Required for this to work in FireFox
+    document.body.appendChild(element); 
     element.click();
     document.body.removeChild(element);
   };
 
-  // Re-generate artifacts when config changes
+  const handleCopy = (content: string) => {
+      navigator.clipboard.writeText(content);
+      setCopyFeedback('Copied!');
+      setTimeout(() => setCopyFeedback(null), 2000);
+  };
+
   useEffect(() => {
     generateSQLScript();
   }, [dbConfig]);
@@ -411,7 +415,6 @@ app.listen(PORT, () => {
           </button>
        </div>
 
-       {/* Content Area */}
        <div className="flex-1 overflow-hidden bg-slate-900/50 flex">
           
           {/* --- STATUS TAB --- */}
@@ -460,12 +463,20 @@ app.listen(PORT, () => {
              <div className="flex flex-col h-full w-full animate-in fade-in">
                  <div className="bg-slate-950 p-2 border-b border-slate-800 flex justify-between items-center shrink-0">
                      <span className="text-xs text-slate-500 pl-2">File: install_mssql.sql</span>
-                     <button 
-                        onClick={() => handleDownload('install_mssql.sql', generatedSQL)}
-                        className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs transition font-medium"
-                     >
-                        <Download size={14}/> Download Script
-                     </button>
+                     <div className="flex gap-2">
+                         <button 
+                            onClick={() => handleCopy(generatedSQL)}
+                            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs transition font-medium"
+                         >
+                            {copyFeedback || <><Clipboard size={14}/> Copy</>}
+                         </button>
+                         <button 
+                            onClick={() => handleDownload('install_mssql.sql', generatedSQL)}
+                            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs transition font-medium"
+                         >
+                            <Download size={14}/> Download Script
+                         </button>
+                     </div>
                  </div>
                  <div className="flex-1 relative overflow-auto">
                      <textarea 
@@ -483,7 +494,6 @@ app.listen(PORT, () => {
                  {/* Sidebar */}
                  <div className="w-56 bg-slate-950 border-r border-slate-800 flex flex-col overflow-y-auto shrink-0">
                      
-                     {/* CONFIG FORM */}
                      <div className="p-3 bg-slate-900 border-b border-slate-800">
                          <div className="flex items-center gap-1 text-blue-400 text-xs font-bold uppercase mb-2 bg-blue-900/20 p-1.5 rounded">
                              <Settings size={12}/> Configurare Conexiune
@@ -527,7 +537,6 @@ app.listen(PORT, () => {
                                  />
                              </div>
                              
-                             {/* Test Connection Button */}
                              <button 
                                 onClick={handleTestConnection}
                                 disabled={isTesting}
@@ -537,7 +546,6 @@ app.listen(PORT, () => {
                                  {isTesting ? 'Se verifică...' : 'Verifică Conexiune'}
                              </button>
                              
-                             {/* Test Result Message */}
                              {testResult && (
                                  <div className={`mt-2 p-2 rounded text-[10px] border leading-tight ${
                                      testResult.type === 'success' 
@@ -550,44 +558,70 @@ app.listen(PORT, () => {
                          </div>
                      </div>
 
-                     <div className="p-3 text-xs font-bold text-slate-500 uppercase mt-2">Project Files</div>
-                     <button onClick={() => setBridgeFile('readme')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'readme' ? 'text-green-400 bg-slate-800/80 border-l-2 border-green-500' : 'text-slate-400'}`}>
-                         <BookOpen size={12}/> README.md (Instrucțiuni)
-                     </button>
-                     <button onClick={() => setBridgeFile('env')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'env' ? 'text-blue-400 bg-slate-800/80 border-l-2 border-blue-500' : 'text-slate-400'}`}>
-                         <Terminal size={12}/> .env (Config)
-                     </button>
-                     <button onClick={() => setBridgeFile('package')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'package' ? 'text-blue-400 bg-slate-800/80 border-l-2 border-blue-500' : 'text-slate-400'}`}>
-                         <Code size={12}/> package.json
-                     </button>
+                     <div className="p-3 text-xs font-bold text-slate-500 uppercase mt-2">Executable Code</div>
                      <button onClick={() => setBridgeFile('server')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'server' ? 'text-blue-400 bg-slate-800/80 border-l-2 border-blue-500' : 'text-slate-400'}`}>
-                         <FileCode size={12}/> server.js
+                         <FileCode size={12}/> server.js (Run this)
                      </button>
                      <button onClick={() => setBridgeFile('db')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'db' ? 'text-blue-400 bg-slate-800/80 border-l-2 border-blue-500' : 'text-slate-400'}`}>
                          <Database size={12}/> db.js
+                     </button>
+                     
+                     <div className="p-3 text-xs font-bold text-slate-500 uppercase mt-2">Config Files</div>
+                     <button onClick={() => setBridgeFile('env')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'env' ? 'text-yellow-400 bg-slate-800/80 border-l-2 border-yellow-500' : 'text-slate-400'}`}>
+                         <Terminal size={12}/> .env
+                     </button>
+                     <button onClick={() => setBridgeFile('package')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'package' ? 'text-yellow-400 bg-slate-800/80 border-l-2 border-yellow-500' : 'text-slate-400'}`}>
+                         <Code size={12}/> package.json
+                     </button>
+
+                     <div className="p-3 text-xs font-bold text-slate-500 uppercase mt-2">Documentation</div>
+                     <button onClick={() => setBridgeFile('readme')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'readme' ? 'text-green-400 bg-slate-800/80 border-l-2 border-green-500' : 'text-slate-400'}`}>
+                         <BookOpen size={12}/> README.md
                      </button>
                  </div>
                  
                  {/* Code View */}
                  <div className="flex-1 flex flex-col h-full overflow-hidden">
+                     {bridgeFile === 'readme' && (
+                         <div className="bg-red-500/20 text-red-200 text-xs p-2 text-center font-bold border-b border-red-500/30 flex items-center justify-center gap-2">
+                             <AlertTriangle size={14}/> DOCUMENTATION ONLY - DO NOT RUN WITH NODE
+                         </div>
+                     )}
+                     {bridgeFile === 'server' && (
+                         <div className="bg-green-500/20 text-green-200 text-xs p-2 text-center font-bold border-b border-green-500/30 flex items-center justify-center gap-2">
+                             <Play size={14}/> ENTRY POINT: Run "node server.js"
+                         </div>
+                     )}
+
                      <div className="bg-slate-900 p-2 border-b border-slate-800 flex justify-between items-center shrink-0">
                          <span className="text-xs text-slate-500 pl-2">
                             {bridgeFile === 'package' ? 'Node.js Dependencies' : 
-                             bridgeFile === 'env' ? 'Environment Variables (Generated from Config)' : 
-                             bridgeFile === 'readme' ? 'Instrucțiuni de instalare' : 
-                             bridgeFile === 'server' ? 'Main Entry Point (ESM)' : 'Database Connection (ESM)'}
+                             bridgeFile === 'env' ? 'Environment Variables' : 
+                             bridgeFile === 'readme' ? 'Installation Guide' : 
+                             bridgeFile === 'server' ? 'Server Entry Point' : 'Database Connection'}
                          </span>
-                         <button 
-                            onClick={() => handleDownload(bridgeFile === 'package' ? 'package.json' : bridgeFile === 'env' ? '.env' : bridgeFile === 'readme' ? 'README.md' : `${bridgeFile}.js`, bridgeSources[bridgeFile])}
-                            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs transition"
-                         >
-                            <Download size={14}/> Download File
-                         </button>
+                         <div className="flex gap-2">
+                            <button 
+                                onClick={() => handleCopy(bridgeSources[bridgeFile])}
+                                className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs transition"
+                            >
+                                {copyFeedback || <><Clipboard size={14}/> Copy Code</>}
+                            </button>
+                            <button 
+                                onClick={() => handleDownload(bridgeFile === 'package' ? 'package.json' : bridgeFile === 'env' ? '.env' : bridgeFile === 'readme' ? 'README.md' : `${bridgeFile}.js`, bridgeSources[bridgeFile])}
+                                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs transition"
+                            >
+                                <Download size={14}/> Download File
+                            </button>
+                         </div>
                      </div>
                      <textarea 
                         readOnly 
                         value={bridgeSources[bridgeFile]}
-                        className={`w-full h-full bg-black p-4 font-mono text-xs resize-none focus:outline-none ${bridgeFile === 'readme' ? 'text-green-300' : 'text-blue-300'}`}
+                        className={`w-full h-full bg-black p-4 font-mono text-xs resize-none focus:outline-none ${
+                            bridgeFile === 'readme' ? 'text-green-300' : 
+                            bridgeFile === 'env' ? 'text-yellow-300' : 'text-blue-300'
+                        }`}
                      />
                  </div>
              </div>
