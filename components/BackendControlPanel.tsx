@@ -41,13 +41,25 @@ const BackendControlPanel: React.FC = () => {
               setTestResult({ type: 'success', message: 'Succes! Bridge-ul este conectat la SQL Server.' });
               setConnectionStatus('ONLINE');
           } else {
-              setTestResult({ type: 'error', message: `Eroare DB: ${data.error || 'Serverul răspunde dar baza de date e inaccesibilă.'}` });
+              // Analyze specific errors
+              const err = data.error || '';
+              let userMsg = `Eroare DB: ${err}`;
+
+              if (err.includes('config.server') && err.includes('required')) {
+                  userMsg = 'Lipsă Configurare (.env): Serverul nu găsește adresa bazei de date. Verificați dacă fișierul .env există și nu are extensia .txt ascunsă.';
+              } else if (err.includes('Login failed')) {
+                  userMsg = 'Eroare Login: Utilizator sau parolă incorectă în .env.';
+              } else if (err.includes('Failed to connect')) {
+                  userMsg = 'Eroare Rețea: Nu se poate conecta la serverul SQL. Verificați adresa (host) și portul.';
+              }
+
+              setTestResult({ type: 'error', message: userMsg });
               setConnectionStatus('OFFLINE');
           }
       } catch (error) {
           setTestResult({ 
             type: 'error', 
-            message: 'Eșec Conexiune. Verificați consola. Dacă vedeți "Cannot find module ./db.js", descărcați fișierul db.js.' 
+            message: 'Eșec Conexiune Server. Verificați consola. Dacă vedeți "Cannot find module ./db.js", descărcați fișierul db.js.' 
           });
           setConnectionStatus('OFFLINE');
       } finally {
@@ -218,29 +230,24 @@ PRINT 'Installation Complete. Database ${dbConfig.database} is ready.';
  PONTAJ API BRIDGE - DOCUMENTATION
 ---------------------------------------------------------
 
-*** REQUIRED FILES CHECKSHEET ***
-Ensure you have ALL 4 files in your folder:
-[ ] server.js    (Main app)
-[ ] db.js        (Database logic) <--- MISSING?
-[ ] .env         (Configuration)
-[ ] package.json (Dependencies)
+*** TROUBLESHOOTING GUIDE ***
+
+PROBLEM: "Eroare DB: The 'config.server' property is required..."
+CAUSE: The server cannot read the .env file.
+FIX:
+1. Ensure you downloaded '.env'.
+2. Check if the file is named exactly ".env". 
+   - Windows might hide extensions and name it ".env.txt".
+   - Enable "File name extensions" in Windows Explorer to check.
+3. Open .env with Notepad and ensure DB_SERVER is set.
+
+PROBLEM: "Cannot find module './db.js'"
+FIX: Download db.js and place it next to server.js.
 
 ---------------------------------------------------------
-ERROR TROUBLESHOOTING:
-
-1. Error: "Cannot find module '.../db.js'"
-   -> You forgot to download 'db.js'.
-   -> Click 'db.js' in the menu and download it.
-
-2. Error: "Cannot find package 'express'"
-   -> You didn't install dependencies.
-   -> Run command: npm install
-
----------------------------------------------------------
-HOW TO START:
-1. Download ALL 4 files into one folder.
-2. Run: npm install
-3. Run: node server.js
+STARTUP:
+1. npm install
+2. node server.js
 `,
     package: `{
   "name": "pontaj-api-bridge-mssql",
@@ -273,7 +280,17 @@ FRONTEND_URL=http://localhost:3000`,
     db: `import sql from 'mssql';
 import dotenv from 'dotenv';
 
-dotenv.config();
+// Load environment variables
+const result = dotenv.config();
+
+if (result.error) {
+  console.warn("⚠️ WARNING: .env file not found or could not be loaded!");
+}
+
+// Debug: Check if critical variables exist
+if (!process.env.DB_SERVER) {
+    console.error("❌ ERROR: DB_SERVER is missing. Please check your .env file.");
+}
 
 const config = {
   user: process.env.DB_USER,
@@ -289,10 +306,12 @@ const config = {
 
 export const connectDB = async () => {
   try {
+    // Attempt connection
     const pool = await sql.connect(config);
     return pool;
   } catch (err) {
-    console.error('Database Connection Failed! Bad Config: ', err);
+    console.error('❌ Database Connection Failed!', err.message);
+    if (!config.server) console.error("   HINT: 'config.server' is missing. .env file might be missing or empty.");
     throw err;
   }
 };`,
@@ -309,7 +328,9 @@ import cors from 'cors';
 import sql from 'mssql';
 import { connectDB } from './db.js';
 
+console.log("------------------------------------------------");
 console.log("Starting Pontaj Bridge Server...");
+console.log("------------------------------------------------");
 
 const app = express();
 app.use(cors());
@@ -322,7 +343,7 @@ app.get('/health', async (req, res) => {
     const result = await pool.request().query('SELECT GETDATE() as now');
     res.json({ status: 'ONLINE', db_time: result.recordset[0].now, server: 'MSSQL' });
   } catch (err) {
-    console.error("Health check failed:", err.message);
+    // console.error("Health check failed:", err.message); // Quieter logs
     res.status(500).json({ status: 'ERROR', error: err.message });
   }
 });
@@ -358,8 +379,21 @@ app.post('/api/v1/clock-in', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log(\`Bridge Server (MSSQL/JS) running on port \${PORT}\`);
+
+// Start Server and TEST CONNECTION IMMEDIATELY
+app.listen(PORT, async () => {
+  console.log(\`Bridge Server running on port \${PORT}\`);
+  console.log("Attempting to connect to SQL Server...");
+  
+  try {
+    await connectDB();
+    console.log("\\x1b[32m%s\\x1b[0m", "✅ SUCCESS: Database connected successfully!");
+    console.log("Ready to accept requests.");
+  } catch (err) {
+    console.log("\\x1b[31m%s\\x1b[0m", "❌ ERROR: Database connection failed.");
+    console.log("   Details:", err.message);
+    console.log("   Check your .env file and ensure SQL Server is running.");
+  }
 });`
   };
 
