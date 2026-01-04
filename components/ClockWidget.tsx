@@ -36,7 +36,6 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
   
   // States for confirmation UI
   const [confirmData, setConfirmData] = useState<{ coords: Coordinates, office: Office, distance: number } | null>(null);
-  const [isRemoteWork, setIsRemoteWork] = useState(false);
 
   const todayDateObj = new Date();
   const todayDateStr = todayDateObj.toISOString().split('T')[0];
@@ -148,13 +147,6 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
     setShowMockOption(false);
     
     try {
-        if (isRemoteWork) {
-            // Bypass strict location
-            const coords = await getCurrentLocation().catch(() => ({ latitude: 0, longitude: 0 }));
-            onClockIn(coords, null, 0);
-            return;
-        }
-
         const coords = await getCurrentLocation();
         const { office, distance } = findNearestOffice(coords, offices);
 
@@ -336,34 +328,18 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
         {/* Spacer if not on break to keep layout stable */}
         {currentStatus !== ShiftStatus.ON_BREAK && <div className="mb-8"></div>}
         
-        {/* Remote Work Toggle */}
-        {currentStatus === ShiftStatus.NOT_STARTED && (
-            <label className="flex items-center gap-2 mb-6 cursor-pointer bg-blue-50 px-4 py-2 rounded-lg border border-blue-100 hover:bg-blue-100 transition w-full justify-center">
-                <input 
-                    type="checkbox"
-                    checked={isRemoteWork}
-                    onChange={(e) => setIsRemoteWork(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                />
-                <span className="text-sm font-medium text-gray-700 flex items-center gap-1">
-                    <Home size={16} className="text-blue-500" />
-                    Lucrez de acasă / Remote
-                </span>
-            </label>
-        )}
-
         {/* Buttons Grid */}
         <div className="grid grid-cols-2 gap-4 w-full">
             {currentStatus === ShiftStatus.NOT_STARTED || currentStatus === ShiftStatus.COMPLETED ? (
                  <button 
                  onClick={handleClockIn}
                  disabled={loading || (activeLeaveRequest?.status === LeaveStatus.APPROVED && !activeLeaveRequest?.typeName.includes('Delegatie'))} // Disable if approved leave (unless business trip)
-                 className={`col-span-2 flex items-center justify-center gap-2 text-white py-4 rounded-xl font-semibold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:grayscale ${isRemoteWork ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`}
+                 className="col-span-2 flex items-center justify-center gap-2 text-white py-4 rounded-xl font-semibold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:grayscale bg-blue-600 hover:bg-blue-700 shadow-blue-200"
                >
                  {loading ? (
                      <><RefreshCw className="animate-spin" size={24}/> SE LOCALIZEAZĂ...</>
                  ) : (
-                     isRemoteWork ? <><Home size={24}/> START REMOTE</> : <><Play size={24} /> START PONTAJ</>
+                     <><Play size={24} /> START PONTAJ</>
                  )}
                </button>
             ) : (

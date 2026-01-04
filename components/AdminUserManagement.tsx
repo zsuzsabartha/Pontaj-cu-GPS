@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { User, Role, Company, Department, Office } from '../types';
-import { UserPlus, CheckCircle, XCircle, Mail, ShieldAlert, MapPinOff, Building, Database, RefreshCw, Server, Cake, Fingerprint, Clock, Briefcase, FileInput, Upload, Users, BellRing, Eye, AlertTriangle, UserMinus, Filter } from 'lucide-react';
+import { UserPlus, CheckCircle, XCircle, Mail, ShieldAlert, MapPinOff, Building, Database, RefreshCw, Server, Cake, Fingerprint, Clock, Briefcase, FileInput, Upload, Users, BellRing, Eye, AlertTriangle, UserMinus, Filter, Edit2, X, Save } from 'lucide-react';
 import UserValidationModal from './UserValidationModal';
 import { API_CONFIG } from '../constants';
 
@@ -11,9 +12,10 @@ interface AdminUserManagementProps {
   offices: Office[];
   onValidateUser: (userId: string) => void;
   onCreateUser: (user: User) => void;
+  onUpdateUser: (user: User) => void; // New Prop
 }
 
-const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, companies, departments, offices, onValidateUser, onCreateUser }) => {
+const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, companies, departments, offices, onValidateUser, onCreateUser, onUpdateUser }) => {
   const [activeSubTab, setActiveSubTab] = useState<'pending' | 'create' | 'import' | 'inactive'>('pending');
   const [isDbSyncing, setIsDbSyncing] = useState(false);
   const [dbStatus, setDbStatus] = useState<'connected' | 'error'>('connected');
@@ -23,6 +25,9 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
 
   // Validation Modal State
   const [validationUser, setValidationUser] = useState<User | null>(null);
+  
+  // Edit User Modal State
+  const [editingUser, setEditingUser] = useState<User | null>(null);
 
   // Import State
   const [importText, setImportText] = useState('');
@@ -52,9 +57,11 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
   const inactiveUsers = filteredUsers.filter(u => u.isValidated && !u.lastLoginDate && u.employmentStatus === 'ACTIVE');
   const activeListUsers = filteredUsers.filter(u => u.isValidated);
   
-  const availableDepartments = departments.filter(d => d.companyId === newUser.companyId);
-  // Shared offices are all available
-  const availableOffices = offices; 
+  // Dynamic Dropdown Options based on NewUser selection
+  const availableDepartmentsNew = departments.filter(d => d.companyId === newUser.companyId);
+  
+  // Dynamic Dropdown Options based on EditingUser selection
+  const availableDepartmentsEdit = editingUser ? departments.filter(d => d.companyId === editingUser.companyId) : [];
 
   // Helper to translate status
   const getStatusLabel = (status?: string) => {
@@ -66,7 +73,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
       }
   };
 
-  const toggleRole = (role: Role) => {
+  const toggleRoleNew = (role: Role) => {
       setNewUser(prev => {
           const exists = prev.roles.includes(role);
           if (exists) {
@@ -75,6 +82,20 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
           } else {
               return { ...prev, roles: [...prev.roles, role] };
           }
+      });
+  };
+
+  const toggleRoleEdit = (role: Role) => {
+      if (!editingUser) return;
+      setEditingUser(prev => {
+          if (!prev) return null;
+          const exists = prev.roles.includes(role);
+          const newRoles = exists 
+             ? prev.roles.filter(r => r !== role)
+             : [...prev.roles, role];
+          // Ensure at least one role
+          if (newRoles.length === 0) return prev;
+          return { ...prev, roles: newRoles };
       });
   };
 
@@ -122,8 +143,6 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
     };
 
     onCreateUser(user);
-    // Trigger sync for the new user (technically should sync full list, but list is updated in App parent)
-    // For simplicity, we trigger a full sync after a short delay to allow state propagation or just notify user
     setTimeout(() => handleManualDBSync(), 500); 
 
     alert(`Succes! \n\nS-a trimis un email către ${user.email} conținând PIN-ul de acces: ${generatedPin}`);
@@ -141,6 +160,14 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
        birthDate: '',
        shareBirthday: false
     });
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!editingUser) return;
+      onUpdateUser(editingUser);
+      setEditingUser(null);
+      setTimeout(() => handleManualDBSync(), 500);
   };
 
   const handleImport = () => {
@@ -179,9 +206,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
   };
 
   const handleValidateFromModal = (updatedUser: User) => {
-     // Propagate to App logic
      onValidateUser(updatedUser.id);
-     // Sync SQL
      setTimeout(() => handleManualDBSync(), 500);
   };
 
@@ -242,7 +267,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
           onClick={() => setActiveSubTab('pending')}
           className={`whitespace-nowrap pb-2 px-1 text-sm font-medium transition-colors ${activeSubTab === 'pending' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
         >
-          Validare Utilizatori ({pendingUsers.length})
+          Listă Utilizatori / Validare
         </button>
         <button
           onClick={() => setActiveSubTab('create')}
@@ -267,11 +292,11 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
       {activeSubTab === 'pending' && (
         <div className="space-y-4">
           <h3 className="font-bold text-gray-800 flex items-center gap-2">
-            <ShieldAlert className="text-orange-500"/> Cereri de Acces / Listă Useri
+            <ShieldAlert className="text-orange-500"/> Gestionare Acces
           </h3>
           
           <div className="mt-6">
-              <h4 className="text-sm font-semibold text-gray-500 uppercase mb-3">Utilizatori Activi / Suspendati ({activeListUsers.length})</h4>
+              <h4 className="text-sm font-semibold text-gray-500 uppercase mb-3">Utilizatori Activi ({activeListUsers.length})</h4>
               <div className="grid gap-4">
                 {activeListUsers.length === 0 ? (
                     <p className="text-gray-400 italic text-sm">Nu există angajați activi pentru filtrul selectat.</p>
@@ -301,8 +326,17 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                                         </p>
                                     </div>
                                 </div>
-                                <div className="text-xs text-gray-400 font-mono self-start md:self-center bg-gray-50 px-2 py-1 rounded">
-                                    Auth: {user.authType}
+                                <div className="flex items-center gap-3">
+                                    <div className="text-xs text-gray-400 font-mono bg-gray-50 px-2 py-1 rounded">
+                                        Auth: {user.authType}
+                                    </div>
+                                    <button 
+                                        onClick={() => setEditingUser(user)}
+                                        className="text-gray-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg transition"
+                                        title="Editează Utilizator"
+                                    >
+                                        <Edit2 size={18}/>
+                                    </button>
                                 </div>
                             </div>
                         )
@@ -313,12 +347,9 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
 
           <div className="border-t border-gray-200 my-4"></div>
 
-          {pendingUsers.length === 0 ? (
-            <div className="bg-white p-4 rounded-xl border border-dashed text-center text-gray-400 text-sm">
-              Nu există utilizatori noi care așteaptă validarea pentru selecția curentă.
-            </div>
-          ) : (
+          {pendingUsers.length > 0 && (
             <div className="grid gap-4">
+              <h4 className="text-sm font-semibold text-orange-500 uppercase">În Așteptare ({pendingUsers.length})</h4>
               {pendingUsers.map(user => {
                   const companyName = companies.find(c => c.id === user.companyId)?.name || 'N/A';
                   return (
@@ -500,10 +531,10 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                     value={newUser.departmentId}
                     onChange={e => setNewUser({...newUser, departmentId: e.target.value})}
                     className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                    disabled={availableDepartments.length === 0}
+                    disabled={availableDepartmentsNew.length === 0}
                   >
                     <option value="">Selectează...</option>
-                    {availableDepartments.map(d => (
+                    {availableDepartmentsNew.map(d => (
                       <option key={d.id} value={d.id}>{d.name}</option>
                     ))}
                   </select>
@@ -521,7 +552,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                   className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                 >
                    <option value="">-- Fără Sediu Fix / Remote --</option>
-                   {availableOffices.map(o => (
+                   {offices.map(o => (
                        <option key={o.id} value={o.id}>{o.name} ({o.radiusMeters}m)</option>
                    ))}
                 </select>
@@ -562,7 +593,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                                 <input 
                                     type="checkbox"
                                     checked={newUser.roles.includes(role)}
-                                    onChange={() => toggleRole(role)}
+                                    onChange={() => toggleRoleNew(role)}
                                     className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                                 />
                                 <span className="text-sm text-gray-700">{role}</span>
@@ -593,6 +624,157 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
              </div>
           </form>
         </div>
+      )}
+
+      {/* EDIT USER MODAL */}
+      {editingUser && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
+                  <div className="bg-blue-600 p-4 flex justify-between items-center text-white shrink-0">
+                      <h3 className="font-bold text-lg flex items-center gap-2">
+                          <Edit2 size={20}/> Editare Utilizator: {editingUser.name}
+                      </h3>
+                      <button onClick={() => setEditingUser(null)} className="hover:bg-white/20 p-1 rounded transition"><X size={20}/></button>
+                  </div>
+                  
+                  <form onSubmit={handleEditSubmit} className="p-6 space-y-4 overflow-y-auto">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nume Complet</label>
+                              <input 
+                                type="text"
+                                required 
+                                value={editingUser.name}
+                                onChange={e => setEditingUser({...editingUser, name: e.target.value})}
+                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
+                              <input 
+                                type="email"
+                                required
+                                value={editingUser.email}
+                                onChange={e => setEditingUser({...editingUser, email: e.target.value})}
+                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                              />
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Companie</label>
+                              <select 
+                                value={editingUser.companyId}
+                                onChange={e => setEditingUser({...editingUser, companyId: e.target.value, departmentId: undefined})}
+                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                              >
+                                {companies.map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                              </select>
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Departament</label>
+                              <select 
+                                value={editingUser.departmentId || ''}
+                                onChange={e => setEditingUser({...editingUser, departmentId: e.target.value})}
+                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                              >
+                                <option value="">Selectează...</option>
+                                {availableDepartmentsEdit.map(d => (
+                                    <option key={d.id} value={d.id}>{d.name}</option>
+                                ))}
+                              </select>
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Fingerprint size={12}/> ID ERP</label>
+                              <input 
+                                type="text"
+                                value={editingUser.erpId || ''}
+                                onChange={e => setEditingUser({...editingUser, erpId: e.target.value})}
+                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Building size={12}/> Sediu Alocat</label>
+                              <select 
+                                value={editingUser.assignedOfficeId || ''}
+                                onChange={e => setEditingUser({...editingUser, assignedOfficeId: e.target.value})}
+                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                              >
+                                <option value="">-- Fără Sediu (Remote) --</option>
+                                {offices.map(o => (
+                                    <option key={o.id} value={o.id}>{o.name}</option>
+                                ))}
+                              </select>
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Status Angajat</label>
+                              <select 
+                                value={editingUser.employmentStatus || 'ACTIVE'}
+                                onChange={e => setEditingUser({...editingUser, employmentStatus: e.target.value as any})}
+                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                              >
+                                <option value="ACTIVE">Activ</option>
+                                <option value="SUSPENDED">Suspendat</option>
+                                <option value="TERMINATED">Încetat</option>
+                              </select>
+                          </div>
+                          <div className="flex items-center pt-5">
+                              <label className="flex items-center cursor-pointer gap-2 p-2 border rounded-lg w-full bg-gray-50 hover:bg-gray-100 transition">
+                                  <input 
+                                      type="checkbox"
+                                      checked={editingUser.requiresGPS}
+                                      onChange={e => setEditingUser({...editingUser, requiresGPS: e.target.checked})}
+                                      className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                                  />
+                                  <span className="text-sm font-medium text-gray-700">GPS Obligatoriu</span>
+                              </label>
+                          </div>
+                      </div>
+
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Roluri</label>
+                          <div className="flex flex-wrap gap-4 p-3 border rounded-lg bg-gray-50">
+                              {Object.values(Role).map(role => (
+                                  <label key={role} className="flex items-center cursor-pointer gap-2">
+                                      <input 
+                                          type="checkbox"
+                                          checked={editingUser.roles.includes(role)}
+                                          onChange={() => toggleRoleEdit(role)}
+                                          className="w-4 h-4 text-blue-600 rounded"
+                                      />
+                                      <span className="text-sm text-gray-700">{role}</span>
+                                  </label>
+                              ))}
+                          </div>
+                      </div>
+
+                      <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                          <button 
+                            type="button" 
+                            onClick={() => setEditingUser(null)} 
+                            className="px-4 py-2 border rounded-lg text-gray-600 hover:bg-gray-50 font-medium text-sm"
+                          >
+                              Anulează
+                          </button>
+                          <button 
+                            type="submit" 
+                            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm flex items-center gap-2 shadow-lg shadow-blue-100"
+                          >
+                              <Save size={16}/> Salvează Modificări
+                          </button>
+                      </div>
+                  </form>
+              </div>
+          </div>
       )}
 
       {validationUser && (

@@ -418,6 +418,13 @@ export default function App() {
       setUsers(prev => [...prev, userWithStatus]);
   };
 
+  const handleUpdateUser = (updatedUser: User) => {
+      setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+      if (currentUser && currentUser.id === updatedUser.id) {
+          setCurrentUser(updatedUser);
+      }
+  };
+
   const openTimesheetModal = (ts: Timesheet | null) => {
       setEditModalData({ isOpen: true, timesheet: ts });
   };
@@ -1138,7 +1145,17 @@ export default function App() {
                  <TimesheetList timesheets={teamTimesheets} isManagerView={true} onApproveBreak={handleApproveBreak} onEditTimesheet={openTimesheetModal}/>
              </div>
         )}
-        {activeTab === 'users' && <AdminUserManagement users={users} companies={companies} departments={departments} offices={offices} onValidateUser={handleValidateUser} onCreateUser={handleCreateUser}/>}
+        {activeTab === 'users' && (
+            <AdminUserManagement 
+                users={users} 
+                companies={companies} 
+                departments={departments} 
+                offices={offices} 
+                onValidateUser={handleValidateUser} 
+                onCreateUser={handleCreateUser}
+                onUpdateUser={handleUpdateUser} // Pass the handler
+            />
+        )}
         {activeTab === 'companies' && (
              <CompanyManagement 
                 companies={companies}
