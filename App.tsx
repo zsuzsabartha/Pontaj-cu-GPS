@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   MOCK_USERS, 
   INITIAL_TIMESHEETS, 
   INITIAL_LEAVE_REQUESTS, 
   INITIAL_CORRECTION_REQUESTS,
-  INITIAL_BREAK_CONFIGS,
+  INITIAL_BREAK_CONFIGS, 
   INITIAL_LEAVE_CONFIGS,
   MOCK_SCHEDULES,
   HOLIDAYS_RO,
@@ -128,8 +128,15 @@ export default function App() {
     parentId?: string; // For breaks (timesheetId)
   }>({ isOpen: false, type: null, itemId: null });
 
-  // Current active timesheet for the user
-  const [currentShift, setCurrentShift] = useState<Timesheet | null>(null);
+  // --- Derived State for Active Shift (Replaces useState/useEffect to prevent race conditions) ---
+  const currentShift = useMemo(() => {
+      if (!currentUser) return null;
+      // Sort by start time desc to ensure we get the latest if multiple exist (unlikely but safe)
+      // Filter for WORKING or ON_BREAK
+      return timesheets
+        .filter(t => t.userId === currentUser.id && t.status !== ShiftStatus.COMPLETED)
+        .sort((a,b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())[0] || null;
+  }, [currentUser, timesheets]);
 
   // Sync to ERP Mock State
   const [isErpSyncing, setIsErpSyncing] = useState(false);
@@ -280,16 +287,11 @@ export default function App() {
 
   // --- Effects ---
   useEffect(() => {
-    if (!currentUser) return;
-    const active = timesheets.find(t => t.userId === currentUser.id && t.status !== ShiftStatus.COMPLETED);
-    if (active) setCurrentShift(active);
-    else setCurrentShift(null);
-    
     // Auto-sync on login to ensure user exists
-    if(isOnline) {
+    if(currentUser && isOnline) {
         ensureBackendConsistency().catch(err => console.warn("Background sync warning:", err));
     }
-  }, [currentUser, timesheets, isOnline]); 
+  }, [currentUser, isOnline]); 
 
   // --- Timer Calculations ---
   const calculateShiftTiming = () => {
@@ -367,7 +369,7 @@ export default function App() {
 
   const handleLogout = () => {
       setCurrentUser(null);
-      setCurrentShift(null);
+      // Removed setCurrentShift(null) - automatically handled by useMemo
   };
 
   const initiateRejection = (type: 'LEAVE' | 'CORRECTION' | 'BREAK', itemId: string, parentId?: string) => {
@@ -620,8 +622,8 @@ export default function App() {
           }]
       };
 
+      // UPDATED: Simply update timesheets, useMemo handles currentShift
       setTimesheets(prev => [newTimesheet, ...prev]);
-      setCurrentShift(newTimesheet);
 
       if (isOnline) {
           try {
@@ -656,7 +658,7 @@ export default function App() {
       };
 
       setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedTs : t));
-      setCurrentShift(null);
+      // Removed setCurrentShift(null);
 
       if (isOnline) {
           try {
@@ -704,7 +706,7 @@ export default function App() {
           };
           
           setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedTs : t));
-          setCurrentShift(updatedTs);
+          // Removed setCurrentShift(updatedTs);
 
           if (isOnline) {
                try {
@@ -742,7 +744,7 @@ export default function App() {
           };
 
           setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedTs : t));
-          setCurrentShift(updatedTs);
+          // Removed setCurrentShift(updatedTs);
 
           if (isOnline) {
               try {
