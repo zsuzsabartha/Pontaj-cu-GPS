@@ -72,6 +72,10 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
         const now = Date.now();
         const start = new Date(shiftStartTime).getTime();
         
+        if (isNaN(start)) {
+            return; // Safety check
+        }
+        
         // --- Calculate Work Time (Elapsed) ---
         // Gross duration since start
         let grossDuration = now - start;
@@ -87,7 +91,12 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
             // Total elapsed up to break start = (BreakStart - ShiftStart)
             // Minus accumulated previous breaks
             const breakStart = new Date(activeBreakStartTime).getTime();
-            netWorkMs = (breakStart - start) - accumulatedBreakTime;
+            if (!isNaN(breakStart)) {
+                netWorkMs = (breakStart - start) - accumulatedBreakTime;
+            } else {
+                // Fallback if break start is invalid
+                netWorkMs = grossDuration - accumulatedBreakTime;
+            }
         } else if (currentStatus === ShiftStatus.COMPLETED) {
              // Handled by static display usually, but for now:
              netWorkMs = grossDuration - accumulatedBreakTime;
@@ -98,11 +107,15 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
         // --- Calculate Break Time (If Active) ---
         let currentBreakMs = 0;
         if (currentStatus === ShiftStatus.ON_BREAK && activeBreakStartTime) {
-            currentBreakMs = now - new Date(activeBreakStartTime).getTime();
+            const breakStart = new Date(activeBreakStartTime).getTime();
+            if(!isNaN(breakStart)) {
+                currentBreakMs = now - breakStart;
+            }
         }
 
         // --- Formatters ---
         const formatMs = (ms: number) => {
+            if (isNaN(ms)) return "00:00:00";
             const h = Math.floor(ms / 3600000);
             const m = Math.floor((ms % 3600000) / 60000);
             const s = Math.floor((ms % 60000) / 1000);

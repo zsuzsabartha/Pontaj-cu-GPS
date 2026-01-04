@@ -138,6 +138,27 @@ export default function App() {
         .sort((a,b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())[0] || null;
   }, [currentUser, timesheets]);
 
+  // --- Derived Shift Statistics (Accumulated Breaks, Active Break Start) ---
+  const shiftStats = useMemo(() => {
+      if (!currentShift) return { accumulatedPauseMs: 0, activeBreakStart: undefined };
+      
+      let accumulatedPauseMs = 0;
+      let activeBreakStart: string | undefined = undefined;
+
+      currentShift.breaks.forEach(b => {
+          if (b.endTime) {
+              const start = new Date(b.startTime).getTime();
+              const end = new Date(b.endTime).getTime();
+              accumulatedPauseMs += (end - start);
+          } else {
+              // Active break
+              activeBreakStart = b.startTime;
+          }
+      });
+
+      return { accumulatedPauseMs, activeBreakStart };
+  }, [currentShift]);
+
   // Sync to ERP Mock State
   const [isErpSyncing, setIsErpSyncing] = useState(false);
 
@@ -292,29 +313,6 @@ export default function App() {
         ensureBackendConsistency().catch(err => console.warn("Background sync warning:", err));
     }
   }, [currentUser, isOnline]); 
-
-  // --- Timer Calculations ---
-  const calculateShiftTiming = () => {
-      if (!currentShift) return { accumulatedPauseMs: 0, activeBreakStart: undefined };
-      
-      let accumulatedPauseMs = 0;
-      let activeBreakStart: string | undefined = undefined;
-
-      currentShift.breaks.forEach(b => {
-          if (b.endTime) {
-              const start = new Date(b.startTime).getTime();
-              const end = new Date(b.endTime).getTime();
-              accumulatedPauseMs += (end - start);
-          } else {
-              // Active break
-              activeBreakStart = b.startTime;
-          }
-      });
-
-      return { accumulatedPauseMs, activeBreakStart };
-  };
-
-  const { accumulatedPauseMs, activeBreakStart } = calculateShiftTiming();
 
   // --- Handlers ---
 
@@ -968,8 +966,8 @@ export default function App() {
                     holidays={holidays}
                     activeLeaveRequest={activeLeaveRequest}
                     shiftStartTime={currentShift?.startTime}
-                    accumulatedBreakTime={accumulatedPauseMs} // Pass accumulated break time
-                    activeBreakStartTime={activeBreakStart} // Pass active break start
+                    accumulatedBreakTime={shiftStats.accumulatedPauseMs} // Pass accumulated break time
+                    activeBreakStartTime={shiftStats.activeBreakStart} // Pass active break start
                     currentStatus={currentShift?.status || ShiftStatus.NOT_STARTED}
                     onClockIn={handleClockIn}
                     onClockOut={handleClockOut}
