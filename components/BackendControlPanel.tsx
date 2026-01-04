@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen } from 'lucide-react';
+import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen, Plug, Wifi } from 'lucide-react';
 
 const BackendControlPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'status' | 'sql' | 'bridge' | 'swagger'>('status');
@@ -9,12 +9,49 @@ const BackendControlPanel: React.FC = () => {
   
   // --- CONNECTION CONFIGURATION STATE ---
   const [dbConfig, setDbConfig] = useState({
-      server: 'localhost',
+      server: 'be-sql01',
       database: 'PontajSmart',
       user: 'PontajAppUser',
       password: 'StrongPass123!',
       port: '1433'
   });
+
+  // --- CONNECTION TEST STATE ---
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{type: 'success' | 'error', message: string} | null>(null);
+
+  const handleTestConnection = async () => {
+      setIsTesting(true);
+      setTestResult(null);
+      setConnectionStatus('CONNECTING');
+
+      try {
+          // Attempt to fetch the health endpoint of the local bridge
+          // Note: This assumes the user has started the bridge on the default port 3001
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout
+
+          const response = await fetch('http://localhost:3001/health', {
+              signal: controller.signal
+          });
+          clearTimeout(timeoutId);
+
+          const data = await response.json();
+
+          if (response.ok && data.status === 'ONLINE') {
+              setTestResult({ type: 'success', message: 'Succes! Bridge-ul este conectat la SQL Server.' });
+              setConnectionStatus('ONLINE');
+          } else {
+              setTestResult({ type: 'error', message: `Eroare DB: ${data.error || 'Serverul răspunde dar baza de date e inaccesibilă.'}` });
+              setConnectionStatus('OFFLINE');
+          }
+      } catch (error) {
+          setTestResult({ type: 'error', message: 'Nu s-a putut contacta Bridge-ul (localhost:3001). Verificați dacă ați rulat "node server.js".' });
+          setConnectionStatus('OFFLINE');
+      } finally {
+          setIsTesting(false);
+      }
+  };
 
   // --- ARTIFACT GENERATORS (MSSQL VERSION) ---
 
@@ -348,9 +385,11 @@ app.listen(PORT, () => {
 
           <div className="flex items-center gap-3">
              <span className={`flex items-center gap-1.5 text-[10px] px-3 py-1.5 rounded border font-bold uppercase transition-colors ${
-                 connectionStatus === 'ONLINE' ? 'bg-green-900/30 text-green-400 border-green-800' : 'bg-red-900/30 text-red-400 border-red-800'
+                 connectionStatus === 'ONLINE' ? 'bg-green-900/30 text-green-400 border-green-800' : 
+                 connectionStatus === 'CONNECTING' ? 'bg-yellow-900/30 text-yellow-400 border-yellow-800' :
+                 'bg-red-900/30 text-red-400 border-red-800'
              }`}>
-                 <span className={`w-2 h-2 rounded-full ${connectionStatus === 'ONLINE' ? 'bg-green-500 animate-pulse' : 'bg-current'}`}></span>
+                 <span className={`w-2 h-2 rounded-full ${connectionStatus === 'ONLINE' ? 'bg-green-500 animate-pulse' : connectionStatus === 'CONNECTING' ? 'bg-yellow-500 animate-bounce' : 'bg-current'}`}></span>
                  BRIDGE: {connectionStatus}
              </span>
           </div>
@@ -487,6 +526,27 @@ app.listen(PORT, () => {
                                     className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white focus:border-blue-500 outline-none placeholder-slate-600"
                                  />
                              </div>
+                             
+                             {/* Test Connection Button */}
+                             <button 
+                                onClick={handleTestConnection}
+                                disabled={isTesting}
+                                className={`w-full mt-2 py-2 rounded text-xs font-bold flex items-center justify-center gap-2 transition ${isTesting ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+                             >
+                                 {isTesting ? <RefreshCw className="animate-spin" size={12}/> : <Wifi size={12}/>}
+                                 {isTesting ? 'Se verifică...' : 'Verifică Conexiune'}
+                             </button>
+                             
+                             {/* Test Result Message */}
+                             {testResult && (
+                                 <div className={`mt-2 p-2 rounded text-[10px] border leading-tight ${
+                                     testResult.type === 'success' 
+                                        ? 'bg-green-900/30 text-green-400 border-green-800' 
+                                        : 'bg-red-900/30 text-red-400 border-red-800'
+                                 }`}>
+                                     {testResult.message}
+                                 </div>
+                             )}
                          </div>
                      </div>
 
