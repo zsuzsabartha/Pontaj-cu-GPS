@@ -80,10 +80,8 @@ function usePersistedState<T>(key: string, defaultValue: T) {
 
 export default function App() {
   // --- Auth State ---
-  // Users persist so login remains valid if we want, but usually session is separate. 
-  // Let's persist Users list to keep edits.
   const [users, setUsers] = usePersistedState<User[]>('pontaj_users', MOCK_USERS); 
-  const [currentUser, setCurrentUser] = useState<User | null>(null); // Session is volatile
+  const [currentUser, setCurrentUser] = useState<User | null>(null); 
 
   // --- Network State ---
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -145,7 +143,7 @@ export default function App() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Initial SQL Sync Attempt (Load from Backend if available)
+    // Initial SQL Sync Attempt
     fetchBackendConfig();
 
     const backendCheckInterval = setInterval(() => {
@@ -258,10 +256,32 @@ export default function App() {
     else setCurrentShift(null);
   }, [currentUser, timesheets]);
 
+  // --- Timer Calculations ---
+  const calculateShiftTiming = () => {
+      if (!currentShift) return { accumulatedPauseMs: 0, activeBreakStart: undefined };
+      
+      let accumulatedPauseMs = 0;
+      let activeBreakStart: string | undefined = undefined;
+
+      currentShift.breaks.forEach(b => {
+          if (b.endTime) {
+              const start = new Date(b.startTime).getTime();
+              const end = new Date(b.endTime).getTime();
+              accumulatedPauseMs += (end - start);
+          } else {
+              // Active break
+              activeBreakStart = b.startTime;
+          }
+      });
+
+      return { accumulatedPauseMs, activeBreakStart };
+  };
+
+  const { accumulatedPauseMs, activeBreakStart } = calculateShiftTiming();
+
   // --- Handlers ---
 
   const handleLogin = (user: User, isNewUser?: boolean) => {
-      // Refresh user data from latest state
       const freshUser = users.find(u => u.id === user.id) || user;
       
       if (freshUser.employmentStatus === 'SUSPENDED' || freshUser.employmentStatus === 'TERMINATED') {
@@ -271,7 +291,6 @@ export default function App() {
       
       const loggedUser = { ...freshUser, lastLoginDate: new Date().toISOString() };
       
-      // Update global list with login date
       if (isNewUser) {
           setUsers(prev => [...prev, loggedUser]);
       } else {
@@ -288,12 +307,6 @@ export default function App() {
       setCurrentShift(null);
   };
 
-  const handlePinResetRequest = (email: string) => {
-      // ... logic remains same
-  };
-
-  // --- Rejection Logic ---
-  
   const initiateRejection = (type: 'LEAVE' | 'CORRECTION' | 'BREAK', itemId: string, parentId?: string) => {
       setRejectionModal({ isOpen: true, type, itemId, parentId });
   };
@@ -318,18 +331,12 @@ export default function App() {
       setRejectionModal({ isOpen: false, type: null, itemId: null });
   };
 
-
-  // --- User Management Handlers ---
-
   const handleValidateUser = (userId: string) => {
       const newPin = Math.floor(1000 + Math.random() * 9000).toString();
-      
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, isValidated: true, pin: newPin, employmentStatus: 'ACTIVE' } : u));
-      
       if (currentUser && currentUser.id === userId) {
           setCurrentUser(prev => prev ? ({ ...prev, isValidated: true, pin: newPin, employmentStatus: 'ACTIVE' }) : null);
       }
-
       alert(`Utilizator validat! PIN generat: ${newPin}`);
   };
 
@@ -338,18 +345,14 @@ export default function App() {
       setUsers(prev => [...prev, userWithStatus]);
   };
 
-  // --- Timesheet Correction & Edit Logic ---
-
   const openTimesheetModal = (ts: Timesheet | null) => {
       setEditModalData({ isOpen: true, timesheet: ts });
   };
 
   const handleTimesheetSave = async (data: { tsId?: string, date: string, start: string, end: string, reason: string, scheduleId?: string }) => {
       if (!currentUser) return;
-      
       const hasRole = (role: Role) => currentUser.roles.includes(role);
       const isManagerOrAdmin = hasRole(Role.MANAGER) || hasRole(Role.ADMIN);
-      const isDirectEdit = isManagerOrAdmin;
       
       const targetTs = data.tsId ? timesheets.find(t => t.id === data.tsId) : null;
       let scheduleName = targetTs?.detectedScheduleName;
@@ -358,8 +361,7 @@ export default function App() {
           if(sch) scheduleName = sch.name;
       }
 
-      if (isDirectEdit) {
-          // MANAGER ACTION
+      if (isManagerOrAdmin) {
           if (targetTs) {
               const logEntry: TimesheetLog = {
                   id: `log-${Date.now()}`,
@@ -394,60 +396,38 @@ export default function App() {
           }
           alert("Salvat cu succes!");
       } else {
-          // EMPLOYEE ACTION
           const reqId = `cr-${Date.now()}`;
-          let newRequest: CorrectionRequest;
-
-          if (targetTs) {
-             newRequest = {
-                  id: reqId,
-                  timesheetId: targetTs.id,
-                  userId: currentUser.id,
-                  requestedStartTime: data.start,
-                  requestedEndTime: data.end,
-                  reason: data.reason,
-                  status: 'PENDING'
-             };
-          } else {
-             const existingTs = timesheets.find(t => t.userId === currentUser.id && t.date === data.date);
-             if (existingTs) {
-                 alert(`Există deja un pontaj pentru ${data.date}.`);
-                 return;
-             }
-             newRequest = {
-                  id: reqId,
-                  requestedDate: data.date,
-                  userId: currentUser.id,
-                  requestedStartTime: data.start,
-                  requestedEndTime: data.end,
-                  reason: data.reason,
-                  status: 'PENDING'
-             };
-          }
+          const newRequest: CorrectionRequest = targetTs ? {
+              id: reqId,
+              timesheetId: targetTs.id,
+              userId: currentUser.id,
+              requestedStartTime: data.start,
+              requestedEndTime: data.end,
+              reason: data.reason,
+              status: 'PENDING'
+          } : {
+              id: reqId,
+              requestedDate: data.date,
+              userId: currentUser.id,
+              requestedStartTime: data.start,
+              requestedEndTime: data.end,
+              reason: data.reason,
+              status: 'PENDING'
+          };
           
           setCorrectionRequests(prev => [...prev, newRequest]);
           
-          // Send to SQL
           if (isOnline && isBackendOnline) {
               try {
                   await fetch(`${API_CONFIG.BASE_URL}/corrections`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ 
-                          id: newRequest.id,
-                          userId: newRequest.userId,
-                          timesheetId: newRequest.timesheetId,
-                          requestedDate: newRequest.requestedDate,
-                          requestedStart: newRequest.requestedStartTime,
-                          requestedEnd: newRequest.requestedEndTime,
-                          reason: newRequest.reason
-                      })
+                      body: JSON.stringify({ ...newRequest, tsId: newRequest.timesheetId }) // flatten for simplified API payload logic
                   });
               } catch (e) {
                   console.error("Failed to sync correction request", e);
               }
           }
-
           alert("Solicitare trimisă!");
       }
   };
@@ -489,12 +469,10 @@ export default function App() {
           };
           setTimesheets(prev => [newTs, ...prev]);
       }
-
       setCorrectionRequests(prev => prev.map(r => r.id === reqId ? { ...r, status: 'APPROVED' } : r));
   };
 
-
-  // --- Clock/Leaves Handlers ---
+  // Clock In/Out & Breaks
   const handleClockIn = async (location: Coordinates, office: Office | null, dist: number) => {
       const now = new Date();
       const dateString = now.toISOString().split('T')[0];
@@ -518,7 +496,6 @@ export default function App() {
       if (!isOnline) {
           saveOfflineAction('CLOCK_IN', { startTime: now.toISOString(), location, officeId: office?.id }, currentUser!.id);
       } else if (isBackendOnline) {
-          // Sync Clock In
           try {
               await fetch(`${API_CONFIG.BASE_URL}/clock-in`, {
                   method: 'POST',
@@ -527,7 +504,6 @@ export default function App() {
               });
           } catch(e) { console.error("Clock-in sync failed", e); }
       }
-      
       setTimesheets(prev => [newShift, ...prev]);
   };
 
@@ -558,17 +534,20 @@ export default function App() {
               });
           } catch(e) { console.error("Clock-out sync failed", e); }
       }
-
       setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedShift : t));
   };
 
   const handleToggleBreak = async (config?: BreakConfig, location?: Coordinates, dist?: number) => {
-      if(!currentShift) return;
+      if(!currentShift || !currentUser) return;
       const now = new Date().toISOString();
+      
+      // Look up Department Manager for notifications
+      const userDept = departments.find(d => d.id === currentUser.departmentId);
+      const managerId = userDept?.managerId;
 
       if (currentShift.status === ShiftStatus.WORKING) {
           if (!config) return; 
-
+          
           const newBreak: Break = {
               id: `br-${Date.now()}`,
               typeId: config.id,
@@ -578,16 +557,21 @@ export default function App() {
               startLocation: location,
               startDistanceToOffice: dist
           };
-
+          
           const updatedShift: Timesheet = {
               ...currentShift,
               status: ShiftStatus.ON_BREAK,
               breaks: [...currentShift.breaks, newBreak],
               syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC'
           };
+          
+          // Notify Manager
+          if (managerId && managerId !== currentUser.id) {
+              addNotification(managerId, "Pauză Inițiată", `${currentUser.name} a început o pauză (${config.name}). Locație: ${dist}m de sediu.`, "INFO");
+          }
 
           if (!isOnline) {
-              saveOfflineAction('START_BREAK', { breakType: config.id, startTime: now }, currentUser!.id);
+              saveOfflineAction('START_BREAK', { breakType: config.id, startTime: now }, currentUser.id);
           } else if (isBackendOnline) {
               try {
                   await fetch(`${API_CONFIG.BASE_URL}/breaks/start`, {
@@ -597,32 +581,35 @@ export default function App() {
                   });
               } catch(e) { console.error("Break start sync failed", e); }
           }
-
           setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedShift : t));
 
       } else if (currentShift.status === ShiftStatus.ON_BREAK) {
           const activeBreakIndex = currentShift.breaks.findIndex(b => !b.endTime);
-          
           if (activeBreakIndex !== -1) {
               const updatedBreaks = [...currentShift.breaks];
               const activeBreak = updatedBreaks[activeBreakIndex];
-              
               updatedBreaks[activeBreakIndex] = {
                   ...activeBreak,
                   endTime: now,
                   endLocation: location,
                   endDistanceToOffice: dist
               };
-
               const updatedShift: Timesheet = {
                   ...currentShift,
                   status: ShiftStatus.WORKING,
                   breaks: updatedBreaks,
                   syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC'
               };
+              
+              // Notify Manager
+              if (managerId && managerId !== currentUser.id) {
+                  const durationMs = new Date(now).getTime() - new Date(activeBreak.startTime).getTime();
+                  const mins = Math.round(durationMs / 60000);
+                  addNotification(managerId, "Pauză Încheiată", `${currentUser.name} a revenit din pauza ${activeBreak.typeName} (${mins} min).`, "INFO");
+              }
 
               if (!isOnline) {
-                  saveOfflineAction('END_BREAK', { endTime: now }, currentUser!.id);
+                  saveOfflineAction('END_BREAK', { endTime: now }, currentUser.id);
               } else if (isBackendOnline) {
                   try {
                       await fetch(`${API_CONFIG.BASE_URL}/breaks/end`, {
@@ -632,7 +619,6 @@ export default function App() {
                       });
                   } catch(e) { console.error("Break end sync failed", e); }
               }
-
               setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedShift : t));
           }
       }
@@ -646,11 +632,8 @@ export default function App() {
   }
 
   const handleLeaveSubmit = async (req: Omit<LeaveRequest, 'id' | 'status' | 'userId'>) => {
-      // 1. Optimistic Local Update
       const newReq: LeaveRequest = { ...req, id: `lr-${Date.now()}`, userId: currentUser!.id, status: LeaveStatus.PENDING };
       setLeaves(prev => [newReq, ...prev]);
-
-      // 2. Sync to SQL if Online
       if (isOnline && isBackendOnline) {
           try {
               await fetch(`${API_CONFIG.BASE_URL}/leaves`, {
@@ -658,11 +641,7 @@ export default function App() {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ ...newReq })
               });
-              console.log("Leave Request synced to SQL.");
-          } catch (e) {
-              console.error("Failed to sync leave request", e);
-              // In a real app, we'd mark this for offline sync later
-          }
+          } catch (e) { console.error("Failed to sync leave request", e); }
       }
   };
 
@@ -681,30 +660,20 @@ export default function App() {
       }
   };
 
-  // CRUD Handlers
   const handleAddOffice = (office: Office) => setOffices(prev => [...prev, office]);
   const handleUpdateOffice = (office: Office) => setOffices(prev => prev.map(o => o.id === office.id ? office : o));
   const handleDeleteOffice = (id: string) => setOffices(prev => prev.filter(o => o.id !== id));
-  
   const handleUpdateDepartments = (updatedDepartments: Department[]) => setDepartments(updatedDepartments);
-  
-  const handleAddCompany = (company: Company) => {
-      setCompanies(prev => [...prev, company]);
-  };
-  
-  const handleUpdateCompany = (company: Company) => {
-    setCompanies(prev => prev.map(c => c.id === company.id ? company : c));
-  };
-  
-  const handleDeleteCompany = (id: string) => {
-      setCompanies(prev => prev.filter(c => c.id !== id));
-  };
+  const handleAddCompany = (company: Company) => { setCompanies(prev => [...prev, company]); };
+  const handleUpdateCompany = (company: Company) => { setCompanies(prev => prev.map(c => c.id === company.id ? company : c)); };
+  const handleDeleteCompany = (id: string) => { setCompanies(prev => prev.filter(c => c.id !== id)); };
 
-  // --- Render Helpers ---
+  // --- Render ---
 
   if (!currentUser) return <LoginScreen users={users} companies={companies} onLogin={handleLogin} />;
   
   if (!currentUser.isValidated) {
+      // Pending Validation Screen (Code omitted for brevity, same as previous)
       return (
           <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
               <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center space-y-6">
@@ -713,20 +682,11 @@ export default function App() {
                   </div>
                   <div>
                       <h2 className="text-2xl font-bold text-gray-800 mb-2">Cont în Așteptare</h2>
-                      <p className="text-gray-500">
-                          Contul <strong>{currentUser.name}</strong> a fost creat cu succes, dar necesită validarea unui administrator înainte de a putea accesa aplicația.
-                      </p>
-                  </div>
-                  <div className="bg-blue-50 p-4 rounded-lg text-sm text-blue-800 border border-blue-100">
-                      <p className="font-semibold mb-1">Status: <span className="text-orange-600">PENDING APPROVAL</span></p>
-                      <p>Vă rugăm să contactați departamentul HR sau un Manager pentru activare.</p>
+                      <p className="text-gray-500">Contul <strong>{currentUser.name}</strong> a fost creat cu succes, dar necesită validarea unui administrator.</p>
                   </div>
                   <div className="pt-2 flex flex-col gap-3">
                       <button onClick={handleLogout} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold transition flex items-center justify-center gap-2">
                           <LogOut size={18}/> Înapoi la Login
-                      </button>
-                      <button onClick={() => handleValidateUser(currentUser.id)} className="text-xs text-blue-600 hover:text-blue-800 hover:underline mt-2 flex items-center justify-center gap-1">
-                          <ShieldCheck size={12}/> (Demo) Validează Rapid Contul
                       </button>
                   </div>
               </div>
@@ -740,13 +700,8 @@ export default function App() {
   const pendingCorrections = correctionRequests.filter(r => r.status === 'PENDING');
   const myNotifications = notifications.filter(n => n.userId === currentUser.id && !n.isRead);
 
-  // Active Leave Logic
   const todayStr = new Date().toISOString().split('T')[0];
-  const activeLeaveRequest = leaves.find(l => 
-      l.userId === currentUser.id && 
-      l.startDate <= todayStr && 
-      l.endDate >= todayStr
-  );
+  const activeLeaveRequest = leaves.find(l => l.userId === currentUser.id && l.startDate <= todayStr && l.endDate >= todayStr);
 
   const hasRole = (role: Role) => currentUser.roles.includes(role);
   const canViewTeam = hasRole(Role.MANAGER) || hasRole(Role.HR) || hasRole(Role.ADMIN);
@@ -760,7 +715,6 @@ export default function App() {
       : "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-50 text-gray-600";
   }
   
-  // Offices are now global, accessible by everyone
   const userOffices = offices;
   const userCompany = companies.find(c => c.id === currentUser.companyId);
 
@@ -791,7 +745,6 @@ export default function App() {
             <span className="font-bold text-xl tracking-tight text-gray-900">PontajGroup</span>
          </div>
          <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-            <BirthdayWidget users={users} currentUser={currentUser} />
             <button onClick={() => setActiveTab('notifications')} className={getTabClass('notifications')}>
               <Bell size={18}/> Notificări {myNotifications.length > 0 && <span className="ml-auto bg-red-500 text-white text-xs rounded-full px-2">{myNotifications.length}</span>}
             </button>
@@ -810,6 +763,7 @@ export default function App() {
          </nav>
          
          <div className="p-4 border-t border-gray-200 bg-gray-50/50">
+            <BirthdayWidget users={users} currentUser={currentUser} />
             <div className="flex items-center gap-3 mb-4">
                 <img src={currentUser.avatarUrl} alt="" className="w-10 h-10 rounded-full bg-white border border-gray-200 object-cover"/>
                 <div className="overflow-hidden">
@@ -842,6 +796,9 @@ export default function App() {
                     breakConfigs={breakConfigs}
                     holidays={holidays}
                     activeLeaveRequest={activeLeaveRequest}
+                    shiftStartTime={currentShift?.startTime}
+                    accumulatedBreakTime={accumulatedPauseMs} // Pass accumulated break time
+                    activeBreakStartTime={activeBreakStart} // Pass active break start
                     currentStatus={currentShift?.status || ShiftStatus.NOT_STARTED}
                     onClockIn={handleClockIn}
                     onClockOut={handleClockOut}

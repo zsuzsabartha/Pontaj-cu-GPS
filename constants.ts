@@ -92,7 +92,8 @@ export const MOCK_USERS: User[] = [
     departmentId: 'd1',
     email: 'alex.popescu@techgroup.ro',
     avatarUrl: 'https://picsum.photos/100/100',
-    authType: 'MICROSOFT',
+    authType: 'PIN', // Changed for easier testing
+    pin: '1111',
     isValidated: true,
     requiresGPS: true,
     allowedScheduleIds: ['sch1'],
@@ -154,7 +155,8 @@ export const MOCK_USERS: User[] = [
     departmentId: 'd2',
     email: 'ioana.hr@techgroup.ro',
     avatarUrl: 'https://picsum.photos/103/103',
-    authType: 'MICROSOFT',
+    authType: 'PIN', // Changed for easier testing
+    pin: '4444',
     isValidated: true,
     requiresGPS: true,
     allowedScheduleIds: ['sch1'],
@@ -173,7 +175,8 @@ export const MOCK_USERS: User[] = [
     companyId: 'c1',
     email: 'admin@techgroup.ro',
     avatarUrl: 'https://picsum.photos/104/104',
-    authType: 'MICROSOFT',
+    authType: 'PIN', // Changed for easier testing
+    pin: '9999',
     isValidated: true,
     requiresGPS: false,
     allowedScheduleIds: ['sch1', 'sch2', 'sch3'],

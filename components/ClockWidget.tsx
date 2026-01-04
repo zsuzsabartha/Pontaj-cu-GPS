@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, User as UserIcon, Utensils, Cigarette, Home, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff } from 'lucide-react';
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
@@ -10,18 +11,27 @@ interface ClockWidgetProps {
   currentStatus: ShiftStatus;
   breakConfigs: BreakConfig[];
   holidays: Holiday[]; 
-  activeLeaveRequest?: LeaveRequest; // New prop
+  activeLeaveRequest?: LeaveRequest;
+  shiftStartTime?: string; 
+  accumulatedBreakTime?: number; // Total ms of completed breaks
+  activeBreakStartTime?: string; // If currently on break
   onClockIn: (location: Coordinates, office: Office | null, dist: number) => void;
   onClockOut: (location: Coordinates) => void;
   onToggleBreak: (breakConfig?: BreakConfig, location?: Coordinates, dist?: number) => void;
 }
 
-const ClockWidget: React.FC<ClockWidgetProps> = ({ user, companyName, offices, currentStatus, breakConfigs, holidays, activeLeaveRequest, onClockIn, onClockOut, onToggleBreak }) => {
+const ClockWidget: React.FC<ClockWidgetProps> = ({ 
+    user, companyName, offices, currentStatus, breakConfigs, holidays, activeLeaveRequest, 
+    shiftStartTime, accumulatedBreakTime = 0, activeBreakStartTime, 
+    onClockIn, onClockOut, onToggleBreak 
+}) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showMockOption, setShowMockOption] = useState(false);
+  
   const [elapsedTime, setElapsedTime] = useState<string>("00:00:00");
-  const [startTime, setStartTime] = useState<number | null>(null);
+  const [breakTime, setBreakTime] = useState<string>("00:00:00");
+  
   const [showBreakSelector, setShowBreakSelector] = useState(false);
   
   // States for confirmation UI
@@ -50,31 +60,73 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({ user, companyName, offices, c
       statusColor = "bg-blue-100 text-blue-700 border-blue-200";
   }
 
+  // Timer Logic
   useEffect(() => {
-    let interval: any;
-    if (currentStatus === ShiftStatus.WORKING && startTime) {
-      interval = setInterval(() => {
+    const updateTime = () => {
+        if (!shiftStartTime || currentStatus === ShiftStatus.NOT_STARTED) {
+            setElapsedTime("00:00:00");
+            setBreakTime("00:00:00");
+            return;
+        }
+        
         const now = Date.now();
-        const diff = now - startTime;
-        const hours = Math.floor(diff / 3600000);
-        const minutes = Math.floor((diff % 3600000) / 60000);
-        const seconds = Math.floor((diff % 60000) / 1000);
-        setElapsedTime(
-          `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-        );
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [currentStatus, startTime]);
+        const start = new Date(shiftStartTime).getTime();
+        
+        // --- Calculate Work Time (Elapsed) ---
+        // Gross duration since start
+        let grossDuration = now - start;
+        if (grossDuration < 0) grossDuration = 0;
 
-  useEffect(() => {
-    if (currentStatus === ShiftStatus.WORKING && !startTime) {
-      setStartTime(Date.now());
-    } else if (currentStatus === ShiftStatus.NOT_STARTED) {
-        setStartTime(null);
-        setElapsedTime("00:00:00");
+        // Net Work Time Calculation
+        let netWorkMs = 0;
+        if (currentStatus === ShiftStatus.WORKING) {
+            // If working, subtract completed breaks from total time
+            netWorkMs = grossDuration - accumulatedBreakTime;
+        } else if (currentStatus === ShiftStatus.ON_BREAK && activeBreakStartTime) {
+            // If on break, work time is frozen at the moment break started
+            // Total elapsed up to break start = (BreakStart - ShiftStart)
+            // Minus accumulated previous breaks
+            const breakStart = new Date(activeBreakStartTime).getTime();
+            netWorkMs = (breakStart - start) - accumulatedBreakTime;
+        } else if (currentStatus === ShiftStatus.COMPLETED) {
+             // Handled by static display usually, but for now:
+             netWorkMs = grossDuration - accumulatedBreakTime;
+        }
+
+        if (netWorkMs < 0) netWorkMs = 0;
+
+        // --- Calculate Break Time (If Active) ---
+        let currentBreakMs = 0;
+        if (currentStatus === ShiftStatus.ON_BREAK && activeBreakStartTime) {
+            currentBreakMs = now - new Date(activeBreakStartTime).getTime();
+        }
+
+        // --- Formatters ---
+        const formatMs = (ms: number) => {
+            const h = Math.floor(ms / 3600000);
+            const m = Math.floor((ms % 3600000) / 60000);
+            const s = Math.floor((ms % 60000) / 1000);
+            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        };
+
+        setElapsedTime(formatMs(netWorkMs));
+        if (currentStatus === ShiftStatus.ON_BREAK) {
+            setBreakTime(formatMs(currentBreakMs));
+        } else {
+            setBreakTime("00:00:00");
+        }
+    };
+
+    // Initial update
+    updateTime();
+
+    let interval: any;
+    if (currentStatus === ShiftStatus.WORKING || currentStatus === ShiftStatus.ON_BREAK) {
+      interval = setInterval(updateTime, 1000);
     }
-  }, [currentStatus, startTime]);
+    
+    return () => clearInterval(interval);
+  }, [currentStatus, shiftStartTime, accumulatedBreakTime, activeBreakStartTime]);
 
   const handleClockIn = async () => {
     setLoading(true);
@@ -256,9 +308,20 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({ user, companyName, offices, c
         <div className="flex items-center gap-2 text-gray-400 text-xs font-medium uppercase tracking-widest mb-1">
             <Clock size={12}/> Timp Lucrat
         </div>
-        <div className="text-5xl font-mono font-semibold text-gray-700 tracking-wider mb-8">
+        <div className={`text-5xl font-mono font-semibold tracking-wider mb-2 ${currentStatus === ShiftStatus.ON_BREAK ? 'text-gray-400' : 'text-gray-700'}`}>
           {elapsedTime}
         </div>
+        
+        {/* Pause Duration Indicator */}
+        {currentStatus === ShiftStatus.ON_BREAK && (
+            <div className="mb-6 flex items-center gap-2 text-orange-600 bg-orange-50 px-3 py-1 rounded-full animate-pulse border border-orange-100">
+                <Coffee size={14}/>
+                <span className="text-xs font-bold uppercase">Durată Pauză:</span>
+                <span className="font-mono font-bold text-sm">{breakTime}</span>
+            </div>
+        )}
+        {/* Spacer if not on break to keep layout stable */}
+        {currentStatus !== ShiftStatus.ON_BREAK && <div className="mb-8"></div>}
         
         {/* Remote Work Toggle */}
         {currentStatus === ShiftStatus.NOT_STARTED && (

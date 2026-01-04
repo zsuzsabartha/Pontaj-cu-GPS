@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Timesheet, ShiftStatus, BreakStatus } from '../types';
 import { Clock, MapPin, Calendar, Check, X, Coffee, Briefcase, User as UserIcon, Edit2, History, AlertCircle, CloudOff, Info, CheckSquare, CalendarClock } from 'lucide-react';
@@ -128,21 +127,35 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, isManagerView
                     <p className="text-xs font-semibold text-gray-500 mb-2">Pauze înregistrate:</p>
                     <div className="space-y-2">
                         {ts.breaks.map((br) => (
-                            <div key={br.id} className="flex justify-between items-center text-xs bg-gray-50 p-2 rounded border border-gray-100">
-                                <div className="flex items-center gap-2">
-                                    <Coffee size={14} className="text-gray-500"/>
-                                    <span className="font-medium text-gray-700">{br.typeName}</span>
-                                    <span className="text-gray-400">
-                                        {new Date(br.startTime).toLocaleTimeString('ro-RO', {hour:'2-digit', minute:'2-digit'})} 
-                                        {br.endTime ? ` - ${new Date(br.endTime).toLocaleTimeString('ro-RO', {hour:'2-digit', minute:'2-digit'})}` : '...'}
-                                    </span>
-                                    {(br.startDistanceToOffice !== undefined || br.endDistanceToOffice !== undefined) && (
-                                        <span className="ml-2 text-[10px] text-gray-400 flex items-center gap-0.5">
-                                            <MapPin size={10}/> Dist: {br.startDistanceToOffice}m / {br.endDistanceToOffice ?? '?'}m
+                            <div key={br.id} className="flex flex-col sm:flex-row justify-between sm:items-center text-xs bg-gray-50 p-2 rounded border border-gray-100 gap-2">
+                                <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-2">
+                                        <Coffee size={14} className="text-gray-500"/>
+                                        <span className="font-medium text-gray-700">{br.typeName}</span>
+                                        <span className="text-gray-400 font-mono">
+                                            {new Date(br.startTime).toLocaleTimeString('ro-RO', {hour:'2-digit', minute:'2-digit'})} 
+                                            {br.endTime ? ` - ${new Date(br.endTime).toLocaleTimeString('ro-RO', {hour:'2-digit', minute:'2-digit'})}` : '...'}
                                         </span>
+                                    </div>
+                                    
+                                    {/* Detailed Location Info for Manager */}
+                                    {(br.startLocation || br.endLocation) && (
+                                        <div className="text-[10px] text-gray-400 pl-6 flex flex-col gap-0.5">
+                                            {br.startLocation && (
+                                                <span className="flex items-center gap-1">
+                                                    Start: {br.startLocation.latitude.toFixed(4)}, {br.startLocation.longitude.toFixed(4)} ({br.startDistanceToOffice ?? '?'}m)
+                                                </span>
+                                            )}
+                                            {br.endLocation && (
+                                                <span className="flex items-center gap-1">
+                                                    End: {br.endLocation.latitude.toFixed(4)}, {br.endLocation.longitude.toFixed(4)} ({br.endDistanceToOffice ?? '?'}m)
+                                                </span>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
-                                <div className="flex items-center gap-2">
+
+                                <div className="flex items-center gap-2 self-end sm:self-auto">
                                     {br.status === BreakStatus.REJECTED && br.managerNote && (
                                          <div className="group/tooltip relative">
                                              <Info size={14} className="text-red-400 cursor-help" />
@@ -151,20 +164,21 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, isManagerView
                                              </div>
                                          </div>
                                     )}
-                                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                                         br.status === BreakStatus.APPROVED ? 'bg-green-100 text-green-700' :
                                         br.status === BreakStatus.REJECTED ? 'bg-red-100 text-red-700' :
-                                        'bg-yellow-100 text-yellow-700'
+                                        'bg-orange-100 text-orange-700'
                                     }`}>
-                                        {br.status === BreakStatus.APPROVED ? 'Luat la cunoștință' : br.status}
+                                        {br.status === BreakStatus.APPROVED ? 'Confirmat' : br.status === BreakStatus.PENDING ? 'În așteptare' : 'Respins'}
                                     </span>
+                                    
                                     {isManagerView && br.status === BreakStatus.PENDING && onApproveBreak && (
                                         <button 
                                             onClick={() => onApproveBreak(ts.id, br.id, BreakStatus.APPROVED)} 
-                                            title="Confirmare luare la cunoștință"
-                                            className="flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-600 px-2 py-1 rounded text-[10px] font-medium transition border border-blue-200"
+                                            title="Confirmă luarea la cunoștință"
+                                            className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold transition shadow-sm animate-pulse"
                                         >
-                                            <CheckSquare size={12}/> Confirmă
+                                            <CheckSquare size={12}/> Luare la cunoștință
                                         </button>
                                     )}
                                 </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen, Plug, Wifi, FileText, Clipboard, Lock, Package } from 'lucide-react';
+import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen, Plug, Wifi, FileText, Clipboard, Lock, Package, UploadCloud } from 'lucide-react';
+import { API_CONFIG, MOCK_COMPANIES, MOCK_DEPARTMENTS, MOCK_OFFICES, MOCK_USERS, INITIAL_BREAK_CONFIGS, INITIAL_LEAVE_CONFIGS, HOLIDAYS_RO } from '../constants';
 
 const BackendControlPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'status' | 'sql' | 'bridge' | 'swagger'>('status');
@@ -8,6 +9,7 @@ const BackendControlPanel: React.FC = () => {
   const [bridgeFile, setBridgeFile] = useState<'server' | 'db' | 'package' | 'env' | 'readme'>('server');
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
   
   // --- CONNECTION CONFIGURATION STATE ---
   const [dbConfig, setDbConfig] = useState({
@@ -74,6 +76,51 @@ const BackendControlPanel: React.FC = () => {
           setConnectionStatus('OFFLINE');
       } finally {
           setIsTesting(false);
+      }
+  };
+
+  // --- SEEDING LOGIC ---
+  const handlePushToSQL = async () => {
+      if(!confirm("Această acțiune va trimite datele LOCALE (Companii, Departamente, Useri) către SQL Server. Continuați?")) return;
+      
+      setIsSeeding(true);
+      try {
+          // 1. Configs
+          await fetch(`${API_CONFIG.BASE_URL}/config/breaks`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(INITIAL_BREAK_CONFIGS) });
+          await fetch(`${API_CONFIG.BASE_URL}/config/leaves`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(INITIAL_LEAVE_CONFIGS) });
+          await fetch(`${API_CONFIG.BASE_URL}/config/holidays`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(HOLIDAYS_RO) });
+
+          // 2. Structural (Order Matters for FK!)
+          // Companies first
+          await fetch(`${API_CONFIG.BASE_URL}/config/companies`, { 
+              method: 'POST', headers: {'Content-Type': 'application/json'}, 
+              body: JSON.stringify(JSON.parse(localStorage.getItem('pontaj_companies') || JSON.stringify(MOCK_COMPANIES))) 
+          });
+          
+          // Offices (Global)
+          await fetch(`${API_CONFIG.BASE_URL}/config/offices`, { 
+              method: 'POST', headers: {'Content-Type': 'application/json'}, 
+              body: JSON.stringify(JSON.parse(localStorage.getItem('pontaj_offices') || JSON.stringify(MOCK_OFFICES))) 
+          });
+
+          // Departments (Depend on Companies)
+          await fetch(`${API_CONFIG.BASE_URL}/config/departments`, { 
+              method: 'POST', headers: {'Content-Type': 'application/json'}, 
+              body: JSON.stringify(JSON.parse(localStorage.getItem('pontaj_departments') || JSON.stringify(MOCK_DEPARTMENTS))) 
+          });
+
+          // Users (Depend on Comp, Dept, Offices)
+          await fetch(`${API_CONFIG.BASE_URL}/config/users`, { 
+              method: 'POST', headers: {'Content-Type': 'application/json'}, 
+              body: JSON.stringify(JSON.parse(localStorage.getItem('pontaj_users') || JSON.stringify(MOCK_USERS))) 
+          });
+
+          alert("Sincronizare completă! Datele au fost salvate în SQL.");
+      } catch (e) {
+          alert("Eroare la sincronizare. Verificați consola și conexiunea Bridge.");
+          console.error(e);
+      } finally {
+          setIsSeeding(false);
       }
   };
 
@@ -146,6 +193,29 @@ CREATE TABLE offices (
     longitude DECIMAL(11, 8) NOT NULL,
     radius_meters INT DEFAULT 100
 );
+
+-- MIGRATION: Remove old company_id from offices if it exists
+IF EXISTS (SELECT * FROM sys.columns WHERE Name = N'company_id' AND Object_ID = Object_ID(N'offices'))
+BEGIN
+    -- Drop constraint if exists (Generic approach for unnamed constraints is complex in T-SQL, assuming named or just dropping column)
+    DECLARE @ConstraintName nvarchar(200)
+    SELECT @ConstraintName = Name FROM SYS.DEFAULT_CONSTRAINTS WHERE PARENT_OBJECT_ID = OBJECT_ID('offices') AND PARENT_COLUMN_ID = (SELECT column_id FROM sys.columns WHERE NAME = N'company_id' AND object_id = OBJECT_ID(N'offices'))
+    IF @ConstraintName IS NOT NULL
+    EXEC('ALTER TABLE offices DROP CONSTRAINT ' + @ConstraintName)
+    
+    -- Drop FK constraint
+    SELECT @ConstraintName = obj.name
+    FROM sys.foreign_key_columns fkc
+    INNER JOIN sys.objects obj ON obj.object_id = fkc.constraint_object_id
+    WHERE fkc.parent_object_id = OBJECT_ID('offices') AND fkc.parent_column_id = (SELECT column_id FROM sys.columns WHERE NAME = N'company_id' AND object_id = OBJECT_ID(N'offices'))
+    
+    IF @ConstraintName IS NOT NULL
+    EXEC('ALTER TABLE offices DROP CONSTRAINT ' + @ConstraintName)
+
+    ALTER TABLE offices DROP COLUMN company_id;
+    PRINT 'Migrated offices table: Removed company_id';
+END
+GO
 
 -- Users
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='users' AND xtype='U')
@@ -845,6 +915,27 @@ app.listen(PORT, async () => {
                              Configure your server details in the "Bridge Source" tab, then download the artifacts.
                          </p>
                      </div>
+                 </div>
+                 
+                 {/* SEED DATA BUTTON */}
+                 <div className="bg-emerald-900/20 border border-emerald-800 rounded-lg p-4 flex flex-col gap-3">
+                     <div className="flex gap-4 items-start">
+                        <UploadCloud className="text-emerald-400 shrink-0" size={20}/>
+                        <div>
+                            <h4 className="text-white font-bold text-sm">Initial Data Seeding (Resolve Dependencies)</h4>
+                            <p className="text-slate-400 text-xs mt-1">
+                                Use this if you see <code>FOREIGN KEY</code> errors. This will push all Companies, Offices, Departments, and Users from your local defaults to the SQL Server in the correct order.
+                            </p>
+                        </div>
+                     </div>
+                     <button 
+                        onClick={handlePushToSQL}
+                        disabled={isSeeding}
+                        className="self-end bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-900/50"
+                     >
+                        {isSeeding ? <RefreshCw className="animate-spin" size={14}/> : <UploadCloud size={14}/>}
+                        {isSeeding ? 'Seeding...' : 'Push Local Data to SQL'}
+                     </button>
                  </div>
              </div>
           )}
