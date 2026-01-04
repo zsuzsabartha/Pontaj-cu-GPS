@@ -438,7 +438,7 @@ app.get('/health', async (req, res) => {
 // --- CLOCK IN/OUT ENDPOINTS ---
 
 app.post('/api/v1/clock-in', async (req, res) => {
-  const { userId, location, officeId } = req.body;
+  const { id, userId, location, officeId } = req.body;
   try {
     const pool = await connectDB();
     const query = \`
@@ -446,7 +446,9 @@ app.post('/api/v1/clock-in', async (req, res) => {
       OUTPUT INSERTED.*
       VALUES (@id, @userId, GETDATE(), CAST(GETDATE() AS DATE), @lat, @long, @officeId, 'WORKING')
     \`;
-    const tsId = \`ts-\${Date.now()}\`;
+    // Use client ID if provided, otherwise generate one (fallback)
+    const tsId = id || \`ts-\${Date.now()}\`;
+    
     const result = await pool.request()
         .input('id', sql.NVarChar, tsId)
         .input('userId', sql.NVarChar, userId)

@@ -528,7 +528,8 @@ export default function App() {
               await fetch(`${API_CONFIG.BASE_URL}/clock-in`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ userId: currentUser!.id, location, officeId: office?.id })
+                  // UPDATED: Sending client-generated ID to prevent FK conflict
+                  body: JSON.stringify({ id: newShift.id, userId: currentUser!.id, location, officeId: office?.id })
               });
           } catch(e) { console.error("Clock-in sync failed", e); }
       }
@@ -732,6 +733,13 @@ export default function App() {
       );
   }
 
+  // --- Role Helpers (Moved Up to fix ReferenceError) ---
+  const hasRole = (role: Role) => currentUser.roles.includes(role);
+  const canViewTeam = hasRole(Role.MANAGER) || hasRole(Role.HR) || hasRole(Role.ADMIN);
+  const canManageUsers = hasRole(Role.ADMIN) || hasRole(Role.HR);
+  const canManageOffices = hasRole(Role.ADMIN) || hasRole(Role.MANAGER);
+  const isAdmin = hasRole(Role.ADMIN);
+
   // Derived State for Leaves View
   const myLeaves = leaves.filter(l => l.userId === currentUser.id).sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
   
@@ -752,12 +760,6 @@ export default function App() {
 
   const todayStr = new Date().toISOString().split('T')[0];
   const activeLeaveRequest = leaves.find(l => l.userId === currentUser.id && l.startDate <= todayStr && l.endDate >= todayStr);
-
-  const hasRole = (role: Role) => currentUser.roles.includes(role);
-  const canViewTeam = hasRole(Role.MANAGER) || hasRole(Role.HR) || hasRole(Role.ADMIN);
-  const canManageUsers = hasRole(Role.ADMIN) || hasRole(Role.HR);
-  const canManageOffices = hasRole(Role.ADMIN) || hasRole(Role.MANAGER);
-  const isAdmin = hasRole(Role.ADMIN);
 
   const getTabClass = (tabName: string) => {
     return activeTab === tabName 
