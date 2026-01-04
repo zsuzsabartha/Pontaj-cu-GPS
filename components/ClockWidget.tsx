@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, User as UserIcon, Utensils, Cigarette, Home, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
@@ -6,6 +5,7 @@ import { ShiftStatus, Coordinates, Office, User, BreakConfig } from '../types';
 
 interface ClockWidgetProps {
   user: User;
+  companyName?: string; // New prop for multi-company display
   offices: Office[];
   currentStatus: ShiftStatus;
   breakConfigs: BreakConfig[]; 
@@ -14,7 +14,7 @@ interface ClockWidgetProps {
   onToggleBreak: (breakConfig?: BreakConfig, location?: Coordinates, dist?: number) => void;
 }
 
-const ClockWidget: React.FC<ClockWidgetProps> = ({ user, offices, currentStatus, breakConfigs, onClockIn, onClockOut, onToggleBreak }) => {
+const ClockWidget: React.FC<ClockWidgetProps> = ({ user, companyName, offices, currentStatus, breakConfigs, onClockIn, onClockOut, onToggleBreak }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showMockOption, setShowMockOption] = useState(false);
@@ -194,9 +194,16 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({ user, offices, currentStatus,
         <div className="flex justify-between items-start">
             <div>
                 <h2 className="text-xl font-bold text-gray-800">Bună, {user.name.split(' ')[0]}</h2>
-                <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
-                    <CalendarDays size={14}/>
-                    <span>{todayDateCapitalized}</span>
+                <div className="flex flex-col mt-1">
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <CalendarDays size={14}/>
+                        <span>{todayDateCapitalized}</span>
+                    </div>
+                    {companyName && (
+                        <div className="flex items-center gap-1 text-xs text-blue-600 font-medium mt-1">
+                            <Briefcase size={10} /> {companyName}
+                        </div>
+                    )}
                 </div>
             </div>
             

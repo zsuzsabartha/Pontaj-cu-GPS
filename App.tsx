@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   MOCK_USERS, 
@@ -638,6 +637,11 @@ export default function App() {
       ? "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-50 bg-blue-50 text-blue-700"
       : "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-50 text-gray-600";
   }
+  
+  // Filter offices for current user (Multi-Company Logic)
+  // Admin sees all, Employee sees only their company's offices
+  const userOffices = isAdmin ? offices : offices.filter(o => o.companyId === currentUser.companyId);
+  const userCompany = companies.find(c => c.id === currentUser.companyId);
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-50 text-gray-800">
@@ -710,7 +714,8 @@ export default function App() {
 
                 <ClockWidget 
                     user={currentUser}
-                    offices={offices}
+                    companyName={userCompany?.name}
+                    offices={userOffices}
                     breakConfigs={breakConfigs}
                     currentStatus={currentShift?.status || ShiftStatus.NOT_STARTED}
                     onClockIn={handleClockIn}
