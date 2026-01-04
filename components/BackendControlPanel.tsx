@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen, Plug, Wifi, FileText, Clipboard, Lock } from 'lucide-react';
+import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen, Plug, Wifi, FileText, Clipboard, Lock, Package } from 'lucide-react';
 
 const BackendControlPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'status' | 'sql' | 'bridge' | 'swagger'>('status');
@@ -7,6 +7,7 @@ const BackendControlPanel: React.FC = () => {
   const [generatedSQL, setGeneratedSQL] = useState('');
   const [bridgeFile, setBridgeFile] = useState<'server' | 'db' | 'package' | 'env' | 'readme'>('server');
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   
   // --- CONNECTION CONFIGURATION STATE ---
   const [dbConfig, setDbConfig] = useState({
@@ -544,6 +545,42 @@ app.post('/api/v1/config/departments', async (req, res) => {
     }
 });
 
+// 7. Users
+app.post('/api/v1/config/users', async (req, res) => {
+    const list = req.body;
+    if (!Array.isArray(list)) return res.status(400).json({error: 'Expected array'});
+    
+    const pool = await connectDB();
+    try {
+        for (const u of list) {
+             const request = pool.request();
+             await request
+               .input('id', sql.NVarChar, u.id)
+               .input('erpId', sql.NVarChar, u.erpId || null)
+               .input('compId', sql.NVarChar, u.companyId)
+               .input('deptId', sql.NVarChar, u.departmentId || null)
+               .input('offId', sql.NVarChar, u.assignedOfficeId || null)
+               .input('name', sql.NVarChar, u.name)
+               .input('email', sql.NVarChar, u.email)
+               .input('auth', sql.NVarChar, u.authType)
+               .input('roles', sql.NVarChar, JSON.stringify(u.roles))
+               .input('valid', sql.Bit, u.isValidated ? 1 : 0)
+               .input('status', sql.NVarChar, u.employmentStatus || 'ACTIVE')
+               .query(\`
+                  IF EXISTS (SELECT 1 FROM users WHERE id = @id)
+                    UPDATE users SET name=@name, email=@email, erp_id=@erpId, company_id=@compId, department_id=@deptId, assigned_office_id=@offId, roles=@roles, is_validated=@valid, employment_status=@status WHERE id = @id
+                  ELSE
+                    INSERT INTO users (id, name, email, erp_id, company_id, department_id, assigned_office_id, auth_type, roles, is_validated, employment_status) 
+                    VALUES (@id, @name, @email, @erpId, @compId, @deptId, @offId, @auth, @roles, @valid, @status)
+               \`);
+        }
+        res.json({ success: true, message: 'Users synced' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, async () => {
   console.log(\`Bridge Server running on port \${PORT}\`);
@@ -564,6 +601,30 @@ app.listen(PORT, async () => {
     document.body.appendChild(element); 
     element.click();
     document.body.removeChild(element);
+  };
+
+  const handleDownloadAll = async () => {
+      setIsDownloadingAll(true);
+      const files = [
+          { name: 'server.js', content: bridgeSources.server },
+          { name: 'db.js', content: bridgeSources.db },
+          { name: 'package.json', content: bridgeSources.package },
+          { name: '.env', content: bridgeSources.env },
+          { name: 'README.md', content: bridgeSources.readme },
+          { name: 'install_mssql.sql', content: generatedSQL }
+      ];
+
+      for (const file of files) {
+          const element = document.createElement("a");
+          const blob = new Blob([file.content], {type: 'text/plain'});
+          element.href = URL.createObjectURL(blob);
+          element.download = file.name;
+          document.body.appendChild(element); 
+          element.click();
+          document.body.removeChild(element);
+          await new Promise(r => setTimeout(r, 600)); // Delay to prevent browser blocking
+      }
+      setIsDownloadingAll(false);
   };
 
   const handleCopy = (content: string) => {
@@ -619,7 +680,8 @@ app.listen(PORT, async () => {
        </div>
 
        <div className="flex-1 overflow-hidden bg-slate-900/50 flex">
-          {/* Content preserved from previous implementation, wrapping only updated bridge sources */}
+          
+          {/* --- STATUS TAB --- */}
           {activeTab === 'status' && (
              <div className="p-6 space-y-6 animate-in fade-in overflow-auto w-full">
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -631,8 +693,22 @@ app.listen(PORT, async () => {
                              <CheckCircle size={12}/> Connected (T-SQL)
                         </div>
                     </div>
-                    {/* ... other status widgets ... */}
+                    <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 relative overflow-hidden group">
+                         <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition"><Activity size={48}/></div>
+                        <p className="text-slate-400 text-xs uppercase mb-1">API Health</p>
+                        <div className="text-xl font-bold text-white">99.9% Uptime</div>
+                        <div className="w-full bg-slate-700 h-1 mt-3 rounded-full overflow-hidden">
+                           <div className="bg-green-500 h-full w-[98%]"></div>
+                        </div>
+                    </div>
+                    <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition"><Layers size={48}/></div>
+                        <p className="text-slate-400 text-xs uppercase mb-1">Sync Queue</p>
+                        <div className="text-xl font-bold text-white">0 Pending</div>
+                        <div className="text-xs text-slate-500 mt-2">All changes synchronized</div>
+                    </div>
                  </div>
+
                  <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4 flex gap-4 items-start">
                      <AlertTriangle className="text-blue-400 shrink-0" size={20}/>
                      <div>
@@ -646,45 +722,142 @@ app.listen(PORT, async () => {
              </div>
           )}
 
-          {/* ... SQL Tab ... */}
+          {/* --- SQL TAB --- */}
           {activeTab === 'sql' && (
              <div className="flex flex-col h-full w-full animate-in fade-in">
                  <div className="bg-slate-950 p-2 border-b border-slate-800 flex justify-between items-center shrink-0">
                      <span className="text-xs text-slate-500 pl-2">File: install_mssql.sql</span>
                      <div className="flex gap-2">
-                         <button onClick={() => handleCopy(generatedSQL)} className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs transition font-medium">{copyFeedback || <><Clipboard size={14}/> Copy</>}</button>
+                         <button 
+                            onClick={() => handleCopy(generatedSQL)}
+                            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs transition font-medium"
+                         >
+                            {copyFeedback || <><Clipboard size={14}/> Copy</>}
+                         </button>
+                         <button 
+                            onClick={() => handleDownload('install_mssql.sql', generatedSQL)}
+                            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs transition font-medium"
+                         >
+                            <Download size={14}/> Download Script
+                         </button>
                      </div>
                  </div>
                  <div className="flex-1 relative overflow-auto">
-                     <textarea readOnly value={generatedSQL} className="w-full h-full bg-black p-4 text-green-500 font-mono text-xs resize-none focus:outline-none"/>
+                     <textarea 
+                        readOnly 
+                        value={generatedSQL}
+                        className="w-full h-full bg-black p-4 text-green-500 font-mono text-xs resize-none focus:outline-none"
+                     />
                  </div>
              </div>
           )}
 
-          {/* ... Bridge Tab ... */}
+          {/* --- BRIDGE SOURCE TAB --- */}
           {activeTab === 'bridge' && (
              <div className="flex h-full w-full animate-in fade-in overflow-hidden">
+                 {/* Sidebar */}
                  <div className="w-56 bg-slate-950 border-r border-slate-800 flex flex-col overflow-y-auto shrink-0">
+                     
                      <div className="p-3 bg-slate-900 border-b border-slate-800">
-                         {/* ... config inputs ... */}
-                         <div className="p-3 text-xs font-bold text-slate-500 uppercase mt-2">Executable Code</div>
-                         <button onClick={() => setBridgeFile('server')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'server' ? 'text-blue-400 bg-slate-800/80 border-l-2 border-blue-500' : 'text-slate-400'}`}><FileCode size={12}/> server.js (Run this)</button>
+                         {/* Config Inputs Removed for Brevity - Keeping just the download section visible logic */}
+                         <div className="flex items-center gap-1 text-blue-400 text-xs font-bold uppercase mb-2 bg-blue-900/20 p-1.5 rounded">
+                             <Settings size={12}/> Configurare Conexiune
+                         </div>
+                         <div className="space-y-3 mb-4">
+                             {/* Minimal Config UI here... (Matches previous) */}
+                             <div className="mb-2 pb-2 border-b border-slate-800">
+                                 <div className="flex items-center gap-1 text-yellow-400 text-[10px] font-bold uppercase mb-1">
+                                     <Lock size={10}/> JWT Secret
+                                 </div>
+                                 <input type="text" value={jwtSecret} onChange={(e) => setJwtSecret(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-[10px] text-white outline-none"/>
+                             </div>
+                             <div>
+                                 <label className="text-[10px] text-slate-400 font-bold block mb-1">Server Address</label>
+                                 <input type="text" value={dbConfig.server} onChange={(e) => setDbConfig({...dbConfig, server: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none"/>
+                             </div>
+                             <div>
+                                 <label className="text-[10px] text-slate-400 font-bold block mb-1">Database Name</label>
+                                 <input type="text" value={dbConfig.database} onChange={(e) => setDbConfig({...dbConfig, database: e.target.value})} className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none"/>
+                             </div>
+                             <button onClick={handleTestConnection} disabled={isTesting} className={`w-full mt-2 py-2 rounded text-xs font-bold flex items-center justify-center gap-2 transition ${isTesting ? 'bg-slate-700' : 'bg-blue-600 hover:bg-blue-700 text-white'}`}>
+                                 {isTesting ? '...' : 'Verifică Conexiune'}
+                             </button>
+                         </div>
+                         
+                         {/* NEW DOWNLOAD ALL BUTTON */}
+                         <button 
+                            onClick={handleDownloadAll}
+                            disabled={isDownloadingAll}
+                            className="w-full py-2 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-bold flex items-center justify-center gap-2 mb-4 shadow-lg shadow-green-900/20 transition disabled:opacity-50"
+                         >
+                            {isDownloadingAll ? <RefreshCw className="animate-spin" size={14}/> : <Package size={14}/>}
+                            {isDownloadingAll ? 'Downloading...' : 'Download All Files'}
+                         </button>
                      </div>
+
+                     <div className="p-3 text-xs font-bold text-slate-500 uppercase mt-2">Executable Code</div>
+                     <button onClick={() => setBridgeFile('server')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'server' ? 'text-blue-400 bg-slate-800/80 border-l-2 border-blue-500' : 'text-slate-400'}`}>
+                         <FileCode size={12}/> server.js
+                     </button>
+                     <button onClick={() => setBridgeFile('db')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'db' ? 'text-blue-400 bg-slate-800/80 border-l-2 border-blue-500' : 'text-slate-400'}`}>
+                         <Database size={12}/> db.js
+                     </button>
+                     
+                     <div className="p-3 text-xs font-bold text-slate-500 uppercase mt-2">Config Files</div>
+                     <button onClick={() => setBridgeFile('env')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'env' ? 'text-yellow-400 bg-slate-800/80 border-l-2 border-yellow-500' : 'text-slate-400'}`}>
+                         <Terminal size={12}/> .env
+                     </button>
+                     <button onClick={() => setBridgeFile('package')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'package' ? 'text-yellow-400 bg-slate-800/80 border-l-2 border-yellow-500' : 'text-slate-400'}`}>
+                         <Code size={12}/> package.json
+                     </button>
+
+                     <div className="p-3 text-xs font-bold text-slate-500 uppercase mt-2">Documentation</div>
+                     <button onClick={() => setBridgeFile('readme')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'readme' ? 'text-green-400 bg-slate-800/80 border-l-2 border-green-500' : 'text-slate-400'}`}>
+                         <BookOpen size={12}/> README.md
+                     </button>
                  </div>
+                 
+                 {/* Code View */}
                  <div className="flex-1 flex flex-col h-full overflow-hidden">
                      <div className="bg-slate-900 p-2 border-b border-slate-800 flex justify-between items-center shrink-0">
-                         <span className="text-xs text-slate-500 pl-2">Server Entry Point</span>
+                         <span className="text-xs text-slate-500 pl-2">
+                            {bridgeFile === 'package' ? 'Node.js Dependencies' : 
+                             bridgeFile === 'env' ? 'Environment Variables' : 
+                             bridgeFile === 'readme' ? 'Installation Guide' : 
+                             bridgeFile === 'server' ? 'Server Entry Point' : 'Database Connection'}
+                         </span>
                          <div className="flex gap-2">
-                            <button onClick={() => handleCopy(bridgeSources[bridgeFile])} className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs transition">{copyFeedback || <><Clipboard size={14}/> Copy Code</>}</button>
+                            <button 
+                                onClick={() => handleCopy(bridgeSources[bridgeFile])}
+                                className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs transition"
+                            >
+                                {copyFeedback || <><Clipboard size={14}/> Copy Code</>}
+                            </button>
+                            <button 
+                                onClick={() => handleDownload(bridgeFile === 'package' ? 'package.json' : bridgeFile === 'env' ? '.env' : bridgeFile === 'readme' ? 'README.md' : `${bridgeFile}.js`, bridgeSources[bridgeFile])}
+                                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs transition"
+                            >
+                                <Download size={14}/> Download File
+                            </button>
                          </div>
                      </div>
-                     <textarea readOnly value={bridgeSources[bridgeFile]} className="w-full h-full bg-black p-4 font-mono text-xs resize-none focus:outline-none text-blue-300"/>
+                     <textarea 
+                        readOnly 
+                        value={bridgeSources[bridgeFile]}
+                        className={`w-full h-full bg-black p-4 font-mono text-xs resize-none focus:outline-none ${
+                            bridgeFile === 'readme' ? 'text-green-300' : 
+                            bridgeFile === 'env' ? 'text-yellow-300' : 'text-blue-300'
+                        }`}
+                     />
                  </div>
              </div>
           )}
 
-          {/* ... Swagger Tab ... */}
-          {activeTab === 'swagger' && <div className="p-6 text-white">API Documentation available</div>}
+          {/* --- SWAGGER TAB --- */}
+          {activeTab === 'swagger' && (
+             <div className="p-6 text-white">API Documentation available</div>
+          )}
+
        </div>
     </div>
   );

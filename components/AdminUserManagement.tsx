@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { User, Role, Company, Department, Office } from '../types';
 import { UserPlus, CheckCircle, XCircle, Mail, ShieldAlert, MapPinOff, Building, Database, RefreshCw, Server, Cake, Fingerprint, Clock, Briefcase, FileInput, Upload, Users, BellRing, Eye, AlertTriangle, UserMinus, Filter } from 'lucide-react';
 import UserValidationModal from './UserValidationModal';
+import { API_CONFIG } from '../constants';
 
 interface AdminUserManagementProps {
   users: User[];
@@ -76,6 +77,24 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
       });
   };
 
+  const handleManualDBSync = async () => {
+      setIsDbSyncing(true);
+      try {
+          await fetch(`${API_CONFIG.BASE_URL}/config/users`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(users)
+          });
+          setDbStatus('connected');
+          alert("Sincronizare completă cu baza de date SQL efectuată.");
+      } catch (e) {
+          setDbStatus('error');
+          alert("Eroare la sincronizare. Verificați conexiunea Bridge.");
+      } finally {
+          setIsDbSyncing(false);
+      }
+  };
+
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const generatedPin = Math.floor(1000 + Math.random() * 9000).toString();
@@ -102,6 +121,10 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
     };
 
     onCreateUser(user);
+    // Trigger sync for the new user (technically should sync full list, but list is updated in App parent)
+    // For simplicity, we trigger a full sync after a short delay to allow state propagation or just notify user
+    setTimeout(() => handleManualDBSync(), 500); 
+
     alert(`Succes! \n\nS-a trimis un email către ${user.email} conținând PIN-ul de acces: ${generatedPin}`);
     
     setNewUser({
@@ -117,14 +140,6 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
        birthDate: '',
        shareBirthday: false
     });
-  };
-
-  const handleManualDBSync = () => {
-      setIsDbSyncing(true);
-      setTimeout(() => {
-          setIsDbSyncing(false);
-          alert("Sincronizare completă cu baza de date SQL efectuată.");
-      }, 1500);
   };
 
   const handleImport = () => {
@@ -155,6 +170,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
           });
           setImportText('');
           alert(`Import realizat cu succes! ${count} utilizatori adăugați în lista de așteptare.`);
+          setTimeout(() => handleManualDBSync(), 1000);
           setActiveSubTab('pending');
       } catch (e: any) {
           alert("Eroare la import: " + e.message);
@@ -162,8 +178,10 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
   };
 
   const handleValidateFromModal = (updatedUser: User) => {
-     alert("Funcționalitate 'Salvare Date Corectate' necesită backend real. Se va proceda doar la validare.");
+     // Propagate to App logic
      onValidateUser(updatedUser.id);
+     // Sync SQL
+     setTimeout(() => handleManualDBSync(), 500);
   };
 
   const handleSendReminder = (user: User) => {
@@ -183,7 +201,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                   <h3 className="font-bold text-sm">SQL Database Bridge</h3>
                   <div className="flex items-center gap-2 text-xs text-slate-300">
                       <span className={`w-2 h-2 rounded-full ${dbStatus === 'connected' ? 'bg-green-400' : 'bg-red-400'}`}></span>
-                      {dbStatus === 'connected' ? 'Conexiune Activă (mssql_prod_01)' : 'Eroare Conexiune'}
+                      {dbStatus === 'connected' ? 'Conexiune Activă (Users Table)' : 'Eroare Conexiune'}
                   </div>
               </div>
           </div>
