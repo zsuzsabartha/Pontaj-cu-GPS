@@ -184,6 +184,13 @@ CREATE TABLE leave_configs (
     requires_approval BIT DEFAULT 1
 );
 
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='holidays' AND xtype='U')
+CREATE TABLE holidays (
+    id NVARCHAR(50) PRIMARY KEY,
+    date DATE NOT NULL,
+    name NVARCHAR(255) NOT NULL
+);
+
 -- Time Tracking
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='timesheets' AND xtype='U')
 CREATE TABLE timesheets (
@@ -408,6 +415,103 @@ app.post('/api/v1/clock-in', async (req, res) => {
     res.status(500).json({ error: 'Database transaction failed' });
   }
 });
+
+// --- CONFIGURATION ENDPOINTS (NOMENCLATOARE) ---
+
+// 1. Break Configs (Save List)
+app.post('/api/v1/config/breaks', async (req, res) => {
+    const breaks = req.body; // Expects array
+    if (!Array.isArray(breaks)) return res.status(400).json({error: 'Expected array'});
+
+    const pool = await connectDB();
+    const transaction = new sql.Transaction(pool);
+    
+    try {
+        await transaction.begin();
+        const request = new sql.Request(transaction);
+
+        // Simple strategy: Clear table and re-insert (for config data this is fine)
+        await request.query('DELETE FROM break_configs');
+
+        for (const b of breaks) {
+            const req = new sql.Request(transaction);
+            await req.input('id', sql.NVarChar, b.id)
+                     .input('name', sql.NVarChar, b.name)
+                     .input('isPaid', sql.Bit, b.isPaid ? 1 : 0)
+                     .input('icon', sql.NVarChar, b.icon || 'coffee')
+                     .query('INSERT INTO break_configs (id, name, is_paid, icon) VALUES (@id, @name, @isPaid, @icon)');
+        }
+
+        await transaction.commit();
+        res.json({ success: true, count: breaks.length });
+    } catch (err) {
+        if(transaction) await transaction.rollback();
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 2. Leave Configs (Save List)
+app.post('/api/v1/config/leaves', async (req, res) => {
+    const leaves = req.body;
+    if (!Array.isArray(leaves)) return res.status(400).json({error: 'Expected array'});
+
+    const pool = await connectDB();
+    const transaction = new sql.Transaction(pool);
+    
+    try {
+        await transaction.begin();
+        const request = new sql.Request(transaction);
+        await request.query('DELETE FROM leave_configs');
+
+        for (const l of leaves) {
+            const req = new sql.Request(transaction);
+            await req.input('id', sql.NVarChar, l.id)
+                     .input('name', sql.NVarChar, l.name)
+                     .input('code', sql.NVarChar, l.code)
+                     .input('reqApp', sql.Bit, l.requiresApproval ? 1 : 0)
+                     .query('INSERT INTO leave_configs (id, name, code, requires_approval) VALUES (@id, @name, @code, @reqApp)');
+        }
+
+        await transaction.commit();
+        res.json({ success: true, count: leaves.length });
+    } catch (err) {
+        if(transaction) await transaction.rollback();
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 3. Holidays (Save List)
+app.post('/api/v1/config/holidays', async (req, res) => {
+    const holidays = req.body;
+    if (!Array.isArray(holidays)) return res.status(400).json({error: 'Expected array'});
+
+    const pool = await connectDB();
+    const transaction = new sql.Transaction(pool);
+    
+    try {
+        await transaction.begin();
+        const request = new sql.Request(transaction);
+        await request.query('DELETE FROM holidays');
+
+        for (const h of holidays) {
+            const req = new sql.Request(transaction);
+            await req.input('id', sql.NVarChar, h.id)
+                     .input('date', sql.Date, h.date)
+                     .input('name', sql.NVarChar, h.name)
+                     .query('INSERT INTO holidays (id, date, name) VALUES (@id, @date, @name)');
+        }
+
+        await transaction.commit();
+        res.json({ success: true, count: holidays.length });
+    } catch (err) {
+        if(transaction) await transaction.rollback();
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 
 const PORT = process.env.PORT || 3001;
 

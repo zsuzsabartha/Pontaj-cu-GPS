@@ -1,7 +1,7 @@
-
 import React, { useState } from 'react';
 import { BreakConfig, LeaveConfig, Holiday } from '../types';
-import { Plus, Trash2, Save, Coffee, FileText, Check, X, CalendarDays, PartyPopper } from 'lucide-react';
+import { Plus, Trash2, Save, Coffee, FileText, Check, X, CalendarDays, PartyPopper, RefreshCw } from 'lucide-react';
+import { API_CONFIG } from '../constants';
 
 interface NomenclatorManagementProps {
   breakConfigs: BreakConfig[];
@@ -14,11 +14,39 @@ interface NomenclatorManagementProps {
 
 const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ breakConfigs, leaveConfigs, holidays, onUpdateBreaks, onUpdateLeaves, onUpdateHolidays }) => {
   const [activeTab, setActiveTab] = useState<'breaks' | 'leaves' | 'holidays'>('breaks');
+  const [isSaving, setIsSaving] = useState(false);
   
   // Local state for editing to avoid constant prop updates
   const [localBreaks, setLocalBreaks] = useState(breakConfigs);
   const [localLeaves, setLocalLeaves] = useState(leaveConfigs);
   const [localHolidays, setLocalHolidays] = useState(holidays);
+
+  // Helper to save to backend
+  const saveToSQL = async (endpoint: string, data: any[]) => {
+      setIsSaving(true);
+      try {
+          // Attempt to save to backend (if running)
+          const response = await fetch(`${API_CONFIG.BASE_URL}/config/${endpoint}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data)
+          }).catch(() => null); // Catch network errors silently to fallback
+
+          if (response && response.ok) {
+              const res = await response.json();
+              console.log("SQL Sync Success:", res);
+              return true;
+          } else {
+              console.warn("SQL Bridge not connected or error. Saving locally only.");
+              return false;
+          }
+      } catch (e) {
+          console.error("Save error:", e);
+          return false;
+      } finally {
+          setIsSaving(false);
+      }
+  };
 
   // --- Break Handlers ---
   const addBreak = () => {
@@ -39,9 +67,14 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ breakConf
     setLocalBreaks(prev => prev.filter(b => b.id !== id));
   };
 
-  const saveBreaks = () => {
+  const saveBreaks = async () => {
+    // 1. Update App State (Immediate UI Feedback)
     onUpdateBreaks(localBreaks);
-    alert('Nomenclator Pauze actualizat!');
+    
+    // 2. Try Sync to SQL
+    const synced = await saveToSQL('breaks', localBreaks);
+    
+    alert(`Nomenclator Pauze actualizat! ${synced ? '(Sincronizat cu SQL Server)' : '(Doar Local - Bridge Offline)'}`);
   };
 
   // --- Leave Handlers ---
@@ -63,9 +96,10 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ breakConf
     setLocalLeaves(prev => prev.filter(l => l.id !== id));
   };
 
-  const saveLeaves = () => {
+  const saveLeaves = async () => {
     onUpdateLeaves(localLeaves);
-    alert('Nomenclator Concedii actualizat!');
+    const synced = await saveToSQL('leaves', localLeaves);
+    alert(`Nomenclator Concedii actualizat! ${synced ? '(Sincronizat cu SQL Server)' : '(Doar Local - Bridge Offline)'}`);
   };
 
   // --- Holiday Handlers ---
@@ -86,9 +120,10 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ breakConf
       setLocalHolidays(prev => prev.filter(h => h.id !== id));
   };
 
-  const saveHolidays = () => {
+  const saveHolidays = async () => {
       onUpdateHolidays(localHolidays);
-      alert('Lista Zilelor Libere a fost actualizată!');
+      const synced = await saveToSQL('holidays', localHolidays);
+      alert(`Lista Zilelor Libere a fost actualizată! ${synced ? '(Sincronizat cu SQL Server)' : '(Doar Local - Bridge Offline)'}`);
   };
 
   return (
@@ -164,8 +199,12 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ breakConf
               <button onClick={addBreak} className="flex items-center gap-2 text-blue-600 text-sm font-medium hover:bg-blue-50 px-3 py-2 rounded">
                  <Plus size={16}/> Adaugă Tip
               </button>
-              <button onClick={saveBreaks} className="flex items-center gap-2 bg-blue-600 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-blue-700 shadow-md">
-                 <Save size={16}/> Salvează Modificări
+              <button 
+                onClick={saveBreaks} 
+                disabled={isSaving}
+                className="flex items-center gap-2 bg-blue-600 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-blue-700 shadow-md disabled:opacity-70"
+              >
+                 {isSaving ? <RefreshCw className="animate-spin" size={16}/> : <Save size={16}/>} Salvează Modificări
               </button>
             </div>
           </div>
@@ -216,8 +255,12 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ breakConf
               <button onClick={addLeave} className="flex items-center gap-2 text-blue-600 text-sm font-medium hover:bg-blue-50 px-3 py-2 rounded">
                  <Plus size={16}/> Adaugă Tip
               </button>
-              <button onClick={saveLeaves} className="flex items-center gap-2 bg-blue-600 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-blue-700 shadow-md">
-                 <Save size={16}/> Salvează Modificări
+              <button 
+                onClick={saveLeaves} 
+                disabled={isSaving}
+                className="flex items-center gap-2 bg-blue-600 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-blue-700 shadow-md disabled:opacity-70"
+              >
+                 {isSaving ? <RefreshCw className="animate-spin" size={16}/> : <Save size={16}/>} Salvează Modificări
               </button>
             </div>
           </div>
@@ -274,8 +317,12 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ breakConf
                     <button onClick={addHoliday} className="flex items-center gap-2 text-purple-600 text-sm font-medium hover:bg-purple-50 px-3 py-2 rounded transition">
                         <Plus size={16}/> Adaugă Sărbătoare
                     </button>
-                    <button onClick={saveHolidays} className="flex items-center gap-2 bg-purple-600 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-purple-700 shadow-md shadow-purple-200 transition">
-                        <Save size={16}/> Salvează Calendar
+                    <button 
+                        onClick={saveHolidays} 
+                        disabled={isSaving}
+                        className="flex items-center gap-2 bg-purple-600 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-purple-700 shadow-md shadow-purple-200 transition disabled:opacity-70"
+                    >
+                        {isSaving ? <RefreshCw className="animate-spin" size={16}/> : <Save size={16}/>} Salvează Calendar
                     </button>
                 </div>
             </div>
