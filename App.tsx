@@ -571,6 +571,7 @@ export default function App() {
   const handleGenerateAISummary = async () => { /* ... */ };
   const handleAssignSchedule = (userId: string, date: string, scheduleId: string) => { /* ... */ setSchedulePlans(prev => [...prev, { id: `ds-${Date.now()}`, userId, date, scheduleId }]); };
   const handleAddOffice = (office: Office) => setOffices(prev => [...prev, office]);
+  const handleUpdateOffice = (office: Office) => setOffices(prev => prev.map(o => o.id === office.id ? office : o));
   const handleDeleteOffice = (id: string) => setOffices(prev => prev.filter(o => o.id !== id));
   const handleUpdateDepartments = (updatedDepartments: Department[]) => setDepartments(updatedDepartments);
   
@@ -592,9 +593,11 @@ export default function App() {
   
   // Custom "Account Pending" Screen
   if (!currentUser.isValidated) {
+      // ... (Pending screen JSX remains same)
       return (
           <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-              <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center space-y-6 animate-in fade-in zoom-in duration-300">
+              {/* ... same content ... */}
+              <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center space-y-6">
                   <div className="w-20 h-20 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
                       <Clock size={40} />
                   </div>
@@ -604,25 +607,15 @@ export default function App() {
                           Contul <strong>{currentUser.name}</strong> a fost creat cu succes, dar necesită validarea unui administrator înainte de a putea accesa aplicația.
                       </p>
                   </div>
-                  
                   <div className="bg-blue-50 p-4 rounded-lg text-sm text-blue-800 border border-blue-100">
                       <p className="font-semibold mb-1">Status: <span className="text-orange-600">PENDING APPROVAL</span></p>
                       <p>Vă rugăm să contactați departamentul HR sau un Manager pentru activare.</p>
                   </div>
-
                   <div className="pt-2 flex flex-col gap-3">
-                      <button 
-                          onClick={handleLogout} 
-                          className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold transition flex items-center justify-center gap-2"
-                      >
+                      <button onClick={handleLogout} className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold transition flex items-center justify-center gap-2">
                           <LogOut size={18}/> Înapoi la Login
                       </button>
-                      
-                      {/* DEMO SHORTCUT */}
-                      <button 
-                          onClick={() => handleValidateUser(currentUser.id)}
-                          className="text-xs text-blue-600 hover:text-blue-800 hover:underline mt-2 flex items-center justify-center gap-1"
-                      >
+                      <button onClick={() => handleValidateUser(currentUser.id)} className="text-xs text-blue-600 hover:text-blue-800 hover:underline mt-2 flex items-center justify-center gap-1">
                           <ShieldCheck size={12}/> (Demo) Validează Rapid Contul
                       </button>
                   </div>
@@ -650,28 +643,17 @@ export default function App() {
       : "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-50 text-gray-600";
   }
   
-  // Filter offices for current user (Multi-Company Logic)
-  // Admin sees all, Employee sees only their company's offices
   const userOffices = isAdmin ? offices : offices.filter(o => o.companyId === currentUser.companyId);
   const userCompany = companies.find(c => c.id === currentUser.companyId);
 
-  // Team Filter Logic
   const teamTimesheets = timesheets.filter(t => {
-      // Logic for filtering:
-      // 1. Don't show my own timesheet in "Team" view
       if (t.userId === currentUser.id) return false;
-      
       const user = users.find(u => u.id === t.userId);
       if (!user) return false;
-
-      // 2. Filter by selected company (if Admin)
       if (isAdmin && selectedTeamCompany !== 'ALL' && user.companyId !== selectedTeamCompany) return false;
-
-      // 3. If I am just a manager, only show my company's employees
       if (!isAdmin && hasRole(Role.MANAGER)) {
           return user.companyId === currentUser.companyId;
       }
-
       return true;
   });
 
@@ -692,18 +674,15 @@ export default function App() {
          </div>
          <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
             <BirthdayWidget users={users} currentUser={currentUser} />
-            
             <button onClick={() => setActiveTab('notifications')} className={getTabClass('notifications')}>
               <Bell size={18}/> Notificări {myNotifications.length > 0 && <span className="ml-auto bg-red-500 text-white text-xs rounded-full px-2">{myNotifications.length}</span>}
             </button>
             <button onClick={() => setActiveTab('dashboard')} className={getTabClass('dashboard')}><Clock size={18}/> Pontaj</button>
             <button onClick={() => setActiveTab('calendar')} className={getTabClass('calendar')}><CalendarRange size={18}/> Program</button>
             <button onClick={() => setActiveTab('leaves')} className={getTabClass('leaves')}><Settings size={18}/> Concedii</button>
-            
             <div className="pt-2 pb-1 border-t border-gray-100 my-1">
                <p className="px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Management</p>
             </div>
-
             {canViewTeam && <button onClick={() => setActiveTab('team')} className={getTabClass('team')}><Users size={18}/> Echipa</button>}
             {canManageUsers && <button onClick={() => setActiveTab('users')} className={getTabClass('users')}><UserCog size={18}/> Useri</button>}
             {isAdmin && <button onClick={() => setActiveTab('companies')} className={getTabClass('companies')}><Briefcase size={18}/> Companii</button>}
@@ -712,7 +691,6 @@ export default function App() {
             {isAdmin && <button onClick={() => setActiveTab('backend')} className={getTabClass('backend')}><Server size={18}/> Backend</button>}
          </nav>
          
-         {/* User Profile & Logout Footer */}
          <div className="p-4 border-t border-gray-200 bg-gray-50/50">
             <div className="flex items-center gap-3 mb-4">
                 <img src={currentUser.avatarUrl} alt="" className="w-10 h-10 rounded-full bg-white border border-gray-200 object-cover"/>
@@ -721,10 +699,7 @@ export default function App() {
                     <p className="text-xs text-gray-500 truncate" title={currentUser.email}>{currentUser.email}</p>
                 </div>
             </div>
-            <button 
-                onClick={handleLogout} 
-                className="w-full flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-700 hover:bg-red-50 hover:text-red-600 hover:border-red-100 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
-            >
+            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-700 hover:bg-red-50 hover:text-red-600 hover:border-red-100 px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
                 <LogOut size={16} /> Deconectare
             </button>
          </div>
@@ -732,8 +707,6 @@ export default function App() {
 
       {/* --- Main Content --- */}
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
-        
-        {/* --- DASHBOARD / PONTAJ --- */}
         {activeTab === 'dashboard' && (
             <div className="max-w-4xl mx-auto space-y-8">
                 <header className="flex justify-between items-center">
@@ -744,7 +717,6 @@ export default function App() {
                          </button>
                     )}
                 </header>
-
                 <ClockWidget 
                     user={currentUser}
                     companyName={userCompany?.name}
@@ -755,26 +727,16 @@ export default function App() {
                     onClockOut={handleClockOut}
                     onToggleBreak={handleToggleBreak}
                 />
-
                 <div className="flex justify-between items-end">
                      <h2 className="text-lg font-bold text-gray-800">Istoric & Acțiuni</h2>
-                     <button 
-                        onClick={() => openTimesheetModal(null)} // Open for Create
-                        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 shadow-md"
-                     >
+                     <button onClick={() => openTimesheetModal(null)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 shadow-md">
                         <PlusCircle size={16}/> {hasRole(Role.MANAGER) ? "Adaugă Pontaj Manual" : "Solicită Pontaj Lipsă"}
                      </button>
                 </div>
-
-                <TimesheetList 
-                    timesheets={myTimesheets} 
-                    onEditTimesheet={openTimesheetModal}
-                    isManagerView={false}
-                />
+                <TimesheetList timesheets={myTimesheets} onEditTimesheet={openTimesheetModal} isManagerView={false} />
             </div>
         )}
 
-        {/* ... Other Tabs (Calendar, Leaves, Users, Offices, Team, Backend) rendered conditionally ... */}
         {activeTab === 'calendar' && <ScheduleCalendar currentUser={currentUser} users={users} schedules={schedulePlans} onAssignSchedule={handleAssignSchedule}/>}
         {activeTab === 'leaves' && (
             <div className="max-w-4xl mx-auto space-y-6">
@@ -782,45 +744,33 @@ export default function App() {
                     <h1 className="text-2xl font-bold text-gray-800">Concedii</h1>
                     <button onClick={() => setLeaveModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg">+ Cerere</button>
                 </div>
-                {/* List of leaves... */}
             </div>
         )}
         {activeTab === 'team' && canViewTeam && (
              <div className="max-w-4xl mx-auto space-y-8">
                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                      <h1 className="text-2xl font-bold text-gray-800">Management Echipă</h1>
-                     
-                     {/* ADMIN: Company Filter */}
                      {isAdmin && (
                          <div className="flex items-center gap-2 bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
                              <Filter size={16} className="text-gray-400"/>
                              <span className="text-xs font-bold text-gray-600">Companie:</span>
-                             <select 
-                                value={selectedTeamCompany}
-                                onChange={(e) => setSelectedTeamCompany(e.target.value)}
-                                className="text-sm bg-transparent outline-none font-medium text-blue-600"
-                             >
+                             <select value={selectedTeamCompany} onChange={(e) => setSelectedTeamCompany(e.target.value)} className="text-sm bg-transparent outline-none font-medium text-blue-600">
                                  <option value="ALL">Toate Companiile</option>
                                  {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                              </select>
                          </div>
                      )}
                  </div>
-                 
-                 {/* CORRECTION REQUESTS SECTION */}
                  {pendingCorrections.length > 0 && (
                      <div className="space-y-4">
                         <h3 className="text-lg font-semibold text-gray-700 flex items-center gap-2"><AlertOctagon className="text-orange-500" size={20}/> Cereri Corecție / Pontaj Lipsă</h3>
                         <div className="grid gap-4">
                             {pendingCorrections.map(req => {
                                 const requester = users.find(u => u.id === req.userId);
-                                // Filter Logic for Requests too
                                 if (isAdmin && selectedTeamCompany !== 'ALL' && requester?.companyId !== selectedTeamCompany) return null;
                                 if (!isAdmin && hasRole(Role.MANAGER) && requester?.companyId !== currentUser.companyId) return null;
-
                                 const ts = req.timesheetId ? timesheets.find(t => t.id === req.timesheetId) : null;
                                 const dateDisplay = ts ? ts.date : req.requestedDate;
-                                
                                 return (
                                     <div key={req.id} className="bg-orange-50 border border-orange-200 p-4 rounded-xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                                         <div>
@@ -847,11 +797,9 @@ export default function App() {
                         </div>
                      </div>
                  )}
-                 {/* ... Team Timesheets ... */}
                  <TimesheetList timesheets={teamTimesheets} isManagerView={true} onApproveBreak={handleApproveBreak} onEditTimesheet={openTimesheetModal}/>
              </div>
         )}
-        {/* ... Other tabs ... */}
         {activeTab === 'users' && <AdminUserManagement users={users} companies={companies} departments={departments} offices={offices} onValidateUser={handleValidateUser} onCreateUser={handleCreateUser}/>}
         {activeTab === 'companies' && (
              <CompanyManagement 
@@ -864,7 +812,7 @@ export default function App() {
                 onDeleteCompany={handleDeleteCompany}
              />
         )}
-        {activeTab === 'offices' && <OfficeManagement offices={offices} departments={departments} companies={companies} onAddOffice={handleAddOffice} onDeleteOffice={handleDeleteOffice} onUpdateDepartments={handleUpdateDepartments} onUpdateCompany={handleUpdateCompany}/>}
+        {activeTab === 'offices' && <OfficeManagement users={users} offices={offices} departments={departments} companies={companies} onAddOffice={handleAddOffice} onUpdateOffice={handleUpdateOffice} onDeleteOffice={handleDeleteOffice} onUpdateDepartments={handleUpdateDepartments} onUpdateCompany={handleUpdateCompany}/>}
         {activeTab === 'nomenclator' && (
             <NomenclatorManagement 
                 breakConfigs={breakConfigs} 
@@ -880,16 +828,7 @@ export default function App() {
       </main>
 
       <LeaveModal isOpen={isLeaveModalOpen} onClose={() => setLeaveModalOpen(false)} leaveConfigs={leaveConfigs} onSubmit={handleLeaveSubmit} />
-      
-      {/* Timesheet Modal for Edit/Create */}
-      <TimesheetEditModal 
-          isOpen={editModalData.isOpen} 
-          onClose={() => setEditModalData({isOpen: false, timesheet: null})} 
-          timesheet={editModalData.timesheet} 
-          isManager={hasRole(Role.MANAGER) || hasRole(Role.ADMIN)} 
-          onSave={handleTimesheetSave} 
-      />
-      
+      <TimesheetEditModal isOpen={editModalData.isOpen} onClose={() => setEditModalData({isOpen: false, timesheet: null})} timesheet={editModalData.timesheet} isManager={hasRole(Role.MANAGER) || hasRole(Role.ADMIN)} onSave={handleTimesheetSave} />
       <RejectionModal isOpen={rejectionModal.isOpen} onClose={() => setRejectionModal({ ...rejectionModal, isOpen: false })} onSubmit={handleConfirmRejection} />
     </div>
   );
