@@ -1,12 +1,20 @@
-
-import React, { useState } from 'react';
-import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save } from 'lucide-react';
 
 const BackendControlPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'status' | 'sql' | 'bridge' | 'swagger'>('status');
   const [connectionStatus, setConnectionStatus] = useState<'ONLINE' | 'CONNECTING' | 'OFFLINE'>('ONLINE');
   const [generatedSQL, setGeneratedSQL] = useState('');
   const [bridgeFile, setBridgeFile] = useState<'server' | 'db' | 'package' | 'env'>('server');
+  
+  // --- CONNECTION CONFIGURATION STATE ---
+  const [dbConfig, setDbConfig] = useState({
+      server: 'localhost',
+      database: 'PontajSmart',
+      user: 'PontajAppUser',
+      password: 'StrongPass123!',
+      port: '1433'
+  });
 
   // --- ARTIFACT GENERATORS (MSSQL VERSION) ---
 
@@ -15,7 +23,7 @@ const BackendControlPanel: React.FC = () => {
 /* 
    ----------------------------------------------------------------
    DEPLOYMENT SCRIPT - MICROSOFT SQL SERVER
-   Database: PontajSmart
+   Database: ${dbConfig.database}
    Generated: ${new Date().toISOString()}
    ----------------------------------------------------------------
 */
@@ -24,30 +32,30 @@ USE master;
 GO
 
 -- 1. Create Database
-IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'PontajSmart')
+IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = '${dbConfig.database}')
 BEGIN
-    CREATE DATABASE PontajSmart;
+    CREATE DATABASE ${dbConfig.database};
 END
 GO
 
-USE PontajSmart;
+USE ${dbConfig.database};
 GO
 
 -- 2. Security Setup (Login & User)
--- NOTE: Change 'StrongPass123!' before running in production
-IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = 'PontajAppUser')
+-- NOTE: We use the configured password from the panel
+IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = '${dbConfig.user}')
 BEGIN
-    CREATE LOGIN PontajAppUser WITH PASSWORD = 'StrongPass123!', CHECK_POLICY = OFF;
+    CREATE LOGIN ${dbConfig.user} WITH PASSWORD = '${dbConfig.password}', CHECK_POLICY = OFF;
 END
 
-IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = 'PontajAppUser')
+IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '${dbConfig.user}')
 BEGIN
-    CREATE USER PontajAppUser FOR LOGIN PontajAppUser;
+    CREATE USER ${dbConfig.user} FOR LOGIN ${dbConfig.user};
 END
 
 -- Grant permissions
-ALTER ROLE db_datareader ADD MEMBER PontajAppUser;
-ALTER ROLE db_datawriter ADD MEMBER PontajAppUser;
+ALTER ROLE db_datareader ADD MEMBER ${dbConfig.user};
+ALTER ROLE db_datawriter ADD MEMBER ${dbConfig.user};
 GO
 
 -- 3. Schema Definitions
@@ -164,7 +172,7 @@ CREATE INDEX idx_timesheets_user_date ON timesheets(user_id, date);
 CREATE INDEX idx_users_email ON users(email);
 GO
 
-PRINT 'Installation Complete. Database PontajSmart is ready.';
+PRINT 'Installation Complete. Database ${dbConfig.database} is ready.';
 `;
     setGeneratedSQL(script);
   };
@@ -173,11 +181,11 @@ PRINT 'Installation Complete. Database PontajSmart is ready.';
     package: `{
   "name": "pontaj-api-bridge-mssql",
   "version": "1.0.0",
-  "main": "dist/server.js",
+  "type": "module",
+  "main": "server.js",
   "scripts": {
-    "start": "node dist/server.js",
-    "dev": "ts-node src/server.ts",
-    "build": "tsc"
+    "start": "node server.js",
+    "dev": "node --watch server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
@@ -185,19 +193,16 @@ PRINT 'Installation Complete. Database PontajSmart is ready.';
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "jsonwebtoken": "^9.0.2"
-  },
-  "devDependencies": {
-    "typescript": "^5.2.2",
-    "@types/express": "^4.17.17",
-    "@types/mssql": "^8.1.2"
   }
 }`,
     env: `PORT=3001
-# Database Connection
-DB_SERVER=localhost
-DB_NAME=PontajSmart
-DB_USER=PontajAppUser
-DB_PASS=StrongPass123!
+# Database Connection Configured via Admin Panel
+DB_SERVER=${dbConfig.server}
+DB_PORT=${dbConfig.port}
+DB_NAME=${dbConfig.database}
+DB_USER=${dbConfig.user}
+DB_PASS=${dbConfig.password}
+
 # Security
 JWT_SECRET=production_secret_key_change_me
 FRONTEND_URL=http://localhost:3000`,
@@ -206,11 +211,12 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const config: sql.config = {
-  user: process.env.DB_USER!,
-  password: process.env.DB_PASS!,
-  server: process.env.DB_SERVER!,
-  database: process.env.DB_NAME!,
+const config = {
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  server: process.env.DB_SERVER,
+  port: parseInt(process.env.DB_PORT) || 1433,
+  database: process.env.DB_NAME,
   options: {
     encrypt: true, // Use true for Azure, false for local dev if self-signed
     trustServerCertificate: true // Change to false for production with valid certs
@@ -229,7 +235,7 @@ export const connectDB = async () => {
     server: `import express from 'express';
 import cors from 'cors';
 import sql from 'mssql';
-import { connectDB } from './db';
+import { connectDB } from './db.js';
 
 const app = express();
 app.use(cors());
@@ -241,7 +247,7 @@ app.get('/health', async (req, res) => {
     const pool = await connectDB();
     const result = await pool.request().query('SELECT GETDATE() as now');
     res.json({ status: 'ONLINE', db_time: result.recordset[0].now, server: 'MSSQL' });
-  } catch (err: any) {
+  } catch (err) {
     res.status(500).json({ status: 'ERROR', error: err.message });
   }
 });
@@ -273,7 +279,7 @@ app.post('/api/v1/clock-in', async (req, res) => {
         .query(query);
 
     res.status(201).json(result.recordset[0]);
-  } catch (err: any) {
+  } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database transaction failed' });
   }
@@ -281,7 +287,7 @@ app.post('/api/v1/clock-in', async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(\`Bridge Server (MSSQL) running on port \${PORT}\`);
+  console.log(\`Bridge Server (MSSQL/JS) running on port \${PORT}\`);
 });`
   };
 
@@ -295,10 +301,10 @@ app.listen(PORT, () => {
     document.body.removeChild(element);
   };
 
-  // Initialize SQL on load
-  React.useEffect(() => {
+  // Re-generate artifacts when config changes
+  useEffect(() => {
     generateSQLScript();
-  }, []);
+  }, [dbConfig]);
 
   return (
     <div className="bg-slate-900 text-slate-200 rounded-xl overflow-hidden shadow-2xl border border-slate-700 font-mono text-sm h-[600px] flex flex-col">
@@ -377,8 +383,7 @@ app.listen(PORT, () => {
                          <h4 className="text-white font-bold text-sm">Deployment Readiness</h4>
                          <p className="text-slate-400 text-xs mt-1">
                              System is ready for Microsoft SQL Server deployment. 
-                             Download the SQL Script to create the <code>PontajSmart</code> database and the <code>PontajAppUser</code> login.
-                             Then download the Bridge Source to run the Node.js API.
+                             Configure your server details in the "Bridge Source" tab, then download the artifacts.
                          </p>
                      </div>
                  </div>
@@ -411,19 +416,65 @@ app.listen(PORT, () => {
           {activeTab === 'bridge' && (
              <div className="flex h-full animate-in fade-in">
                  {/* Sidebar */}
-                 <div className="w-48 bg-slate-950 border-r border-slate-800 flex flex-col">
-                     <div className="p-3 text-xs font-bold text-slate-500 uppercase">Project Files</div>
+                 <div className="w-48 bg-slate-950 border-r border-slate-800 flex flex-col overflow-y-auto">
+                     
+                     {/* CONFIG FORM */}
+                     <div className="p-3 bg-slate-900 border-b border-slate-800">
+                         <div className="flex items-center gap-1 text-blue-400 text-xs font-bold uppercase mb-2">
+                             <Settings size={12}/> Configurare
+                         </div>
+                         <div className="space-y-2">
+                             <div>
+                                 <label className="text-[10px] text-slate-500">Server Address</label>
+                                 <input 
+                                    type="text" 
+                                    value={dbConfig.server} 
+                                    onChange={(e) => setDbConfig({...dbConfig, server: e.target.value})}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-blue-500 outline-none"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-[10px] text-slate-500">Database Name</label>
+                                 <input 
+                                    type="text" 
+                                    value={dbConfig.database} 
+                                    onChange={(e) => setDbConfig({...dbConfig, database: e.target.value})}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-blue-500 outline-none"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-[10px] text-slate-500">DB User</label>
+                                 <input 
+                                    type="text" 
+                                    value={dbConfig.user} 
+                                    onChange={(e) => setDbConfig({...dbConfig, user: e.target.value})}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-blue-500 outline-none"
+                                 />
+                             </div>
+                             <div>
+                                 <label className="text-[10px] text-slate-500">DB Password</label>
+                                 <input 
+                                    type="password" 
+                                    value={dbConfig.password} 
+                                    onChange={(e) => setDbConfig({...dbConfig, password: e.target.value})}
+                                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-blue-500 outline-none"
+                                 />
+                             </div>
+                         </div>
+                     </div>
+
+                     <div className="p-3 text-xs font-bold text-slate-500 uppercase mt-2">Project Files</div>
+                     <button onClick={() => setBridgeFile('env')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 ${bridgeFile === 'env' ? 'text-blue-400 bg-slate-800/50' : 'text-slate-400'}`}>
+                         <Terminal size={12}/> .env
+                     </button>
                      <button onClick={() => setBridgeFile('package')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 ${bridgeFile === 'package' ? 'text-blue-400 bg-slate-800/50' : 'text-slate-400'}`}>
                          <Code size={12}/> package.json
                      </button>
-                     <button onClick={() => setBridgeFile('env')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 ${bridgeFile === 'env' ? 'text-blue-400 bg-slate-800/50' : 'text-slate-400'}`}>
-                         <Terminal size={12}/> .env.example
-                     </button>
                      <button onClick={() => setBridgeFile('server')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 ${bridgeFile === 'server' ? 'text-blue-400 bg-slate-800/50' : 'text-slate-400'}`}>
-                         <FileCode size={12}/> server.ts
+                         <FileCode size={12}/> server.js
                      </button>
                      <button onClick={() => setBridgeFile('db')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 ${bridgeFile === 'db' ? 'text-blue-400 bg-slate-800/50' : 'text-slate-400'}`}>
-                         <Database size={12}/> db.ts
+                         <Database size={12}/> db.js
                      </button>
                  </div>
                  
@@ -432,11 +483,11 @@ app.listen(PORT, () => {
                      <div className="bg-slate-900 p-2 border-b border-slate-800 flex justify-between items-center">
                          <span className="text-xs text-slate-500 pl-2">
                             {bridgeFile === 'package' ? 'Node.js Dependencies' : 
-                             bridgeFile === 'env' ? 'Environment Variables' : 
-                             bridgeFile === 'server' ? 'Main Entry Point' : 'Database Connection'}
+                             bridgeFile === 'env' ? 'Environment Variables (Generated from Config)' : 
+                             bridgeFile === 'server' ? 'Main Entry Point (ESM)' : 'Database Connection (ESM)'}
                          </span>
                          <button 
-                            onClick={() => handleDownload(bridgeFile === 'package' ? 'package.json' : bridgeFile === 'env' ? '.env' : `${bridgeFile}.ts`, bridgeSources[bridgeFile])}
+                            onClick={() => handleDownload(bridgeFile === 'package' ? 'package.json' : bridgeFile === 'env' ? '.env' : `${bridgeFile}.js`, bridgeSources[bridgeFile])}
                             className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs transition"
                          >
                             <Download size={14}/> Download File

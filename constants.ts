@@ -9,6 +9,13 @@ export const APP_CONFIG: AppConfig = {
     startWorkHourThreshold: 10, // Daca e ora 10:00 si nu s-a pontat -> Alerta Manager
 };
 
+// --- API CONNECTION CONFIG ---
+// In a real scenario, this would come from import.meta.env.VITE_API_URL
+export const API_CONFIG = {
+    BASE_URL: 'http://localhost:3001/api/v1',
+    TIMEOUT: 10000
+};
+
 // --- NOMENCLATOARE INITIALE ---
 
 export const INITIAL_BREAK_CONFIGS: BreakConfig[] = [
