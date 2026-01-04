@@ -137,11 +137,10 @@ CREATE TABLE departments (
     email_notifications BIT DEFAULT 0
 );
 
--- Offices
+-- Offices (GLOBAL - SHARED HQ)
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='offices' AND xtype='U')
 CREATE TABLE offices (
     id NVARCHAR(50) PRIMARY KEY,
-    company_id NVARCHAR(50) FOREIGN KEY REFERENCES companies(id),
     name NVARCHAR(255) NOT NULL,
     latitude DECIMAL(10, 8) NOT NULL,
     longitude DECIMAL(11, 8) NOT NULL,
@@ -231,6 +230,20 @@ CREATE TABLE leave_requests (
     reason NVARCHAR(MAX),
     status NVARCHAR(20) DEFAULT 'PENDING',
     manager_comment NVARCHAR(MAX)
+);
+
+-- Correction Requests
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='correction_requests' AND xtype='U')
+CREATE TABLE correction_requests (
+    id NVARCHAR(50) PRIMARY KEY,
+    user_id NVARCHAR(50) FOREIGN KEY REFERENCES users(id),
+    timesheet_id NVARCHAR(50) FOREIGN KEY REFERENCES timesheets(id), -- Nullable if new TS
+    requested_date DATE, -- Used if timesheet_id is null
+    requested_start DATETIME2,
+    requested_end DATETIME2,
+    reason NVARCHAR(MAX),
+    status NVARCHAR(20) DEFAULT 'PENDING',
+    manager_note NVARCHAR(MAX)
 );
 
 -- Indexes (Check existence before creating)
@@ -352,7 +365,8 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// --- CLOCK IN ENDPOINT ---
+// --- CLOCK IN/OUT ENDPOINTS ---
+
 app.post('/api/v1/clock-in', async (req, res) => {
   const { userId, location, officeId } = req.body;
   try {
@@ -371,6 +385,120 @@ app.post('/api/v1/clock-in', async (req, res) => {
         .input('officeId', sql.NVarChar, officeId)
         .query(query);
     res.status(201).json(result.recordset[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database transaction failed' });
+  }
+});
+
+app.post('/api/v1/clock-out', async (req, res) => {
+  const { timesheetId, location } = req.body;
+  try {
+    const pool = await connectDB();
+    const query = \`
+      UPDATE timesheets 
+      SET end_time = GETDATE(), end_lat = @lat, end_long = @long, status = 'COMPLETED'
+      WHERE id = @id
+    \`;
+    await pool.request()
+        .input('id', sql.NVarChar, timesheetId)
+        .input('lat', sql.Decimal(10,8), location.latitude)
+        .input('long', sql.Decimal(11,8), location.longitude)
+        .query(query);
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database transaction failed' });
+  }
+});
+
+// --- BREAK ENDPOINTS ---
+
+app.post('/api/v1/breaks/start', async (req, res) => {
+  const { id, timesheetId, typeId, location } = req.body;
+  try {
+    const pool = await connectDB();
+    const query = \`
+      INSERT INTO breaks (id, timesheet_id, type_id, start_time)
+      VALUES (@id, @tsId, @typeId, GETDATE())
+    \`;
+    await pool.request()
+        .input('id', sql.NVarChar, id)
+        .input('tsId', sql.NVarChar, timesheetId)
+        .input('typeId', sql.NVarChar, typeId)
+        .query(query);
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database transaction failed' });
+  }
+});
+
+app.post('/api/v1/breaks/end', async (req, res) => {
+  const { id } = req.body;
+  try {
+    const pool = await connectDB();
+    const query = \`
+      UPDATE breaks SET end_time = GETDATE() WHERE id = @id
+    \`;
+    await pool.request()
+        .input('id', sql.NVarChar, id)
+        .query(query);
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database transaction failed' });
+  }
+});
+
+// --- LEAVE & CORRECTIONS ---
+
+app.post('/api/v1/leaves', async (req, res) => {
+  const { id, userId, typeId, startDate, endDate, reason, status } = req.body;
+  try {
+    const pool = await connectDB();
+    const query = \`
+      INSERT INTO leave_requests (id, user_id, type_id, start_date, end_date, reason, status)
+      VALUES (@id, @userId, @typeId, @startDate, @endDate, @reason, @status)
+    \`;
+    
+    await pool.request()
+        .input('id', sql.NVarChar, id)
+        .input('userId', sql.NVarChar, userId)
+        .input('typeId', sql.NVarChar, typeId)
+        .input('startDate', sql.Date, startDate)
+        .input('endDate', sql.Date, endDate)
+        .input('reason', sql.NVarChar, reason)
+        .input('status', sql.NVarChar, status)
+        .query(query);
+        
+    res.status(201).json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Database transaction failed' });
+  }
+});
+
+app.post('/api/v1/corrections', async (req, res) => {
+  const { id, userId, timesheetId, requestedDate, requestedStart, requestedEnd, reason } = req.body;
+  try {
+    const pool = await connectDB();
+    const query = \`
+      INSERT INTO correction_requests (id, user_id, timesheet_id, requested_date, requested_start, requested_end, reason)
+      VALUES (@id, @userId, @tsId, @rDate, @rStart, @rEnd, @reason)
+    \`;
+    
+    await pool.request()
+        .input('id', sql.NVarChar, id)
+        .input('userId', sql.NVarChar, userId)
+        .input('tsId', sql.NVarChar, timesheetId || null)
+        .input('rDate', sql.Date, requestedDate || null)
+        .input('rStart', sql.DateTime2, requestedStart)
+        .input('rEnd', sql.DateTime2, requestedEnd || null)
+        .input('reason', sql.NVarChar, reason)
+        .query(query);
+        
+    res.status(201).json({ success: true });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Database transaction failed' });
@@ -498,16 +626,15 @@ app.post('/api/v1/config/offices', async (req, res) => {
              const request = pool.request();
              await request
                .input('id', sql.NVarChar, item.id)
-               .input('compId', sql.NVarChar, item.companyId)
                .input('name', sql.NVarChar, item.name)
                .input('lat', sql.Decimal(10,8), item.coordinates.latitude)
                .input('long', sql.Decimal(11,8), item.coordinates.longitude)
                .input('rad', sql.Int, item.radiusMeters)
                .query(\`
                   IF EXISTS (SELECT 1 FROM offices WHERE id = @id)
-                    UPDATE offices SET name = @name, company_id = @compId, latitude = @lat, longitude = @long, radius_meters = @rad WHERE id = @id
+                    UPDATE offices SET name = @name, latitude = @lat, longitude = @long, radius_meters = @rad WHERE id = @id
                   ELSE
-                    INSERT INTO offices (id, company_id, name, latitude, longitude, radius_meters) VALUES (@id, @compId, @name, @lat, @long, @rad)
+                    INSERT INTO offices (id, name, latitude, longitude, radius_meters) VALUES (@id, @name, @lat, @long, @rad)
                \`);
         }
         res.json({ success: true, message: 'Offices synced (Upsert)' });

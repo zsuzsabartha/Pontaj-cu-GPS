@@ -72,17 +72,15 @@ const CompanyManagement: React.FC<CompanyManagementProps> = ({
   const handleDelete = (id: string) => {
       const hasUsers = users.some(u => u.companyId === id);
       const hasDepts = departments.some(d => d.companyId === id);
-      const hasOffices = offices.some(o => o.companyId === id);
-
-      if (hasUsers || hasDepts || hasOffices) {
-          alert(`Nu se poate șterge compania! \n\nAsocieri existente:\n- Angajați: ${hasUsers ? 'Da' : 'Nu'}\n- Departamente: ${hasDepts ? 'Da' : 'Nu'}\n- Sedii: ${hasOffices ? 'Da' : 'Nu'}\n\nVă rugăm să ștergeți sau să mutați asocierile înainte de a șterge compania.`);
+      
+      // Removed check for offices as they are shared/global now
+      if (hasUsers || hasDepts) {
+          alert(`Nu se poate șterge compania! \n\nAsocieri existente:\n- Angajați: ${hasUsers ? 'Da' : 'Nu'}\n- Departamente: ${hasDepts ? 'Da' : 'Nu'}\n\nVă rugăm să ștergeți sau să mutați asocierile înainte de a șterge compania.`);
           return;
       }
 
       if (confirm('Sunteți sigur că doriți să ștergeți această companie?')) {
           onDeleteCompany(id);
-          // Note: Backend assumes upsert, deleting here won't delete from SQL unless we implement a specific delete endpoint, 
-          // but for consistency we sync the remaining list.
       }
   };
 
@@ -131,7 +129,6 @@ const CompanyManagement: React.FC<CompanyManagementProps> = ({
            {companies.map(comp => {
                const employeeCount = users.filter(u => u.companyId === comp.id).length;
                const deptCount = departments.filter(d => d.companyId === comp.id).length;
-               const officeCount = offices.filter(o => o.companyId === comp.id).length;
                const isEditing = editingId === comp.id;
 
                return (
@@ -176,10 +173,6 @@ const CompanyManagement: React.FC<CompanyManagementProps> = ({
                            <div className="flex items-center justify-between text-sm text-gray-600 bg-gray-50 p-2 rounded">
                                <span className="flex items-center gap-2"><FolderTree size={14} className="text-orange-400"/> Departamente</span>
                                <span className="font-bold">{deptCount}</span>
-                           </div>
-                           <div className="flex items-center justify-between text-sm text-gray-600 bg-gray-50 p-2 rounded">
-                               <span className="flex items-center gap-2"><Building size={14} className="text-purple-400"/> Sedii</span>
-                               <span className="font-bold">{officeCount}</span>
                            </div>
                        </div>
                    </div>

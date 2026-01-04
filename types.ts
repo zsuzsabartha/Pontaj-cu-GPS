@@ -103,7 +103,7 @@ export interface Department {
 export interface Office {
   id: string;
   name: string;
-  companyId: string;
+  // Shared headquarters do not belong to a single company anymore
   coordinates: Coordinates;
   radiusMeters: number;
 }

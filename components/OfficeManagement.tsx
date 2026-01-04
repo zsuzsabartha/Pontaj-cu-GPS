@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Office, Company, Coordinates, Department, User } from '../types';
-import { Building, MapPin, Trash2, Plus, Navigation, FolderTree, Mail, BellOff, Briefcase, RefreshCw, Edit2, Save, X } from 'lucide-react';
+import { Office, Company, Department, User } from '../types';
+import { Building, MapPin, Trash2, Plus, Navigation, FolderTree, Mail, BellOff, RefreshCw, Edit2 } from 'lucide-react';
 import { getCurrentLocation } from '../services/geoService';
 import { API_CONFIG } from '../constants';
 
@@ -16,7 +16,7 @@ interface OfficeManagementProps {
   onUpdateCompany: (company: Company) => void; 
 }
 
-const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies, departments, users, onAddOffice, onUpdateOffice, onDeleteOffice, onUpdateDepartments, onUpdateCompany }) => {
+const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies, departments, users, onAddOffice, onUpdateOffice, onDeleteOffice, onUpdateDepartments }) => {
   const [activeTab, setActiveTab] = useState<'offices' | 'departments'>('offices');
   const [isAdding, setIsAdding] = useState(false);
   const [isAddingDept, setIsAddingDept] = useState(false);
@@ -25,7 +25,6 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
   const [editingOfficeId, setEditingOfficeId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    companyId: companies[0]?.id || '',
     latitude: '',
     longitude: '',
     radiusMeters: '100'
@@ -87,7 +86,6 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
     const officeData: Office = {
       id: editingOfficeId || `off-${Date.now()}`,
       name: formData.name,
-      companyId: formData.companyId,
       coordinates: {
         latitude: parseFloat(formData.latitude),
         longitude: parseFloat(formData.longitude)
@@ -112,7 +110,6 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
       setEditingOfficeId(office.id);
       setFormData({
           name: office.name,
-          companyId: office.companyId,
           latitude: office.coordinates.latitude.toString(),
           longitude: office.coordinates.longitude.toString(),
           radiusMeters: office.radiusMeters.toString()
@@ -204,7 +201,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
           onClick={() => setActiveTab('offices')}
           className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'offices' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
-          Sedii Fizice
+          Sedii (Shared HQ)
         </button>
         <button 
           onClick={() => setActiveTab('departments')}
@@ -216,12 +213,13 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
 
       {activeTab === 'offices' && (
         <>
-            <div className="flex justify-end">
+            <div className="flex justify-between items-center bg-blue-50 p-3 rounded-lg border border-blue-100 mb-4">
+                <span className="text-xs text-blue-800">Sediile definite aici sunt vizibile și utilizabile de către toate companiile din grup.</span>
                 <button 
                     onClick={() => {
                         setIsAdding(!isAdding);
                         setEditingOfficeId(null);
-                        setFormData({ name: '', companyId: companies[0]?.id || '', latitude: '', longitude: '', radiusMeters: '100' });
+                        setFormData({ name: '', latitude: '', longitude: '', radiusMeters: '100' });
                     }}
                     className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition flex items-center gap-2"
                 >
@@ -233,7 +231,6 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                 <div className="bg-white p-6 rounded-xl shadow-md border border-blue-100 animate-in fade-in slide-in-from-top-4">
                 <h3 className="font-semibold text-gray-700 mb-4">{editingOfficeId ? 'Editare Sediu' : 'Detalii Sediu Nou'}</h3>
                 <form onSubmit={handleOfficeSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-600 mb-1">Nume Sediu</label>
                         <input 
@@ -244,19 +241,6 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                         className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                         placeholder="Ex: Depozit Vest"
                         />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-600 mb-1">Companie</label>
-                        <select 
-                        value={formData.companyId}
-                        onChange={e => setFormData({...formData, companyId: e.target.value})}
-                        className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                        >
-                        {companies.map(c => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                        </select>
-                    </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
@@ -312,9 +296,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
             )}
 
             <div className="grid gap-4 md:grid-cols-2">
-                {offices.map(office => {
-                const companyName = companies.find(c => c.id === office.companyId)?.name || 'N/A';
-                return (
+                {offices.map(office => (
                     <div key={office.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition relative group">
                         <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition">
                             <button onClick={() => startEditOffice(office)} className="text-gray-400 hover:text-blue-600 p-1 rounded hover:bg-blue-50"><Edit2 size={16}/></button>
@@ -327,7 +309,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                             </div>
                             <div>
                             <h3 className="font-bold text-gray-800">{office.name}</h3>
-                            <p className="text-sm text-gray-500">{companyName}</p>
+                            <p className="text-xs text-blue-500 font-medium">Shared Headquarters</p>
                             <div className="mt-2 text-xs text-gray-400 font-mono space-y-1">
                                 <p>Lat: {office.coordinates.latitude.toFixed(4)}</p>
                                 <p>Long: {office.coordinates.longitude.toFixed(4)}</p>
@@ -336,8 +318,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                             </div>
                         </div>
                     </div>
-                );
-                })}
+                ))}
             </div>
         </>
       )}

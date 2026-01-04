@@ -18,7 +18,8 @@ const UserValidationModal: React.FC<UserValidationModalProps> = ({ isOpen, onClo
   
   // Available selections based on current company selection
   const availableDepartments = departments.filter(d => d.companyId === formData.companyId);
-  const availableOffices = offices.filter(o => o.companyId === formData.companyId);
+  // Offices are shared (global), so no filtering by companyId
+  const availableOffices = offices;
 
   useEffect(() => {
     if (user) {

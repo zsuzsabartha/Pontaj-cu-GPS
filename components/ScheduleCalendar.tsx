@@ -1,17 +1,17 @@
-
 import React, { useState } from 'react';
-import { DailySchedule, WorkSchedule, User, Role } from '../types';
+import { DailySchedule, WorkSchedule, User, Role, Holiday } from '../types';
 import { MOCK_SCHEDULES } from '../constants';
-import { ChevronLeft, ChevronRight, CalendarClock, Moon, Sun, Clock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CalendarClock, Moon, Sun, Clock, PartyPopper } from 'lucide-react';
 
 interface ScheduleCalendarProps {
   currentUser: User;
   users: User[]; // All users (for Manager to select)
   schedules: DailySchedule[];
+  holidays: Holiday[];
   onAssignSchedule: (userId: string, date: string, scheduleId: string) => void;
 }
 
-const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users, schedules, onAssignSchedule }) => {
+const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users, schedules, holidays, onAssignSchedule }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedUser, setSelectedUser] = useState<string>(currentUser.id);
 
@@ -69,32 +69,50 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
       return null;
   };
 
+  const getHolidayForDay = (day: number) => {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      return holidays.find(h => h.date === dateStr);
+  };
+
   // Render
   const days = [];
   // Empty slots for days before 1st
   for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="h-24 bg-gray-50/50 border border-gray-100"></div>);
+      days.push(<div key={`empty-${i}`} className="h-28 bg-gray-50/50 border border-gray-100"></div>);
   }
   // Days
   for (let day = 1; day <= daysInMonth; day++) {
       const schedule = getScheduleForDay(day);
+      const holiday = getHolidayForDay(day);
       const isToday = new Date().toDateString() === new Date(year, month, day).toDateString();
       
       days.push(
           <div 
             key={day} 
             onClick={() => handleDayClick(day)}
-            className={`h-24 border border-gray-100 p-2 relative transition hover:bg-blue-50 cursor-pointer ${isToday ? 'bg-blue-50/30' : 'bg-white'}`}
+            className={`h-28 border border-gray-100 p-2 relative transition hover:bg-blue-50 cursor-pointer flex flex-col justify-between ${
+                holiday ? 'bg-purple-50/60 hover:bg-purple-100' : (isToday ? 'bg-blue-50/30' : 'bg-white')
+            }`}
           >
-              <span className={`text-sm font-semibold ${isToday ? 'text-blue-600' : 'text-gray-700'}`}>{day}</span>
+              <div className="flex justify-between items-start">
+                  <span className={`text-sm font-semibold ${isToday ? 'text-blue-600' : 'text-gray-700'}`}>{day}</span>
+                  {holiday && <PartyPopper size={14} className="text-purple-500" />}
+              </div>
+
+              {holiday && (
+                  <div className="text-[10px] text-purple-700 font-bold leading-tight bg-white/50 p-1 rounded border border-purple-100 mb-1">
+                      {holiday.name}
+                  </div>
+              )}
+
               {schedule ? (
-                  <div className={`mt-2 p-1 rounded text-[10px] border flex flex-col gap-0.5 items-center ${schedule.crossesMidnight ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-green-100 text-green-800 border-green-200'}`}>
+                  <div className={`p-1 rounded text-[10px] border flex flex-col gap-0.5 items-center ${schedule.crossesMidnight ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-green-100 text-green-800 border-green-200'}`}>
                       {schedule.crossesMidnight ? <Moon size={10}/> : <Sun size={10}/>}
                       <span className="font-bold truncate w-full text-center">{schedule.name.split(' ')[0]}</span>
                       <span>{schedule.startTime}-{schedule.endTime}</span>
                   </div>
               ) : (
-                  <div className="mt-2 text-[10px] text-gray-300 text-center italic">Standard</div>
+                  !holiday && <div className="mt-2 text-[10px] text-gray-300 text-center italic">Standard</div>
               )}
           </div>
       );
@@ -133,12 +151,18 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
         </div>
 
         {/* Legend */}
-        {isManager && (
-            <div className="bg-yellow-50 px-4 py-2 text-xs text-yellow-700 flex gap-4">
-                <span className="font-bold">Info Manager:</span>
-                <span>Click pe o zi pentru a cicla programele de lucru disponibile.</span>
-            </div>
-        )}
+        <div className="bg-gray-50 px-4 py-2 text-xs flex gap-4 text-gray-500 flex-wrap">
+             <div className="flex items-center gap-1">
+                 <span className="w-2 h-2 rounded-full bg-purple-500"></span> Sărbătoare Legală
+             </div>
+             <div className="flex items-center gap-1">
+                 <span className="w-2 h-2 rounded-full bg-indigo-500"></span> Tură Noapte
+             </div>
+             <div className="flex items-center gap-1">
+                 <span className="w-2 h-2 rounded-full bg-green-500"></span> Tură Standard
+             </div>
+             {isManager && <span className="ml-auto text-yellow-700 font-medium">Click pe zi pentru a schimba programul</span>}
+        </div>
 
         {/* Calendar Grid */}
         <div className="grid grid-cols-7 text-center border-b border-gray-200 bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider">

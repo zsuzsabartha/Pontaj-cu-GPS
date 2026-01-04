@@ -1,20 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, User as UserIcon, Utensils, Cigarette, Home, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
+import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, User as UserIcon, Utensils, Cigarette, Home, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff } from 'lucide-react';
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
-import { ShiftStatus, Coordinates, Office, User, BreakConfig } from '../types';
+import { ShiftStatus, Coordinates, Office, User, BreakConfig, Holiday, LeaveRequest, LeaveStatus } from '../types';
 
 interface ClockWidgetProps {
   user: User;
-  companyName?: string; // New prop for multi-company display
+  companyName?: string;
   offices: Office[];
   currentStatus: ShiftStatus;
-  breakConfigs: BreakConfig[]; 
+  breakConfigs: BreakConfig[];
+  holidays: Holiday[]; 
+  activeLeaveRequest?: LeaveRequest; // New prop
   onClockIn: (location: Coordinates, office: Office | null, dist: number) => void;
   onClockOut: (location: Coordinates) => void;
   onToggleBreak: (breakConfig?: BreakConfig, location?: Coordinates, dist?: number) => void;
 }
 
-const ClockWidget: React.FC<ClockWidgetProps> = ({ user, companyName, offices, currentStatus, breakConfigs, onClockIn, onClockOut, onToggleBreak }) => {
+const ClockWidget: React.FC<ClockWidgetProps> = ({ user, companyName, offices, currentStatus, breakConfigs, holidays, activeLeaveRequest, onClockIn, onClockOut, onToggleBreak }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showMockOption, setShowMockOption] = useState(false);
@@ -26,8 +28,13 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({ user, companyName, offices, c
   const [confirmData, setConfirmData] = useState<{ coords: Coordinates, office: Office, distance: number } | null>(null);
   const [isRemoteWork, setIsRemoteWork] = useState(false);
 
-  const todayDate = new Date().toLocaleDateString('ro-RO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const todayDateObj = new Date();
+  const todayDateStr = todayDateObj.toISOString().split('T')[0];
+  const todayDate = todayDateObj.toLocaleDateString('ro-RO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const todayDateCapitalized = todayDate.charAt(0).toUpperCase() + todayDate.slice(1);
+
+  // Check for Holiday
+  const todayHoliday = holidays.find(h => h.date === todayDateStr);
 
   let statusText = "NEPONTAT";
   let statusColor = "bg-gray-100 text-gray-500 border-gray-200";
@@ -189,6 +196,32 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({ user, companyName, offices, c
       {/* Decorative bg */}
       <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-blue-50 rounded-full opacity-50 blur-xl"></div>
       
+      {/* Holiday Banner */}
+      {todayHoliday && (
+          <div className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white text-xs font-bold p-2 -mx-6 -mt-6 mb-4 flex items-center justify-center gap-2 shadow-inner relative z-20">
+              <PartyPopper size={14} className="animate-bounce"/>
+              Sărbătoare Legală: {todayHoliday.name}
+          </div>
+      )}
+
+      {/* Leave Request Banner */}
+      {activeLeaveRequest && (
+          <div className={`text-white text-xs font-bold p-2 -mx-6 -mt-6 mb-4 flex flex-col items-center justify-center gap-1 shadow-inner relative z-20 ${
+              activeLeaveRequest.status === LeaveStatus.APPROVED ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 
+              activeLeaveRequest.status === LeaveStatus.REJECTED ? 'bg-gradient-to-r from-red-500 to-rose-600' : 
+              'bg-gradient-to-r from-orange-400 to-amber-500'
+          }`}>
+              <div className="flex items-center gap-2">
+                  {activeLeaveRequest.status === LeaveStatus.APPROVED ? <CheckCircle size={14}/> : 
+                   activeLeaveRequest.status === LeaveStatus.REJECTED ? <XCircle size={14}/> : <CalendarOff size={14}/>}
+                  <span>Concediu: {activeLeaveRequest.typeName}</span>
+              </div>
+              <span className="opacity-90 bg-black/10 px-2 py-0.5 rounded text-[10px] uppercase tracking-wide">
+                  Status: {activeLeaveRequest.status === LeaveStatus.PENDING ? 'În Așteptare' : activeLeaveRequest.status === LeaveStatus.APPROVED ? 'Aprobat' : 'Respins'}
+              </span>
+          </div>
+      )}
+      
       {/* Header Info */}
       <div className="flex flex-col gap-4 mb-6 relative z-10">
         <div className="flex justify-between items-start">
@@ -248,8 +281,8 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({ user, companyName, offices, c
             {currentStatus === ShiftStatus.NOT_STARTED || currentStatus === ShiftStatus.COMPLETED ? (
                  <button 
                  onClick={handleClockIn}
-                 disabled={loading}
-                 className={`col-span-2 flex items-center justify-center gap-2 text-white py-4 rounded-xl font-semibold transition-all shadow-lg active:scale-95 disabled:opacity-70 ${isRemoteWork ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`}
+                 disabled={loading || (activeLeaveRequest?.status === LeaveStatus.APPROVED && !activeLeaveRequest?.typeName.includes('Delegatie'))} // Disable if approved leave (unless business trip)
+                 className={`col-span-2 flex items-center justify-center gap-2 text-white py-4 rounded-xl font-semibold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:grayscale ${isRemoteWork ? 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'}`}
                >
                  {loading ? (
                      <><RefreshCw className="animate-spin" size={24}/> SE LOCALIZEAZĂ...</>

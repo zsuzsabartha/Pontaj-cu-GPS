@@ -53,7 +53,8 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
   const activeListUsers = filteredUsers.filter(u => u.isValidated);
   
   const availableDepartments = departments.filter(d => d.companyId === newUser.companyId);
-  const availableOffices = offices.filter(o => o.companyId === newUser.companyId);
+  // Shared offices are all available
+  const availableOffices = offices; 
 
   // Helper to translate status
   const getStatusLabel = (status?: string) => {

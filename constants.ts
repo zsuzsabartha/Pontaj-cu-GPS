@@ -69,14 +69,14 @@ export const MOCK_OFFICES: Office[] = [
   {
     id: 'off1',
     name: 'HQ - București Nord',
-    companyId: 'c1',
+    // companyId: 'c1', // Removed - shared
     coordinates: { latitude: 44.482, longitude: 26.105 },
     radiusMeters: 150
   },
   {
     id: 'off2',
     name: 'Depozit - Ilfov',
-    companyId: 'c2',
+    // companyId: 'c2', // Removed - shared
     coordinates: { latitude: 44.435, longitude: 26.012 },
     radiusMeters: 300
   }
