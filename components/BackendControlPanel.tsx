@@ -443,7 +443,7 @@ app.get('/api/v1/timesheets', async (req, res) => {
   try {
     const pool = await connectDB();
     
-    // Fetch Timesheets
+    // Fetch Timesheets (Aliased to avoid ambiguity)
     const tsResult = await pool.request().query(\`
       SELECT 
         t.id, t.user_id as userId, t.start_time as startTime, t.end_time as endTime, 
@@ -455,7 +455,7 @@ app.get('/api/v1/timesheets', async (req, res) => {
     
     const timesheets = tsResult.recordset;
 
-    // Fetch Breaks
+    // Fetch Breaks (Strictly aliased)
     const brResult = await pool.request().query(\`
       SELECT 
         b.id, b.timesheet_id as timesheetId, b.type_id as typeId, bc.name as typeName,
@@ -502,7 +502,7 @@ app.post('/api/v1/clock-in', async (req, res) => {
     const pool = await connectDB();
     const query = \`
       INSERT INTO timesheets (id, user_id, start_time, date, start_lat, start_long, matched_office_id, status)
-      OUTPUT INSERTED.*
+      OUTPUT INSERTED.id, INSERTED.user_id, INSERTED.start_time, INSERTED.status 
       VALUES (@id, @userId, GETDATE(), CAST(GETDATE() AS DATE), @lat, @long, @officeId, 'WORKING')
     \`;
     // Use client ID if provided, otherwise generate one (fallback)
@@ -592,17 +592,17 @@ app.get('/api/v1/leaves', async (req, res) => {
     // FETCH leaves with joined config name using strict aliasing
     const richResult = await pool.request().query(\`
         SELECT 
-            lr.id, 
-            lr.user_id as userId, 
-            lr.type_id as typeId, 
-            lc.name as typeName,
-            lr.start_date as startDate, 
-            lr.end_date as endDate, 
-            lr.reason, 
-            lr.status, 
-            lr.manager_comment as managerComment 
-        FROM leave_requests lr
-        LEFT JOIN leave_configs lc ON lr.type_id = lc.id
+            leave_requests.id, 
+            leave_requests.user_id as userId, 
+            leave_requests.type_id as typeId, 
+            leave_configs.name as typeName,
+            leave_requests.start_date as startDate, 
+            leave_requests.end_date as endDate, 
+            leave_requests.reason, 
+            leave_requests.status, 
+            leave_requests.manager_comment as managerComment 
+        FROM leave_requests
+        LEFT JOIN leave_configs ON leave_requests.type_id = leave_configs.id
     \`);
 
     res.json(richResult.recordset);

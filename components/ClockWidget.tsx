@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, User as UserIcon, Utensils, Cigarette, Home, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff } from 'lucide-react';
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
 import { ShiftStatus, Coordinates, Office, User, BreakConfig, Holiday, LeaveRequest, LeaveStatus } from '../types';
@@ -29,12 +28,11 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showMockOption, setShowMockOption] = useState(false);
   
-  const [elapsedTime, setElapsedTime] = useState<string>("00:00:00");
-  const [breakTime, setBreakTime] = useState<string>("00:00:00");
+  // Timer State
+  const [now, setNow] = useState<number>(Date.now());
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const [showBreakSelector, setShowBreakSelector] = useState(false);
-  
-  // States for confirmation UI
   const [confirmData, setConfirmData] = useState<{ coords: Coordinates, office: Office, distance: number } | null>(null);
 
   const todayDateObj = new Date();
@@ -59,86 +57,83 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
       statusColor = "bg-blue-100 text-blue-700 border-blue-200";
   }
 
-  // Timer Logic
+  // --- Robust Timer Logic ---
   useEffect(() => {
-    const updateTime = () => {
-        if (!shiftStartTime || currentStatus === ShiftStatus.NOT_STARTED) {
-            setElapsedTime("00:00:00");
-            setBreakTime("00:00:00");
-            return;
-        }
-        
-        const now = Date.now();
-        const start = new Date(shiftStartTime).getTime();
-        
-        if (isNaN(start)) {
-            return; // Safety check
-        }
-        
-        // --- Calculate Work Time (Elapsed) ---
-        // Gross duration since start
-        let grossDuration = now - start;
-        if (grossDuration < 0) grossDuration = 0;
-
-        // Net Work Time Calculation
-        let netWorkMs = 0;
-        if (currentStatus === ShiftStatus.WORKING) {
-            // If working, subtract completed breaks from total time
-            netWorkMs = grossDuration - accumulatedBreakTime;
-        } else if (currentStatus === ShiftStatus.ON_BREAK && activeBreakStartTime) {
-            // If on break, work time is frozen at the moment break started
-            // Total elapsed up to break start = (BreakStart - ShiftStart)
-            // Minus accumulated previous breaks
-            const breakStart = new Date(activeBreakStartTime).getTime();
-            if (!isNaN(breakStart)) {
-                netWorkMs = (breakStart - start) - accumulatedBreakTime;
-            } else {
-                // Fallback if break start is invalid
-                netWorkMs = grossDuration - accumulatedBreakTime;
-            }
-        } else if (currentStatus === ShiftStatus.COMPLETED) {
-             // Handled by static display usually, but for now:
-             netWorkMs = grossDuration - accumulatedBreakTime;
-        }
-
-        if (netWorkMs < 0) netWorkMs = 0;
-
-        // --- Calculate Break Time (If Active) ---
-        let currentBreakMs = 0;
-        if (currentStatus === ShiftStatus.ON_BREAK && activeBreakStartTime) {
-            const breakStart = new Date(activeBreakStartTime).getTime();
-            if(!isNaN(breakStart)) {
-                currentBreakMs = now - breakStart;
-            }
-        }
-
-        // --- Formatters ---
-        const formatMs = (ms: number) => {
-            if (isNaN(ms)) return "00:00:00";
-            const h = Math.floor(ms / 3600000);
-            const m = Math.floor((ms % 3600000) / 60000);
-            const s = Math.floor((ms % 60000) / 1000);
-            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-        };
-
-        setElapsedTime(formatMs(netWorkMs));
-        if (currentStatus === ShiftStatus.ON_BREAK) {
-            setBreakTime(formatMs(currentBreakMs));
-        } else {
-            setBreakTime("00:00:00");
-        }
-    };
-
-    // Initial update
-    updateTime();
-
-    let interval: any;
-    if (currentStatus === ShiftStatus.WORKING || currentStatus === ShiftStatus.ON_BREAK) {
-      interval = setInterval(updateTime, 1000);
+    // Clear any existing timer
+    if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
     }
-    
-    return () => clearInterval(interval);
-  }, [currentStatus, shiftStartTime, accumulatedBreakTime, activeBreakStartTime]);
+
+    if (currentStatus === ShiftStatus.WORKING || currentStatus === ShiftStatus.ON_BREAK) {
+      // Sync immediately
+      setNow(Date.now());
+      // Start interval
+      timerRef.current = setInterval(() => {
+        setNow(Date.now());
+      }, 1000);
+    }
+
+    return () => {
+      if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+      }
+    };
+  }, [currentStatus]);
+
+  // --- Calculation Logic (Derived State) ---
+  const calculateTimers = () => {
+      if (!shiftStartTime || currentStatus === ShiftStatus.NOT_STARTED) {
+          return { elapsed: "00:00:00", breakTimer: "00:00:00" };
+      }
+
+      const start = new Date(shiftStartTime).getTime();
+      if (isNaN(start)) return { elapsed: "00:00:00", breakTimer: "00:00:00" };
+
+      // Total duration from Shift Start to Now
+      let grossDuration = now - start;
+      if (grossDuration < 0) grossDuration = 0;
+
+      let netWorkMs = 0;
+      let currentBreakMs = 0;
+
+      if (currentStatus === ShiftStatus.ON_BREAK && activeBreakStartTime) {
+          // If on break, work time is frozen at the moment break started
+          const breakStart = new Date(activeBreakStartTime).getTime();
+          if (!isNaN(breakStart)) {
+              // Net Work = (BreakStart - ShiftStart) - PreviousBreaks
+              netWorkMs = (breakStart - start) - accumulatedBreakTime;
+              // Break Timer = Now - BreakStart
+              currentBreakMs = now - breakStart;
+          } else {
+              // Fallback
+              netWorkMs = grossDuration - accumulatedBreakTime;
+          }
+      } else {
+          // If Working or Completed
+          // Net Work = (Now - ShiftStart) - TotalBreaks
+          netWorkMs = grossDuration - accumulatedBreakTime;
+          currentBreakMs = 0;
+      }
+
+      if (netWorkMs < 0) netWorkMs = 0;
+      if (currentBreakMs < 0) currentBreakMs = 0;
+
+      const formatMs = (ms: number) => {
+          const h = Math.floor(ms / 3600000);
+          const m = Math.floor((ms % 3600000) / 60000);
+          const s = Math.floor((ms % 60000) / 1000);
+          return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+      };
+
+      return { 
+          elapsed: formatMs(netWorkMs), 
+          breakTimer: formatMs(currentBreakMs) 
+      };
+  };
+
+  const { elapsed, breakTimer } = calculateTimers();
 
   const handleClockIn = async () => {
     setLoading(true);
@@ -151,9 +146,8 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
         const { office, distance } = findNearestOffice(coords, offices);
 
         if (office && distance > office.radiusMeters + 500) {
-            // Instead of window.confirm, set state to show UI
             setConfirmData({ coords, office, distance });
-            setLoading(false); // Stop loading to show UI
+            setLoading(false);
             return;
         } 
         
@@ -164,8 +158,6 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
         setError(err.message || 'Eroare localizare');
         setShowMockOption(true);
     } finally {
-        // If we are showing confirmation, don't stop loading yet (handled above)
-        // Otherwise stop
         if (!confirmData) setLoading(false);
     }
   };
@@ -314,7 +306,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
             <Clock size={12}/> Timp Lucrat
         </div>
         <div className={`text-5xl font-mono font-semibold tracking-wider mb-2 ${currentStatus === ShiftStatus.ON_BREAK ? 'text-gray-400' : 'text-gray-700'}`}>
-          {elapsedTime}
+          {elapsed}
         </div>
         
         {/* Pause Duration Indicator */}
@@ -322,7 +314,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
             <div className="mb-6 flex items-center gap-2 text-orange-600 bg-orange-50 px-3 py-1 rounded-full animate-pulse border border-orange-100">
                 <Coffee size={14}/>
                 <span className="text-xs font-bold uppercase">Durată Pauză:</span>
-                <span className="font-mono font-bold text-sm">{breakTime}</span>
+                <span className="font-mono font-bold text-sm">{breakTimer}</span>
             </div>
         )}
         {/* Spacer if not on break to keep layout stable */}
