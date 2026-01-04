@@ -1,14 +1,13 @@
-
 import React, { useState } from 'react';
 import { User, Role, Company, Department, Office } from '../types';
-import { UserPlus, CheckCircle, XCircle, Mail, ShieldAlert, MapPinOff, Building, Database, RefreshCw, Server, Cake, Fingerprint, Clock, Briefcase, FileInput, Upload, Users, BellRing, Eye, AlertTriangle, UserMinus } from 'lucide-react';
+import { UserPlus, CheckCircle, XCircle, Mail, ShieldAlert, MapPinOff, Building, Database, RefreshCw, Server, Cake, Fingerprint, Clock, Briefcase, FileInput, Upload, Users, BellRing, Eye, AlertTriangle, UserMinus, Filter } from 'lucide-react';
 import UserValidationModal from './UserValidationModal';
 
 interface AdminUserManagementProps {
   users: User[];
   companies: Company[];
   departments: Department[];
-  offices: Office[]; // Added offices to props
+  offices: Office[];
   onValidateUser: (userId: string) => void;
   onCreateUser: (user: User) => void;
 }
@@ -18,6 +17,9 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
   const [isDbSyncing, setIsDbSyncing] = useState(false);
   const [dbStatus, setDbStatus] = useState<'connected' | 'error'>('connected');
   
+  // Filtering State
+  const [selectedCompanyFilter, setSelectedCompanyFilter] = useState<string>('ALL');
+
   // Validation Modal State
   const [validationUser, setValidationUser] = useState<User | null>(null);
 
@@ -31,19 +33,25 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
     erpId: '', 
     companyId: companies[0]?.id || '',
     departmentId: '',
-    assignedOfficeId: '', // New field
-    contractHours: 8, // New field
+    assignedOfficeId: '',
+    contractHours: 8,
     roles: [Role.EMPLOYEE] as Role[],
     requiresGPS: true,
     birthDate: '',
     shareBirthday: false
   });
 
-  const pendingUsers = users.filter(u => !u.isValidated);
-  const inactiveUsers = users.filter(u => u.isValidated && !u.lastLoginDate && u.employmentStatus === 'ACTIVE');
+  // Filter Logic
+  const filteredUsers = users.filter(u => {
+      if (selectedCompanyFilter === 'ALL') return true;
+      return u.companyId === selectedCompanyFilter;
+  });
+
+  const pendingUsers = filteredUsers.filter(u => !u.isValidated);
+  const inactiveUsers = filteredUsers.filter(u => u.isValidated && !u.lastLoginDate && u.employmentStatus === 'ACTIVE');
+  const activeListUsers = filteredUsers.filter(u => u.isValidated);
   
   const availableDepartments = departments.filter(d => d.companyId === newUser.companyId);
-  // Filter offices based on selected company
   const availableOffices = offices.filter(o => o.companyId === newUser.companyId);
 
   // Helper to translate status
@@ -87,7 +95,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
       isValidated: true,
       requiresGPS: newUser.requiresGPS,
       avatarUrl: `https://ui-avatars.com/api/?name=${newUser.name}&background=random`,
-      allowedScheduleIds: ['sch1'], // Default to standard schedule
+      allowedScheduleIds: ['sch1'], 
       birthDate: newUser.birthDate || undefined,
       shareBirthday: newUser.shareBirthday,
       employmentStatus: 'ACTIVE'
@@ -131,11 +139,11 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                 name: item.name || 'Unknown',
                 email: item.email || `temp-${Math.random()}@company.com`,
                 erpId: item.erpId || '',
-                companyId: companies[0].id, // Default to first company
+                companyId: companies[0].id, 
                 roles: [Role.EMPLOYEE],
                 authType: 'PIN',
                 pin: Math.floor(1000 + Math.random() * 9000).toString(),
-                isValidated: false, // Imported users are pending validation
+                isValidated: false, 
                 requiresGPS: true,
                 avatarUrl: `https://ui-avatars.com/api/?name=${item.name || 'U'}&background=random`,
                 allowedScheduleIds: ['sch1'],
@@ -188,6 +196,27 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
               {isDbSyncing ? 'Sync...' : 'Forțare Sincronizare'}
           </button>
       </div>
+      
+      {/* Company Filter */}
+      <div className="bg-white p-4 rounded-xl border border-gray-100 flex items-center gap-3 shadow-sm">
+          <Filter size={20} className="text-gray-400" />
+          <span className="text-sm font-bold text-gray-700">Filtrează Grup Companii:</span>
+          <select 
+            value={selectedCompanyFilter}
+            onChange={(e) => setSelectedCompanyFilter(e.target.value)}
+            className="p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none min-w-[200px]"
+          >
+              <option value="ALL">Toate Companiile</option>
+              {companies.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+          </select>
+          {selectedCompanyFilter !== 'ALL' && (
+              <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full border border-blue-100 font-medium">
+                  {filteredUsers.length} angajați găsiți
+              </span>
+          )}
+      </div>
 
       <div className="flex gap-4 border-b border-gray-200 pb-2 overflow-x-auto">
         <button
@@ -223,36 +252,43 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
           </h3>
           
           <div className="mt-6">
-              <h4 className="text-sm font-semibold text-gray-500 uppercase mb-3">Utilizatori Activi / Suspendati</h4>
+              <h4 className="text-sm font-semibold text-gray-500 uppercase mb-3">Utilizatori Activi / Suspendati ({activeListUsers.length})</h4>
               <div className="grid gap-4">
-                {users.filter(u => u.isValidated).map(user => {
-                    const dept = departments.find(d => d.id === user.departmentId)?.name || 'N/A';
-                    const statusLabel = getStatusLabel(user.employmentStatus);
-                    
-                    return (
-                        <div key={user.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div className="flex items-center gap-3">
-                                <img src={user.avatarUrl} className="w-10 h-10 rounded-full bg-gray-100" />
-                                <div>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <p className="font-bold text-gray-800">{user.name}</p>
-                                        <span className={`text-[10px] px-1.5 py-0.5 rounded border font-bold ${
-                                            user.employmentStatus === 'ACTIVE' ? 'bg-green-100 text-green-700 border-green-200' :
-                                            user.employmentStatus === 'SUSPENDED' ? 'bg-red-100 text-red-700 border-red-200' :
-                                            'bg-gray-100 text-gray-700 border-gray-200'
-                                        }`}>
-                                            {statusLabel}
-                                        </span>
+                {activeListUsers.length === 0 ? (
+                    <p className="text-gray-400 italic text-sm">Nu există angajați activi pentru filtrul selectat.</p>
+                ) : (
+                    activeListUsers.map(user => {
+                        const dept = departments.find(d => d.id === user.departmentId)?.name || 'N/A';
+                        const companyName = companies.find(c => c.id === user.companyId)?.name || 'N/A';
+                        const statusLabel = getStatusLabel(user.employmentStatus);
+                        
+                        return (
+                            <div key={user.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <img src={user.avatarUrl} className="w-10 h-10 rounded-full bg-gray-100" />
+                                    <div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <p className="font-bold text-gray-800">{user.name}</p>
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded border font-bold ${
+                                                user.employmentStatus === 'ACTIVE' ? 'bg-green-100 text-green-700 border-green-200' :
+                                                user.employmentStatus === 'SUSPENDED' ? 'bg-red-100 text-red-700 border-red-200' :
+                                                'bg-gray-100 text-gray-700 border-gray-200'
+                                            }`}>
+                                                {statusLabel}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                                            {user.email} • <Briefcase size={10} className="inline"/> {companyName} • {dept}
+                                        </p>
                                     </div>
-                                    <p className="text-xs text-gray-500">{user.email} • {dept}</p>
+                                </div>
+                                <div className="text-xs text-gray-400 font-mono self-start md:self-center bg-gray-50 px-2 py-1 rounded">
+                                    Auth: {user.authType}
                                 </div>
                             </div>
-                            <div className="text-xs text-gray-400 font-mono self-start md:self-center">
-                                {user.authType}
-                            </div>
-                        </div>
-                    )
-                })}
+                        )
+                    })
+                )}
               </div>
           </div>
 
@@ -260,28 +296,32 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
 
           {pendingUsers.length === 0 ? (
             <div className="bg-white p-4 rounded-xl border border-dashed text-center text-gray-400 text-sm">
-              Nu există utilizatori noi care așteaptă validarea.
+              Nu există utilizatori noi care așteaptă validarea pentru selecția curentă.
             </div>
           ) : (
             <div className="grid gap-4">
-              {pendingUsers.map(user => (
-                <div key={user.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-                   <div className="flex items-center gap-3">
-                      <img src={user.avatarUrl} className="w-10 h-10 rounded-full bg-gray-100" />
-                      <div>
-                        <p className="font-bold text-gray-800">{user.name}</p>
-                        <p className="text-sm text-gray-500">{user.email}</p>
-                        <span className="text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded border border-orange-100">Necesită Validare HR</span>
-                      </div>
-                   </div>
-                   <button 
-                     onClick={() => setValidationUser(user)}
-                     className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center gap-2 transition shadow-lg shadow-blue-100"
-                   >
-                     <Eye size={16}/> Verifică & Validează
-                   </button>
-                </div>
-              ))}
+              {pendingUsers.map(user => {
+                  const companyName = companies.find(c => c.id === user.companyId)?.name || 'N/A';
+                  return (
+                    <div key={user.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <img src={user.avatarUrl} className="w-10 h-10 rounded-full bg-gray-100" />
+                        <div>
+                            <p className="font-bold text-gray-800">{user.name}</p>
+                            <p className="text-sm text-gray-500">{user.email}</p>
+                            <p className="text-xs text-blue-500 font-medium">{companyName}</p>
+                            <span className="text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded border border-orange-100">Necesită Validare HR</span>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={() => setValidationUser(user)}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center gap-2 transition shadow-lg shadow-blue-100"
+                    >
+                        <Eye size={16}/> Verifică & Validează
+                    </button>
+                    </div>
+                  );
+              })}
             </div>
           )}
         </div>
@@ -297,26 +337,30 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
              </div>
 
              <div className="grid gap-4">
-                 {inactiveUsers.map(user => (
-                     <div key={user.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <div className="relative">
-                                <img src={user.avatarUrl} className="w-10 h-10 rounded-full bg-gray-100 grayscale opacity-70" />
-                                <div className="absolute bottom-0 right-0 bg-red-500 w-3 h-3 rounded-full border-2 border-white"></div>
+                 {inactiveUsers.map(user => {
+                     const companyName = companies.find(c => c.id === user.companyId)?.name || 'N/A';
+                     return (
+                        <div key={user.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="relative">
+                                    <img src={user.avatarUrl} className="w-10 h-10 rounded-full bg-gray-100 grayscale opacity-70" />
+                                    <div className="absolute bottom-0 right-0 bg-red-500 w-3 h-3 rounded-full border-2 border-white"></div>
+                                </div>
+                                <div>
+                                    <p className="font-bold text-gray-700">{user.name}</p>
+                                    <p className="text-xs text-gray-400">Validat, dar inactiv (Logare lipsă)</p>
+                                    <p className="text-xs text-blue-400">{companyName}</p>
+                                </div>
                             </div>
-                            <div>
-                                <p className="font-bold text-gray-700">{user.name}</p>
-                                <p className="text-xs text-gray-400">Validat, dar inactiv (Logare lipsă)</p>
-                            </div>
+                            <button 
+                                onClick={() => handleSendReminder(user)}
+                                className="text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2"
+                            >
+                                <BellRing size={16}/> Trimite Reminder
+                            </button>
                         </div>
-                        <button 
-                            onClick={() => handleSendReminder(user)}
-                            className="text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2"
-                        >
-                            <BellRing size={16}/> Trimite Reminder
-                        </button>
-                     </div>
-                 ))}
+                     )
+                 })}
                  {inactiveUsers.length === 0 && (
                      <p className="text-center text-gray-400 italic py-8">Toți utilizatorii validați sunt activi.</p>
                  )}
