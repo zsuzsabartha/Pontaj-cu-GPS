@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save } from 'lucide-react';
+import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen } from 'lucide-react';
 
 const BackendControlPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'status' | 'sql' | 'bridge' | 'swagger'>('status');
   const [connectionStatus, setConnectionStatus] = useState<'ONLINE' | 'CONNECTING' | 'OFFLINE'>('ONLINE');
   const [generatedSQL, setGeneratedSQL] = useState('');
-  const [bridgeFile, setBridgeFile] = useState<'server' | 'db' | 'package' | 'env'>('server');
+  const [bridgeFile, setBridgeFile] = useState<'server' | 'db' | 'package' | 'env' | 'readme'>('readme'); // Default to readme
   
   // --- CONNECTION CONFIGURATION STATE ---
   const [dbConfig, setDbConfig] = useState({
@@ -178,6 +178,32 @@ PRINT 'Installation Complete. Database ${dbConfig.database} is ready.';
   };
 
   const bridgeSources = {
+    readme: `# Pontaj API Bridge - Instalare
+
+Acesta este serverul backend (Node.js) care face legătura între aplicația React și Microsoft SQL Server.
+
+## 1. Instalare
+1. Asigură-te că ai **Node.js** instalat.
+2. Deschide un terminal în acest folder.
+3. Rulează comanda:
+   \`\`\`bash
+   npm install
+   \`\`\`
+
+## 2. Configurare
+Verifică fișierul \`.env\` pentru a te asigura că datele de conectare la SQL Server sunt corecte:
+- Server: ${dbConfig.server}
+- User: ${dbConfig.user}
+- Database: ${dbConfig.database}
+
+## 3. Pornire Server
+Rulează comanda:
+\`\`\`bash
+node server.js
+\`\`\`
+
+Serverul va porni pe portul 3001.
+`,
     package: `{
   "name": "pontaj-api-bridge-mssql",
   "version": "1.0.0",
@@ -331,7 +357,7 @@ app.listen(PORT, () => {
        </div>
 
        {/* Tabs */}
-       <div className="flex bg-slate-900 border-b border-slate-800 overflow-x-auto">
+       <div className="flex bg-slate-900 border-b border-slate-800 overflow-x-auto shrink-0">
           <button onClick={() => setActiveTab('status')} className={`px-6 py-3 flex items-center gap-2 hover:bg-slate-800 whitespace-nowrap ${activeTab === 'status' ? 'border-b-2 border-blue-500 text-white bg-slate-800' : 'text-slate-500'}`}>
              <Activity size={16}/> Health Status
           </button>
@@ -347,11 +373,11 @@ app.listen(PORT, () => {
        </div>
 
        {/* Content Area */}
-       <div className="flex-1 overflow-auto p-0 bg-slate-900/50">
+       <div className="flex-1 overflow-hidden bg-slate-900/50 flex">
           
           {/* --- STATUS TAB --- */}
           {activeTab === 'status' && (
-             <div className="p-6 space-y-6 animate-in fade-in">
+             <div className="p-6 space-y-6 animate-in fade-in overflow-auto w-full">
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="bg-slate-800 p-4 rounded-lg border border-slate-700 relative overflow-hidden group">
                         <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition"><Database size={48}/></div>
@@ -392,8 +418,8 @@ app.listen(PORT, () => {
 
           {/* --- SQL TAB --- */}
           {activeTab === 'sql' && (
-             <div className="flex flex-col h-full animate-in fade-in">
-                 <div className="bg-slate-950 p-2 border-b border-slate-800 flex justify-between items-center">
+             <div className="flex flex-col h-full w-full animate-in fade-in">
+                 <div className="bg-slate-950 p-2 border-b border-slate-800 flex justify-between items-center shrink-0">
                      <span className="text-xs text-slate-500 pl-2">File: install_mssql.sql</span>
                      <button 
                         onClick={() => handleDownload('install_mssql.sql', generatedSQL)}
@@ -402,7 +428,7 @@ app.listen(PORT, () => {
                         <Download size={14}/> Download Script
                      </button>
                  </div>
-                 <div className="flex-1 relative">
+                 <div className="flex-1 relative overflow-auto">
                      <textarea 
                         readOnly 
                         value={generatedSQL}
@@ -414,80 +440,85 @@ app.listen(PORT, () => {
 
           {/* --- BRIDGE SOURCE TAB --- */}
           {activeTab === 'bridge' && (
-             <div className="flex h-full animate-in fade-in">
+             <div className="flex h-full w-full animate-in fade-in overflow-hidden">
                  {/* Sidebar */}
-                 <div className="w-48 bg-slate-950 border-r border-slate-800 flex flex-col overflow-y-auto">
+                 <div className="w-56 bg-slate-950 border-r border-slate-800 flex flex-col overflow-y-auto shrink-0">
                      
                      {/* CONFIG FORM */}
                      <div className="p-3 bg-slate-900 border-b border-slate-800">
-                         <div className="flex items-center gap-1 text-blue-400 text-xs font-bold uppercase mb-2">
-                             <Settings size={12}/> Configurare
+                         <div className="flex items-center gap-1 text-blue-400 text-xs font-bold uppercase mb-2 bg-blue-900/20 p-1.5 rounded">
+                             <Settings size={12}/> Configurare Conexiune
                          </div>
-                         <div className="space-y-2">
+                         <div className="space-y-3">
                              <div>
-                                 <label className="text-[10px] text-slate-500">Server Address</label>
+                                 <label className="text-[10px] text-slate-400 font-bold block mb-1">Server Address</label>
                                  <input 
                                     type="text" 
                                     value={dbConfig.server} 
                                     onChange={(e) => setDbConfig({...dbConfig, server: e.target.value})}
-                                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-blue-500 outline-none"
+                                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white focus:border-blue-500 outline-none placeholder-slate-600"
+                                    placeholder="localhost"
                                  />
                              </div>
                              <div>
-                                 <label className="text-[10px] text-slate-500">Database Name</label>
+                                 <label className="text-[10px] text-slate-400 font-bold block mb-1">Database Name</label>
                                  <input 
                                     type="text" 
                                     value={dbConfig.database} 
                                     onChange={(e) => setDbConfig({...dbConfig, database: e.target.value})}
-                                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-blue-500 outline-none"
+                                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white focus:border-blue-500 outline-none placeholder-slate-600"
                                  />
                              </div>
                              <div>
-                                 <label className="text-[10px] text-slate-500">DB User</label>
+                                 <label className="text-[10px] text-slate-400 font-bold block mb-1">DB User</label>
                                  <input 
                                     type="text" 
                                     value={dbConfig.user} 
                                     onChange={(e) => setDbConfig({...dbConfig, user: e.target.value})}
-                                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-blue-500 outline-none"
+                                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white focus:border-blue-500 outline-none placeholder-slate-600"
                                  />
                              </div>
                              <div>
-                                 <label className="text-[10px] text-slate-500">DB Password</label>
+                                 <label className="text-[10px] text-slate-400 font-bold block mb-1">DB Password</label>
                                  <input 
                                     type="password" 
                                     value={dbConfig.password} 
                                     onChange={(e) => setDbConfig({...dbConfig, password: e.target.value})}
-                                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white focus:border-blue-500 outline-none"
+                                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white focus:border-blue-500 outline-none placeholder-slate-600"
                                  />
                              </div>
                          </div>
                      </div>
 
                      <div className="p-3 text-xs font-bold text-slate-500 uppercase mt-2">Project Files</div>
-                     <button onClick={() => setBridgeFile('env')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 ${bridgeFile === 'env' ? 'text-blue-400 bg-slate-800/50' : 'text-slate-400'}`}>
-                         <Terminal size={12}/> .env
+                     <button onClick={() => setBridgeFile('readme')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'readme' ? 'text-green-400 bg-slate-800/80 border-l-2 border-green-500' : 'text-slate-400'}`}>
+                         <BookOpen size={12}/> README.md (Instrucțiuni)
                      </button>
-                     <button onClick={() => setBridgeFile('package')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 ${bridgeFile === 'package' ? 'text-blue-400 bg-slate-800/50' : 'text-slate-400'}`}>
+                     <button onClick={() => setBridgeFile('env')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'env' ? 'text-blue-400 bg-slate-800/80 border-l-2 border-blue-500' : 'text-slate-400'}`}>
+                         <Terminal size={12}/> .env (Config)
+                     </button>
+                     <button onClick={() => setBridgeFile('package')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'package' ? 'text-blue-400 bg-slate-800/80 border-l-2 border-blue-500' : 'text-slate-400'}`}>
                          <Code size={12}/> package.json
                      </button>
-                     <button onClick={() => setBridgeFile('server')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 ${bridgeFile === 'server' ? 'text-blue-400 bg-slate-800/50' : 'text-slate-400'}`}>
+                     <button onClick={() => setBridgeFile('server')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'server' ? 'text-blue-400 bg-slate-800/80 border-l-2 border-blue-500' : 'text-slate-400'}`}>
                          <FileCode size={12}/> server.js
                      </button>
-                     <button onClick={() => setBridgeFile('db')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 ${bridgeFile === 'db' ? 'text-blue-400 bg-slate-800/50' : 'text-slate-400'}`}>
+                     <button onClick={() => setBridgeFile('db')} className={`text-left px-4 py-2 text-xs hover:bg-slate-800 flex items-center gap-2 transition ${bridgeFile === 'db' ? 'text-blue-400 bg-slate-800/80 border-l-2 border-blue-500' : 'text-slate-400'}`}>
                          <Database size={12}/> db.js
                      </button>
                  </div>
                  
                  {/* Code View */}
-                 <div className="flex-1 flex flex-col">
-                     <div className="bg-slate-900 p-2 border-b border-slate-800 flex justify-between items-center">
+                 <div className="flex-1 flex flex-col h-full overflow-hidden">
+                     <div className="bg-slate-900 p-2 border-b border-slate-800 flex justify-between items-center shrink-0">
                          <span className="text-xs text-slate-500 pl-2">
                             {bridgeFile === 'package' ? 'Node.js Dependencies' : 
                              bridgeFile === 'env' ? 'Environment Variables (Generated from Config)' : 
+                             bridgeFile === 'readme' ? 'Instrucțiuni de instalare' : 
                              bridgeFile === 'server' ? 'Main Entry Point (ESM)' : 'Database Connection (ESM)'}
                          </span>
                          <button 
-                            onClick={() => handleDownload(bridgeFile === 'package' ? 'package.json' : bridgeFile === 'env' ? '.env' : `${bridgeFile}.js`, bridgeSources[bridgeFile])}
+                            onClick={() => handleDownload(bridgeFile === 'package' ? 'package.json' : bridgeFile === 'env' ? '.env' : bridgeFile === 'readme' ? 'README.md' : `${bridgeFile}.js`, bridgeSources[bridgeFile])}
                             className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs transition"
                          >
                             <Download size={14}/> Download File
@@ -496,7 +527,7 @@ app.listen(PORT, () => {
                      <textarea 
                         readOnly 
                         value={bridgeSources[bridgeFile]}
-                        className="w-full h-full bg-black p-4 text-blue-300 font-mono text-xs resize-none focus:outline-none"
+                        className={`w-full h-full bg-black p-4 font-mono text-xs resize-none focus:outline-none ${bridgeFile === 'readme' ? 'text-green-300' : 'text-blue-300'}`}
                      />
                  </div>
              </div>
@@ -504,7 +535,7 @@ app.listen(PORT, () => {
 
           {/* --- SWAGGER TAB --- */}
           {activeTab === 'swagger' && (
-             <div className="p-6 animate-in fade-in space-y-4">
+             <div className="p-6 animate-in fade-in space-y-4 overflow-auto w-full">
                  <div className="flex justify-between items-start">
                      <div>
                          <h3 className="text-white font-bold text-lg">Pontaj API Documentation (v1.0)</h3>
