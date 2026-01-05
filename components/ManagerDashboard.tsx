@@ -44,7 +44,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
 
   // --- FILTER DATA ---
   const teamUsers = users.filter(u => {
-      if (u.id === currentUser.id) return false; 
+      // REMOVED: Exclusion of current user. Admins/Managers should see themselves in the team view if they choose.
       if (canViewAllCompanies) {
           if (selectedTeamCompany !== 'ALL' && u.companyId !== selectedTeamCompany) return false;
           return true;

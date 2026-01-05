@@ -22,6 +22,7 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
   const [selectionModal, setSelectionModal] = useState<{ isOpen: boolean, dateStr: string, day: number } | null>(null);
 
   const isManager = currentUser.roles.includes(Role.MANAGER) || currentUser.roles.includes(Role.ADMIN);
+  const isAdmin = currentUser.roles.includes(Role.ADMIN);
   
   // Helpers
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -77,7 +78,11 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
       return leaves.find(l => l.userId === selectedUser && l.startDate <= dateStr && l.endDate >= dateStr && l.status === LeaveStatus.APPROVED);
   };
 
-  const teamUsers = isManager ? users.filter(u => u.companyId === currentUser.companyId) : [currentUser];
+  // Logic: Admins see all users. Managers see only their company.
+  const teamUsers = isAdmin 
+      ? users 
+      : (isManager ? users.filter(u => u.companyId === currentUser.companyId) : [currentUser]);
+      
   const targetUserObj = users.find(u => u.id === selectedUser);
 
   // Render
