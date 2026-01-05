@@ -77,7 +77,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
       if (!confirm("Generare date 2025? (Această acțiune poate dura câteva secunde)")) return;
 
       setIsGenerating(true);
-      setTimeout(() => {
+      setTimeout(async () => {
           const generatedTimesheets: Timesheet[] = [];
           const generatedLeaves: LeaveRequest[] = [];
           const generatedCorrections: CorrectionRequest[] = [];
@@ -197,8 +197,10 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
               });
           }
 
+          // 1. Update Local State
           onBulkImport(generatedTimesheets, generatedLeaves, generatedCorrections);
-          alert(`Generare Completă!\n\nTimesheets: ${generatedTimesheets.length}\nConcedii: ${generatedLeaves.length}`);
+
+          alert(`Generare Completă!\n\nTimesheets: ${generatedTimesheets.length}\nConcedii: ${generatedLeaves.length}\n\nNOTĂ: Datele sunt salvate local. Pentru a le trimite pe server, mergeți la tab-ul "Backend" și apăsați "Push Local -> SQL".`);
           setIsGenerating(false);
       }, 1000);
   };

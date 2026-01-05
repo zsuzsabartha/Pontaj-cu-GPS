@@ -130,7 +130,7 @@ export default function App() {
 
               // Parallel Fetch
               const [
-                  dbUsers, dbCompanies, dbDepts, dbOffices, dbBreaks, dbLeaves, dbHolidays, dbTimesheets, dbLeaveReqs
+                  dbUsers, dbCompanies, dbDepts, dbOffices, dbBreaks, dbLeaves, dbHolidays, dbTimesheets, dbLeaveReqs, dbCorrections
               ] = await Promise.all([
                   SQLService.getUsers(),
                   SQLService.getCompanies(),
@@ -140,7 +140,8 @@ export default function App() {
                   SQLService.getLeaves(),
                   SQLService.getHolidays(),
                   SQLService.getTimesheets(),
-                  SQLService.getLeaveRequests()
+                  SQLService.getLeaveRequests(),
+                  SQLService.getCorrectionRequests()
               ]);
 
               // Update State
@@ -157,6 +158,7 @@ export default function App() {
               if (Array.isArray(dbHolidays)) setHolidays(dbHolidays);
               if (Array.isArray(dbTimesheets)) setTimesheets(dbTimesheets);
               if (Array.isArray(dbLeaveReqs)) setLeaves(dbLeaveReqs);
+              if (Array.isArray(dbCorrections)) setCorrectionRequests(dbCorrections);
 
           } catch (e) {
               console.warn("Working Offline: Could not connect to SQL Bridge.", e);

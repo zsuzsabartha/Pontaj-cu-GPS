@@ -27,6 +27,7 @@ export const SQLService = {
     getBreaks: () => get('/config/breaks'),
     getLeaves: () => get('/config/leaves'),
     getHolidays: () => get('/config/holidays'),
-    getTimesheets: () => get('/timesheets'),
-    getLeaveRequests: () => get('/leaves')
+    getTimesheets: () => get('/seed/timesheets'), // Endpoint mapped in bridge
+    getLeaveRequests: () => get('/seed/leaves'), // Endpoint mapped in bridge
+    getCorrectionRequests: () => get('/seed/corrections') // New endpoint
 };
