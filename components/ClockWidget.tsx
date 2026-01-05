@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, User as UserIcon, Utensils, Cigarette, Home, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff, History } from 'lucide-react';
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
 import { ShiftStatus, Coordinates, Office, User, BreakConfig, Holiday, LeaveRequest, LeaveStatus } from '../types';
@@ -29,8 +29,9 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showMockOption, setShowMockOption] = useState(false);
   
-  // Timer State - Initialize with current time
+  // Timer State
   const [now, setNow] = useState<number>(Date.now());
+  const timerRef = useRef<number | null>(null);
   
   const [showBreakSelector, setShowBreakSelector] = useState(false);
   const [confirmData, setConfirmData] = useState<{ coords: Coordinates, office: Office, distance: number } | null>(null);
@@ -62,19 +63,26 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
     ? new Date(shiftStartTime).toLocaleTimeString('ro-RO', {hour: '2-digit', minute:'2-digit'})
     : null;
 
-  // --- Robust Timer Logic ---
-  // Run interval ALWAYS when mounted. This prevents issues where status changes might not trigger restart correctly,
-  // or where the timer stops if props are refreshed.
+  // --- Robust Timer Logic (requestAnimationFrame) ---
   useEffect(() => {
-    // Update 'now' immediately on mount to sync
+    // Update immediately on mount/prop change
     setNow(Date.now());
-    
-    const intervalId = setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
 
-    return () => clearInterval(intervalId);
-  }, []);
+    const update = () => {
+        setNow(Date.now());
+        timerRef.current = requestAnimationFrame(update);
+    };
+
+    if (currentStatus === ShiftStatus.WORKING || currentStatus === ShiftStatus.ON_BREAK) {
+        timerRef.current = requestAnimationFrame(update);
+    } else {
+        if(timerRef.current) cancelAnimationFrame(timerRef.current);
+    }
+
+    return () => {
+        if(timerRef.current) cancelAnimationFrame(timerRef.current);
+    };
+  }, [currentStatus, shiftStartTime]);
 
   // --- Calculation Logic (Derived State) ---
   const calculateTimers = () => {
@@ -86,8 +94,9 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
       if (isNaN(start)) return { elapsed: "00:00:00", breakTimer: "00:00:00" };
 
       // Total duration from Shift Start to Now
-      let grossDuration = now - start;
-      if (grossDuration < 0) grossDuration = 0;
+      // Using 'now' ensures we update with state changes
+      // Use max to prevent negative numbers if system clock drifted
+      let grossDuration = Math.max(0, now - start);
 
       let netWorkMs = 0;
       let currentBreakMs = 0;
@@ -99,7 +108,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
               // Net Work = (BreakStart - ShiftStart) - PreviousBreaks
               netWorkMs = (breakStart - start) - accumulatedBreakTime;
               // Break Timer = Now - BreakStart
-              currentBreakMs = now - breakStart;
+              currentBreakMs = Math.max(0, now - breakStart);
           } else {
               // Fallback
               netWorkMs = grossDuration - accumulatedBreakTime;
@@ -111,9 +120,9 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
           currentBreakMs = 0;
       }
 
+      // Safety clamps
       if (netWorkMs < 0) netWorkMs = 0;
-      if (currentBreakMs < 0) currentBreakMs = 0;
-
+      
       const formatMs = (ms: number) => {
           const h = Math.floor(ms / 3600000);
           const m = Math.floor((ms % 3600000) / 60000);
