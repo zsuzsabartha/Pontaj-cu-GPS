@@ -181,6 +181,7 @@ CREATE TABLE users (
     company_id NVARCHAR(50),
     department_id NVARCHAR(50),
     assigned_office_id NVARCHAR(50),
+    main_schedule_id NVARCHAR(50),
     name NVARCHAR(255) NOT NULL,
     email NVARCHAR(255),
     auth_type NVARCHAR(20),
@@ -198,12 +199,21 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='offices' AND xtype='U') CREA
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='break_configs' AND xtype='U') CREATE TABLE break_configs (id NVARCHAR(50) PRIMARY KEY, name NVARCHAR(100), is_paid BIT, icon NVARCHAR(50));
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='leave_configs' AND xtype='U') CREATE TABLE leave_configs (id NVARCHAR(50) PRIMARY KEY, name NVARCHAR(100), code NVARCHAR(20), requires_approval BIT);
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='holidays' AND xtype='U') CREATE TABLE holidays (id NVARCHAR(50) PRIMARY KEY, date DATE, name NVARCHAR(255));
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='work_schedules' AND xtype='U') 
+CREATE TABLE work_schedules (
+    id NVARCHAR(50) PRIMARY KEY, 
+    name NVARCHAR(100), 
+    start_time NVARCHAR(10), 
+    end_time NVARCHAR(10), 
+    crosses_midnight BIT
+);
 
 -- Transaction Tables
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='timesheets' AND xtype='U') 
 CREATE TABLE timesheets (
     id NVARCHAR(50) PRIMARY KEY, user_id NVARCHAR(50), start_time DATETIME2, end_time DATETIME2, date DATE, 
-    status NVARCHAR(20), start_lat DECIMAL(10,8), start_long DECIMAL(11,8), matched_office_id NVARCHAR(50)
+    status NVARCHAR(20), start_lat DECIMAL(10,8), start_long DECIMAL(11,8), matched_office_id NVARCHAR(50),
+    detected_schedule_id NVARCHAR(50)
 );
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='breaks' AND xtype='U') 
 CREATE TABLE breaks (

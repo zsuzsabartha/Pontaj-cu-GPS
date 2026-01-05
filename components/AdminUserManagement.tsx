@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { User, Role, Company, Department, Office, WorkSchedule, Timesheet, LeaveRequest, CorrectionRequest, ShiftStatus, LeaveStatus } from '../types';
-import { UserPlus, ShieldAlert, Database, RefreshCw, Mail, Eye, AlertTriangle, BellRing, Upload, Edit2, X, Save, Wand2, Users, FileText } from 'lucide-react';
+import { UserPlus, ShieldAlert, Database, RefreshCw, Mail, Eye, AlertTriangle, BellRing, Upload, Edit2, X, Save, Wand2, Users, FileText, Download } from 'lucide-react';
 import UserValidationModal from './UserValidationModal';
 import { API_CONFIG, HOLIDAYS_RO, INITIAL_LEAVE_CONFIGS } from '../constants';
 import SmartTable, { Column } from './SmartTable';
@@ -26,6 +26,9 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
   const [validationUser, setValidationUser] = useState<User | null>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [importText, setImportText] = useState('');
+  
+  // State to hold generated data for download
+  const [generatedData, setGeneratedData] = useState<{timesheets: Timesheet[], leaves: LeaveRequest[], corrections: CorrectionRequest[]} | null>(null);
   
   const [newUser, setNewUser] = useState({
     name: '', email: '', erpId: '', companyId: companies[0]?.id || '', departmentId: '', assignedOfficeId: '',
@@ -72,9 +75,66 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
     alert(`User creat! PIN: ${user.pin}`);
   };
 
+  const generateSQL2025 = () => {
+      if (!generatedData) return;
+      const { timesheets, leaves } = generatedData;
+
+      let sql = `-- SCRIPT GENERAT AUTOMAT PENTRU PONTAJ 2025\n`;
+      sql += `-- Conține: Nomenclator Ture, Alocare Ture Utilizatori, Pontaje 2025, Concedii 2025\n\n`;
+      sql += `USE PontajSmart;\nGO\n\n`;
+
+      // 1. Nomenclature (Work Schedules)
+      sql += `-- 1. NOMENCLATOR PROGRAME DE LUCRU (SHIFTS)\n`;
+      workSchedules.forEach(ws => {
+          sql += `IF NOT EXISTS (SELECT * FROM work_schedules WHERE id='${ws.id}') \n`;
+          sql += `  INSERT INTO work_schedules (id, name, start_time, end_time, crosses_midnight) VALUES ('${ws.id}', N'${ws.name}', '${ws.startTime}', '${ws.endTime}', ${ws.crossesMidnight ? 1 : 0});\n`;
+      });
+      sql += `GO\n\n`;
+
+      // 2. User Assignments
+      sql += `-- 2. ALOCARE PROGRAME UTILIZATORI\n`;
+      users.forEach(u => {
+          if (u.mainScheduleId) {
+              sql += `UPDATE users SET main_schedule_id = '${u.mainScheduleId}' WHERE id = '${u.id}';\n`;
+          }
+      });
+      sql += `GO\n\n`;
+
+      // 3. Leaves
+      sql += `-- 3. CONCEDII 2025 (${leaves.length} înregistrări)\n`;
+      // Use chunks or batching if really large, but for demo simpler is fine
+      leaves.forEach(l => {
+          const reasonClean = l.reason.replace(/'/g, "''");
+          sql += `INSERT INTO leave_requests (id, user_id, type_id, start_date, end_date, reason, status) VALUES ('${l.id}', '${l.userId}', '${l.typeId}', '${l.startDate}', '${l.endDate}', N'${reasonClean}', '${l.status}');\n`;
+      });
+      sql += `GO\n\n`;
+
+      // 4. Timesheets
+      sql += `-- 4. PONTAJE 2025 (${timesheets.length} înregistrări)\n`;
+      timesheets.forEach(t => {
+          const start = t.startTime.replace('T', ' ').substring(0, 19);
+          const end = t.endTime ? `'${t.endTime.replace('T', ' ').substring(0, 19)}'` : 'NULL';
+          const schedId = t.detectedScheduleId ? `'${t.detectedScheduleId}'` : 'NULL';
+          const officeId = t.matchedOfficeId ? `'${t.matchedOfficeId}'` : 'NULL';
+          
+          sql += `INSERT INTO timesheets (id, user_id, start_time, end_time, date, status, matched_office_id, detected_schedule_id) VALUES ('${t.id}', '${t.userId}', '${start}', ${end}, '${t.date}', '${t.status}', ${officeId}, ${schedId});\n`;
+      });
+      sql += `GO\n`;
+
+      // Download Trigger
+      const blob = new Blob([sql], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pontaj_data_2025_${new Date().getTime()}.sql`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+  };
+
   const generateMockData2025 = () => {
       if (!onBulkImport) return;
-      if (!confirm("Generare date 2025? (Această acțiune poate dura câteva secunde)")) return;
+      if (!confirm("Generare date 2025? (Această acțiune va popula interfața și va pregăti scriptul SQL)")) return;
 
       setIsGenerating(true);
       setTimeout(async () => {
@@ -154,14 +214,20 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                           });
                       }
 
-                      const startHour = 8;
-                      const startMin = 45 + Math.floor(Math.random() * 45);
+                      // Determine shift based on mainScheduleId
+                      const schedule = workSchedules.find(s => s.id === user.mainScheduleId) || workSchedules[0];
+                      const [sh, sm] = schedule.startTime.split(':').map(Number);
+                      const [eh, em] = schedule.endTime.split(':').map(Number);
+
+                      const startHour = sh;
+                      const startMin = sm + Math.floor(Math.random() * 15) - 5; // +/- 5 mins variation
                       const startTime = new Date(d);
                       startTime.setHours(startHour, startMin, 0);
 
-                      const endHour = 17;
-                      const endMin = Math.floor(Math.random() * 90);
+                      const endHour = eh;
+                      const endMin = em + Math.floor(Math.random() * 15);
                       const endTime = new Date(d);
+                      if (schedule.crossesMidnight) endTime.setDate(endTime.getDate() + 1);
                       endTime.setHours(endHour, endMin, 0);
 
                       let location = { latitude: 44.4268, longitude: 26.1025 }; 
@@ -170,37 +236,30 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
 
                       if (isDelegation) { officeId = undefined; dist = 5000; location = { latitude: 45.0, longitude: 25.0 }; }
 
-                      const forgotClockOut = Math.random() < 0.01;
-                      
-                      if (forgotClockOut) {
-                          // CHANGE: Set status to COMPLETED (system closed) to avoid leaving open shifts
-                          generatedTimesheets.push({
-                              id: `gen-ts-${user.id}-${dateStr}`, userId: user.id, date: dateStr, startTime: startTime.toISOString(),
-                              status: ShiftStatus.COMPLETED, // WAS: WORKING
-                              endTime: new Date(d.setHours(23, 59, 59)).toISOString(), // Auto-closed at midnight
-                              startLocation: location, matchedOfficeId: officeId, distanceToOffice: dist, breaks: [],
-                              isSystemAutoCheckout: true
-                          });
-                          generatedCorrections.push({
-                              id: `gen-cor-${user.id}-${dateStr}`, userId: user.id, requestedDate: dateStr,
-                              requestedStartTime: startTime.toISOString(), requestedEndTime: endTime.toISOString(),
-                              reason: "Am uitat să scanez la plecare.", status: Math.random() > 0.2 ? 'APPROVED' : 'PENDING'
-                          });
-                      } else {
-                          generatedTimesheets.push({
-                              id: `gen-ts-${user.id}-${dateStr}`, userId: user.id, date: dateStr, startTime: startTime.toISOString(),
-                              endTime: endTime.toISOString(), status: ShiftStatus.COMPLETED, startLocation: location, endLocation: location,
-                              matchedOfficeId: officeId, distanceToOffice: dist, breaks: [] 
-                          });
-                      }
+                      generatedTimesheets.push({
+                          id: `gen-ts-${user.id}-${dateStr}`, 
+                          userId: user.id, 
+                          date: dateStr, 
+                          startTime: startTime.toISOString(),
+                          endTime: endTime.toISOString(), 
+                          status: ShiftStatus.COMPLETED, 
+                          startLocation: location, 
+                          endLocation: location,
+                          matchedOfficeId: officeId, 
+                          distanceToOffice: dist, 
+                          breaks: [],
+                          detectedScheduleId: schedule.id, // Assign the schedule
+                          detectedScheduleName: schedule.name
+                      });
                   }
               });
           }
 
           // 1. Update Local State
           onBulkImport(generatedTimesheets, generatedLeaves, generatedCorrections);
+          setGeneratedData({ timesheets: generatedTimesheets, leaves: generatedLeaves, corrections: generatedCorrections });
 
-          alert(`Generare Completă!\n\nTimesheets: ${generatedTimesheets.length}\nConcedii: ${generatedLeaves.length}\n\nNOTĂ: Datele sunt salvate local. Pentru a le trimite pe server, mergeți la tab-ul "Backend" și apăsați "Push Local -> SQL".`);
+          alert(`Generare Completă!\n\nTimesheets: ${generatedTimesheets.length}\nConcedii: ${generatedLeaves.length}\n\nAcum puteți descărca scriptul SQL.`);
           setIsGenerating(false);
       }, 1000);
   };
@@ -230,12 +289,27 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 animate-in fade-in">
               <div className="flex items-start gap-4">
                   <div className="bg-purple-100 p-3 rounded-xl text-purple-600"><Wand2 size={32} /></div>
-                  <div>
+                  <div className="flex-1">
                       <h3 className="text-lg font-bold text-gray-800">Generator Date 2025</h3>
-                      <p className="text-sm text-gray-500 mt-1">Simulează un an complet de activitate: Pontaje, Concedii (21 zile), Delegații.</p>
-                      <button onClick={generateMockData2025} disabled={isGenerating} className="mt-4 bg-purple-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-purple-700 shadow-md flex items-center gap-2">
-                          {isGenerating ? <RefreshCw className="animate-spin" size={18}/> : <Wand2 size={18}/>} Generare
-                      </button>
+                      <p className="text-sm text-gray-500 mt-1">Simulează un an complet de activitate: Pontaje, Concedii (21 zile), Delegații și Ture alocate.</p>
+                      
+                      <div className="flex gap-4 mt-4">
+                          <button onClick={generateMockData2025} disabled={isGenerating} className="bg-purple-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-purple-700 shadow-md flex items-center gap-2">
+                              {isGenerating ? <RefreshCw className="animate-spin" size={18}/> : <Wand2 size={18}/>} Generare Date
+                          </button>
+                          
+                          {generatedData && (
+                              <button onClick={generateSQL2025} className="bg-slate-700 text-white px-6 py-2 rounded-lg font-bold hover:bg-slate-800 shadow-md flex items-center gap-2">
+                                  <Download size={18}/> Download .SQL
+                              </button>
+                          )}
+                      </div>
+                      
+                      {generatedData && (
+                          <div className="mt-4 p-3 bg-green-50 text-green-800 text-xs rounded border border-green-200">
+                              Date generate gata de export! Include {generatedData.timesheets.length} pontaje și {generatedData.leaves.length} concedii.
+                          </div>
+                      )}
                   </div>
               </div>
           </div>

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   INITIAL_BREAK_CONFIGS, 
-  INITIAL_LEAVE_CONFIGS,
+  INITIAL_LEAVE_CONFIGS, 
   INITIAL_WORK_SCHEDULES,
   HOLIDAYS_RO,
   getDefaultLockedDate,
@@ -144,21 +144,23 @@ export default function App() {
                   SQLService.getCorrectionRequests()
               ]);
 
-              // Update State
-              
-              // Structural Data: Keep local mocks if DB is empty to prevent lockout (Demo Mode)
+              // Update State - INTELLIGENT MERGE LOGIC
+              // Rule: If DB returns empty arrays (fresh install), DO NOT overwrite local data if local data exists.
+              // This protects the "Offline First / Manual Push" workflow.
+
               if (dbUsers && dbUsers.length > 0) setUsers(dbUsers);
               if (dbCompanies && dbCompanies.length > 0) setCompanies(dbCompanies);
               if (dbDepts && dbDepts.length > 0) setDepartments(dbDepts);
               if (dbOffices && dbOffices.length > 0) setOffices(dbOffices);
 
-              // Configs & Transactions: Trust DB state even if empty (to allow clearing data)
-              if (Array.isArray(dbBreaks)) setBreakConfigs(dbBreaks);
-              if (Array.isArray(dbLeaves)) setLeaveConfigs(dbLeaves);
-              if (Array.isArray(dbHolidays)) setHolidays(dbHolidays);
-              if (Array.isArray(dbTimesheets)) setTimesheets(dbTimesheets);
-              if (Array.isArray(dbLeaveReqs)) setLeaves(dbLeaveReqs);
-              if (Array.isArray(dbCorrections)) setCorrectionRequests(dbCorrections);
+              if (Array.isArray(dbBreaks) && dbBreaks.length > 0) setBreakConfigs(dbBreaks);
+              if (Array.isArray(dbLeaves) && dbLeaves.length > 0) setLeaveConfigs(dbLeaves);
+              if (Array.isArray(dbHolidays) && dbHolidays.length > 0) setHolidays(dbHolidays);
+              
+              // Transactions: Only overwrite if DB has data, otherwise keep local "working copy"
+              if (Array.isArray(dbTimesheets) && dbTimesheets.length > 0) setTimesheets(dbTimesheets);
+              if (Array.isArray(dbLeaveReqs) && dbLeaveReqs.length > 0) setLeaves(dbLeaveReqs);
+              if (Array.isArray(dbCorrections) && dbCorrections.length > 0) setCorrectionRequests(dbCorrections);
 
           } catch (e) {
               console.warn("Working Offline: Could not connect to SQL Bridge.", e);
@@ -172,14 +174,13 @@ export default function App() {
   // --- Derived State for Active Shift ---
   const currentShift = useMemo(() => {
       if (!currentUser) return null;
-      const now = new Date().toISOString();
-      return timesheets
-        .filter(t => 
-            t.userId === currentUser.id && 
-            t.status !== ShiftStatus.COMPLETED &&
-            t.startTime <= now 
-        )
-        .sort((a,b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())[0] || null;
+      // Filter for any active shift (WORKING or ON_BREAK) regardless of start time
+      // This is more robust than checking startTime <= now for immediate updates
+      const active = timesheets.find(t => 
+          t.userId === currentUser.id && 
+          (t.status === ShiftStatus.WORKING || t.status === ShiftStatus.ON_BREAK)
+      );
+      return active || null;
   }, [currentUser, timesheets]);
 
   // --- Derived Shift Statistics ---
@@ -323,14 +324,28 @@ export default function App() {
 
   const handleClockIn = async (loc: Coordinates, off: Office | null, dist: number) => {
       if (!currentUser) return;
-      const today = new Date().toISOString().split('T')[0];
+      // FIX: Ensure startTime is ISO string and valid
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
       const detectedId = schedulePlans.find(s => s.userId === currentUser.id && s.date === today)?.scheduleId || currentUser.mainScheduleId;
       const schedName = workSchedules.find(s => s.id === detectedId)?.name;
       
       const newTs: Timesheet = {
-          id: `ts-${Date.now()}`, userId: currentUser.id, startTime: new Date().toISOString(), date: today, status: ShiftStatus.WORKING, breaks: [],
-          startLocation: loc, matchedOfficeId: off?.id, distanceToOffice: dist, detectedScheduleId: detectedId, detectedScheduleName: schedName, syncStatus: 'SYNCED'
+          id: `ts-${Date.now()}`, 
+          userId: currentUser.id, 
+          startTime: now.toISOString(), 
+          date: today, 
+          status: ShiftStatus.WORKING, 
+          breaks: [],
+          startLocation: loc, 
+          matchedOfficeId: off?.id, 
+          distanceToOffice: dist, 
+          detectedScheduleId: detectedId, 
+          detectedScheduleName: schedName, 
+          syncStatus: 'SYNCED'
       };
+      
+      // Update state immediately
       setTimesheets(prev => [newTs, ...prev]);
   };
 
