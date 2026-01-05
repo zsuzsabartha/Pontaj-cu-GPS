@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen, Plug, Wifi, FileText, Clipboard, Lock, Package, UploadCloud, Trash2, Power } from 'lucide-react';
+import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen, Plug, Wifi, FileText, Clipboard, Lock, Package, UploadCloud, Trash2, Power, CloudDownload } from 'lucide-react';
 import { API_CONFIG, MOCK_COMPANIES, MOCK_DEPARTMENTS, MOCK_OFFICES, MOCK_USERS, INITIAL_BREAK_CONFIGS, INITIAL_LEAVE_CONFIGS, HOLIDAYS_RO } from '../constants';
 
 const BackendControlPanel: React.FC = () => {
@@ -11,6 +11,7 @@ const BackendControlPanel: React.FC = () => {
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
   
   // --- VERSIONING STATE ---
   const [buildVersion, setBuildVersion] = useState<number>(1);
@@ -93,9 +94,9 @@ const BackendControlPanel: React.FC = () => {
       }
   };
 
-  // --- SEEDING LOGIC ---
+  // --- SYNC LOGIC ---
   const handlePushToSQL = async () => {
-      if(!confirm("Această acțiune va trimite datele LOCALE (Companii, Departamente, Useri) către SQL Server. Continuați?")) return;
+      if(!confirm("PUSH: Această acțiune va trimite datele LOCALE (Companii, Departamente, Useri) către SQL Server, suprascriind datele existente acolo. Continuați?")) return;
       
       setIsSeeding(true);
       try {
@@ -129,12 +130,51 @@ const BackendControlPanel: React.FC = () => {
               body: JSON.stringify(JSON.parse(localStorage.getItem('pontaj_users') || JSON.stringify(MOCK_USERS))) 
           });
 
-          alert("Sincronizare completă! Datele au fost salvate în SQL.");
+          alert("Push Complet! Datele locale au fost salvate în SQL Server.");
       } catch (e) {
           alert("Eroare la sincronizare. Verificați consola și conexiunea Bridge.");
           console.error(e);
       } finally {
           setIsSeeding(false);
+      }
+  };
+
+  const handlePullFromSQL = async () => {
+      if(!confirm("PULL: Această acțiune va șterge datele LOCALE și le va înlocui cu cele din SQL Server. Asigurați-vă că ați actualizat server.js. Continuați?")) return;
+
+      setIsPulling(true);
+      try {
+          // Fetch all data in parallel
+          const [companiesRes, departmentsRes, officesRes, usersRes] = await Promise.all([
+              fetch(`${API_CONFIG.BASE_URL}/config/companies`),
+              fetch(`${API_CONFIG.BASE_URL}/config/departments`),
+              fetch(`${API_CONFIG.BASE_URL}/config/offices`),
+              fetch(`${API_CONFIG.BASE_URL}/config/users`)
+          ]);
+
+          if (!companiesRes.ok || !departmentsRes.ok || !officesRes.ok || !usersRes.ok) {
+              throw new Error("Unele endpoint-uri au eșuat. Verificați server.js (trebuie să suporte GET).");
+          }
+
+          const companies = await companiesRes.json();
+          const departments = await departmentsRes.json();
+          const offices = await officesRes.json();
+          const users = await usersRes.json();
+
+          // Save to LocalStorage
+          localStorage.setItem('pontaj_companies', JSON.stringify(companies));
+          localStorage.setItem('pontaj_departments', JSON.stringify(departments));
+          localStorage.setItem('pontaj_offices', JSON.stringify(offices));
+          localStorage.setItem('pontaj_users', JSON.stringify(users));
+
+          alert("Pull Complet! Datele au fost actualizate din SQL Server. Pagina se va reîncărca.");
+          window.location.reload();
+
+      } catch (e: any) {
+          alert(`Eroare la Pull: ${e.message}`);
+          console.error(e);
+      } finally {
+          setIsPulling(false);
       }
   };
 
@@ -227,13 +267,11 @@ CREATE TABLE offices (
 -- MIGRATION: Remove old company_id from offices if it exists
 IF EXISTS (SELECT * FROM sys.columns WHERE Name = N'company_id' AND Object_ID = Object_ID(N'offices'))
 BEGIN
-    -- Drop constraint if exists
     DECLARE @ConstraintName nvarchar(200)
     SELECT @ConstraintName = Name FROM SYS.DEFAULT_CONSTRAINTS WHERE PARENT_OBJECT_ID = OBJECT_ID('offices') AND PARENT_COLUMN_ID = (SELECT column_id FROM sys.columns WHERE NAME = N'company_id' AND object_id = OBJECT_ID(N'offices'))
     IF @ConstraintName IS NOT NULL
     EXEC('ALTER TABLE offices DROP CONSTRAINT ' + @ConstraintName)
     
-    -- Drop FK constraint
     SELECT @ConstraintName = obj.name
     FROM sys.foreign_key_columns fkc
     INNER JOIN sys.objects obj ON obj.object_id = fkc.constraint_object_id
@@ -243,7 +281,6 @@ BEGIN
     EXEC('ALTER TABLE offices DROP CONSTRAINT ' + @ConstraintName)
 
     ALTER TABLE offices DROP COLUMN company_id;
-    PRINT 'Migrated offices table: Removed company_id';
 END
 GO
 
@@ -475,8 +512,6 @@ app.get('/health', async (req, res) => {
 app.get('/api/v1/timesheets', async (req, res) => {
   try {
     const pool = await connectDB();
-    
-    // Fetch Timesheets
     const tsResult = await pool.request().query(\`
       SELECT 
         t.id, t.user_id as userId, t.start_time as startTime, t.end_time as endTime, 
@@ -485,10 +520,7 @@ app.get('/api/v1/timesheets', async (req, res) => {
       FROM timesheets t
       ORDER BY t.start_time DESC
     \`);
-    
     const timesheets = tsResult.recordset;
-
-    // Fetch Breaks
     const brResult = await pool.request().query(\`
       SELECT 
         b.id, b.timesheet_id as timesheetId, b.type_id as typeId, bc.name as typeName,
@@ -497,8 +529,6 @@ app.get('/api/v1/timesheets', async (req, res) => {
       LEFT JOIN break_configs bc ON b.type_id = bc.id
     \`);
     const breaks = brResult.recordset;
-
-    // Merge breaks into timesheets
     const finalData = timesheets.map(ts => ({
         ...ts,
         startTime: ts.startTime ? new Date(ts.startTime).toISOString() : null,
@@ -514,7 +544,6 @@ app.get('/api/v1/timesheets', async (req, res) => {
         logs: [],
         syncStatus: 'SYNCED'
     }));
-
     res.json(finalData);
   } catch (err) {
     console.error(err);
@@ -532,7 +561,6 @@ app.post('/api/v1/clock-in', async (req, res) => {
       VALUES (@id, @userId, GETDATE(), CAST(GETDATE() AS DATE), @lat, @long, @officeId, 'WORKING')
     \`;
     const tsId = id || \`ts-\${Date.now()}\`;
-    
     const result = await pool.request()
         .input('id', sql.NVarChar, tsId)
         .input('userId', sql.NVarChar, userId)
@@ -568,8 +596,6 @@ app.post('/api/v1/clock-out', async (req, res) => {
   }
 });
 
-// --- BREAK ENDPOINTS ---
-
 app.post('/api/v1/breaks/start', async (req, res) => {
   const { id, timesheetId, typeId, location } = req.body;
   try {
@@ -594,12 +620,8 @@ app.post('/api/v1/breaks/end', async (req, res) => {
   const { id } = req.body;
   try {
     const pool = await connectDB();
-    const query = \`
-      UPDATE breaks SET end_time = GETDATE() WHERE id = @id
-    \`;
-    await pool.request()
-        .input('id', sql.NVarChar, id)
-        .query(query);
+    const query = \`UPDATE breaks SET end_time = GETDATE() WHERE id = @id\`;
+    await pool.request().input('id', sql.NVarChar, id).query(query);
     res.status(200).json({ success: true });
   } catch (err) {
     console.error(err);
@@ -607,28 +629,17 @@ app.post('/api/v1/breaks/end', async (req, res) => {
   }
 });
 
-// --- LEAVE & CORRECTIONS ---
-
 app.get('/api/v1/leaves', async (req, res) => {
   try {
     const pool = await connectDB();
     const richResult = await pool.request().query(\`
-        SELECT 
-            leave_requests.id, 
-            leave_requests.user_id as userId, 
-            leave_requests.type_id as typeId, 
-            leave_configs.name as typeName,
-            leave_requests.start_date as startDate, 
-            leave_requests.end_date as endDate, 
-            leave_requests.reason, 
-            leave_requests.status, 
-            leave_requests.manager_comment as managerComment 
-        FROM leave_requests
-        LEFT JOIN leave_configs ON leave_requests.type_id = leave_configs.id
+        SELECT l.id, l.user_id as userId, l.type_id as typeId, c.name as typeName,
+            l.start_date as startDate, l.end_date as endDate, l.reason, l.status, l.manager_comment as managerComment 
+        FROM leave_requests l
+        LEFT JOIN leave_configs c ON l.type_id = c.id
     \`);
     res.json(richResult.recordset);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: 'Database fetch failed' });
   }
 });
@@ -652,7 +663,6 @@ app.post('/api/v1/leaves', async (req, res) => {
         .query(query);
     res.status(201).json({ success: true });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: 'Database transaction failed' });
   }
 });
@@ -669,7 +679,6 @@ app.put('/api/v1/leaves/:id/status', async (req, res) => {
             .query('UPDATE leave_requests SET status = @status, manager_comment = @comment WHERE id = @id');
         res.json({ success: true });
     } catch (err) {
-        console.error(err);
         res.status(500).json({ error: 'Database transaction failed' });
     }
 });
@@ -693,151 +702,120 @@ app.post('/api/v1/corrections', async (req, res) => {
         .query(query);
     res.status(201).json({ success: true });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: 'Database transaction failed' });
   }
 });
 
-// --- CONFIG ENDPOINTS ---
+// --- GET CONFIG ENDPOINTS (For Pull) ---
+app.get('/api/v1/config/companies', async (req, res) => {
+    const pool = await connectDB();
+    const result = await pool.request().query('SELECT id, name FROM companies');
+    res.json(result.recordset);
+});
+app.get('/api/v1/config/departments', async (req, res) => {
+    const pool = await connectDB();
+    const result = await pool.request().query('SELECT id, name, company_id as companyId, manager_id as managerId, email_notifications as emailNotifications FROM departments');
+    const data = result.recordset.map(d => ({ ...d, emailNotifications: !!d.emailNotifications }));
+    res.json(data);
+});
+app.get('/api/v1/config/offices', async (req, res) => {
+    const pool = await connectDB();
+    const result = await pool.request().query('SELECT id, name, latitude, longitude, radius_meters as radiusMeters FROM offices');
+    const data = result.recordset.map(o => ({ 
+        id: o.id, name: o.name, radiusMeters: o.radiusMeters,
+        coordinates: { latitude: o.latitude, longitude: o.longitude }
+    }));
+    res.json(data);
+});
+app.get('/api/v1/config/users', async (req, res) => {
+    const pool = await connectDB();
+    const result = await pool.request().query('SELECT * FROM users');
+    // Map SQL columns to JS User object structure
+    const data = result.recordset.map(u => ({
+        id: u.id, name: u.name, email: u.email, erpId: u.erp_id, companyId: u.company_id,
+        departmentId: u.department_id, assignedOfficeId: u.assigned_office_id,
+        authType: u.auth_type, roles: JSON.parse(u.roles || '["EMPLOYEE"]'),
+        isValidated: !!u.is_validated, requiresGPS: !!u.requires_gps, 
+        employmentStatus: u.employment_status,
+        contractHours: u.contract_hours,
+        avatarUrl: \`https://ui-avatars.com/api/?name=\${u.name}&background=random\`
+    }));
+    res.json(data);
+});
 
+// --- POST CONFIG ENDPOINTS (For Push) ---
 app.post('/api/v1/config/breaks', async (req, res) => {
     const breaks = req.body;
     if (!Array.isArray(breaks)) return res.status(400).json({error: 'Expected array'});
     const pool = await connectDB();
-    const transaction = new sql.Transaction(pool);
-    try {
-        await transaction.begin();
-        const request = new sql.Request(transaction);
-        await request.query('DELETE FROM break_configs'); 
-        for (const b of breaks) {
-            const req = new sql.Request(transaction);
-            await req.input('id', sql.NVarChar, b.id)
-                     .input('name', sql.NVarChar, b.name)
-                     .input('isPaid', sql.Bit, b.isPaid ? 1 : 0)
-                     .input('icon', sql.NVarChar, b.icon || 'coffee')
-                     .query('INSERT INTO break_configs (id, name, is_paid, icon) VALUES (@id, @name, @isPaid, @icon)');
-        }
-        await transaction.commit();
-        res.json({ success: true, count: breaks.length });
-    } catch (err) {
-        if(transaction) await transaction.rollback();
-        res.status(500).json({ error: err.message });
+    await pool.request().query('DELETE FROM break_configs'); 
+    for (const b of breaks) {
+        await pool.request()
+            .input('id', sql.NVarChar, b.id).input('name', sql.NVarChar, b.name)
+            .input('isPaid', sql.Bit, b.isPaid ? 1 : 0).input('icon', sql.NVarChar, b.icon || 'coffee')
+            .query('INSERT INTO break_configs (id, name, is_paid, icon) VALUES (@id, @name, @isPaid, @icon)');
     }
+    res.json({ success: true });
 });
-
 app.post('/api/v1/config/leaves', async (req, res) => {
     const leaves = req.body;
     if (!Array.isArray(leaves)) return res.status(400).json({error: 'Expected array'});
     const pool = await connectDB();
-    const transaction = new sql.Transaction(pool);
-    try {
-        await transaction.begin();
-        const request = new sql.Request(transaction);
-        await request.query('DELETE FROM leave_configs');
-        for (const l of leaves) {
-            const req = new sql.Request(transaction);
-            await req.input('id', sql.NVarChar, l.id)
-                     .input('name', sql.NVarChar, l.name)
-                     .input('code', sql.NVarChar, l.code)
-                     .input('reqApp', sql.Bit, l.requiresApproval ? 1 : 0)
-                     .query('INSERT INTO leave_configs (id, name, code, requires_approval) VALUES (@id, @name, @code, @reqApp)');
-        }
-        await transaction.commit();
-        res.json({ success: true, count: leaves.length });
-    } catch (err) {
-        if(transaction) await transaction.rollback();
-        res.status(500).json({ error: err.message });
+    await pool.request().query('DELETE FROM leave_configs');
+    for (const l of leaves) {
+        await pool.request()
+            .input('id', sql.NVarChar, l.id).input('name', sql.NVarChar, l.name)
+            .input('code', sql.NVarChar, l.code).input('reqApp', sql.Bit, l.requiresApproval ? 1 : 0)
+            .query('INSERT INTO leave_configs (id, name, code, requires_approval) VALUES (@id, @name, @code, @reqApp)');
     }
+    res.json({ success: true });
 });
-
 app.post('/api/v1/config/holidays', async (req, res) => {
     const holidays = req.body;
     if (!Array.isArray(holidays)) return res.status(400).json({error: 'Expected array'});
     const pool = await connectDB();
-    const transaction = new sql.Transaction(pool);
-    try {
-        await transaction.begin();
-        const request = new sql.Request(transaction);
-        await request.query('DELETE FROM holidays');
-        for (const h of holidays) {
-            const req = new sql.Request(transaction);
-            await req.input('id', sql.NVarChar, h.id)
-                     .input('date', sql.Date, h.date)
-                     .input('name', sql.NVarChar, h.name)
-                     .query('INSERT INTO holidays (id, date, name) VALUES (@id, @date, @name)');
-        }
-        await transaction.commit();
-        res.json({ success: true, count: holidays.length });
-    } catch (err) {
-        if(transaction) await transaction.rollback();
-        res.status(500).json({ error: err.message });
+    await pool.request().query('DELETE FROM holidays');
+    for (const h of holidays) {
+        await pool.request().input('id', sql.NVarChar, h.id).input('date', sql.Date, h.date).input('name', sql.NVarChar, h.name)
+            .query('INSERT INTO holidays (id, date, name) VALUES (@id, @date, @name)');
     }
+    res.json({ success: true });
 });
-
-// --- STRUCTURAL (UPSERT) ---
-
 app.post('/api/v1/config/companies', async (req, res) => {
     const list = req.body;
-    if (!Array.isArray(list)) return res.status(400).json({error: 'Expected array'});
     const pool = await connectDB();
-    try {
-        for (const item of list) {
-             const request = pool.request();
-             await request.input('id', sql.NVarChar, item.id).input('name', sql.NVarChar, item.name)
-               .query('IF EXISTS (SELECT 1 FROM companies WHERE id = @id) UPDATE companies SET name = @name WHERE id = @id ELSE INSERT INTO companies (id, name) VALUES (@id, @name)');
-        }
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    for (const item of list) {
+         await pool.request().input('id', sql.NVarChar, item.id).input('name', sql.NVarChar, item.name)
+           .query('IF EXISTS (SELECT 1 FROM companies WHERE id = @id) UPDATE companies SET name = @name WHERE id = @id ELSE INSERT INTO companies (id, name) VALUES (@id, @name)');
     }
+    res.json({ success: true });
 });
-
 app.post('/api/v1/config/offices', async (req, res) => {
     const list = req.body;
-    if (!Array.isArray(list)) return res.status(400).json({error: 'Expected array'});
     const pool = await connectDB();
-    try {
-        for (const item of list) {
-             const request = pool.request();
-             await request.input('id', sql.NVarChar, item.id).input('name', sql.NVarChar, item.name).input('lat', sql.Decimal(10,8), item.coordinates.latitude).input('long', sql.Decimal(11,8), item.coordinates.longitude).input('rad', sql.Int, item.radiusMeters)
-               .query('IF EXISTS (SELECT 1 FROM offices WHERE id = @id) UPDATE offices SET name = @name, latitude = @lat, longitude = @long, radius_meters = @rad WHERE id = @id ELSE INSERT INTO offices (id, name, latitude, longitude, radius_meters) VALUES (@id, @name, @lat, @long, @rad)');
-        }
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    for (const item of list) {
+         await pool.request().input('id', sql.NVarChar, item.id).input('name', sql.NVarChar, item.name).input('lat', sql.Decimal(10,8), item.coordinates.latitude).input('long', sql.Decimal(11,8), item.coordinates.longitude).input('rad', sql.Int, item.radiusMeters)
+           .query('IF EXISTS (SELECT 1 FROM offices WHERE id = @id) UPDATE offices SET name = @name, latitude = @lat, longitude = @long, radius_meters = @rad WHERE id = @id ELSE INSERT INTO offices (id, name, latitude, longitude, radius_meters) VALUES (@id, @name, @lat, @long, @rad)');
     }
+    res.json({ success: true });
 });
-
 app.post('/api/v1/config/departments', async (req, res) => {
     const list = req.body;
-    if (!Array.isArray(list)) return res.status(400).json({error: 'Expected array'});
     const pool = await connectDB();
-    try {
-        for (const item of list) {
-             const request = pool.request();
-             await request.input('id', sql.NVarChar, item.id).input('compId', sql.NVarChar, item.companyId).input('name', sql.NVarChar, item.name).input('email', sql.Bit, item.emailNotifications ? 1 : 0)
-               .query('IF EXISTS (SELECT 1 FROM departments WHERE id = @id) UPDATE departments SET name = @name, company_id = @compId, email_notifications = @email WHERE id = @id ELSE INSERT INTO departments (id, company_id, name, email_notifications) VALUES (@id, @compId, @name, @email)');
-        }
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    for (const item of list) {
+         await pool.request().input('id', sql.NVarChar, item.id).input('compId', sql.NVarChar, item.companyId).input('name', sql.NVarChar, item.name).input('email', sql.Bit, item.emailNotifications ? 1 : 0)
+           .query('IF EXISTS (SELECT 1 FROM departments WHERE id = @id) UPDATE departments SET name = @name, company_id = @compId, email_notifications = @email WHERE id = @id ELSE INSERT INTO departments (id, company_id, name, email_notifications) VALUES (@id, @compId, @name, @email)');
     }
+    res.json({ success: true });
 });
-
 app.post('/api/v1/config/users', async (req, res) => {
     const list = req.body;
-    if (!Array.isArray(list)) return res.status(400).json({error: 'Expected array'});
     const pool = await connectDB();
-    try {
-        for (const u of list) {
-             const request = pool.request();
-             await request.input('id', sql.NVarChar, u.id).input('erpId', sql.NVarChar, u.erpId || null).input('compId', sql.NVarChar, u.companyId).input('deptId', sql.NVarChar, u.departmentId || null).input('offId', sql.NVarChar, u.assignedOfficeId || null).input('name', sql.NVarChar, u.name).input('email', sql.NVarChar, u.email).input('auth', sql.NVarChar, u.authType).input('roles', sql.NVarChar, JSON.stringify(u.roles)).input('valid', sql.Bit, u.isValidated ? 1 : 0).input('status', sql.NVarChar, u.employmentStatus || 'ACTIVE')
-               .query('IF EXISTS (SELECT 1 FROM users WHERE id = @id) UPDATE users SET name=@name, email=@email, erp_id=@erpId, company_id=@compId, department_id=@deptId, assigned_office_id=@offId, roles=@roles, is_validated=@valid, employment_status=@status WHERE id = @id ELSE INSERT INTO users (id, name, email, erp_id, company_id, department_id, assigned_office_id, auth_type, roles, is_validated, employment_status) VALUES (@id, @name, @email, @erpId, @compId, @deptId, @offId, @auth, @roles, @valid, @status)');
-        }
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    for (const u of list) {
+         await pool.request().input('id', sql.NVarChar, u.id).input('erpId', sql.NVarChar, u.erpId || null).input('compId', sql.NVarChar, u.companyId).input('deptId', sql.NVarChar, u.departmentId || null).input('offId', sql.NVarChar, u.assignedOfficeId || null).input('name', sql.NVarChar, u.name).input('email', sql.NVarChar, u.email).input('auth', sql.NVarChar, u.authType).input('roles', sql.NVarChar, JSON.stringify(u.roles)).input('valid', sql.Bit, u.isValidated ? 1 : 0).input('status', sql.NVarChar, u.employmentStatus || 'ACTIVE')
+           .query('IF EXISTS (SELECT 1 FROM users WHERE id = @id) UPDATE users SET name=@name, email=@email, erp_id=@erpId, company_id=@compId, department_id=@deptId, assigned_office_id=@offId, roles=@roles, is_validated=@valid, employment_status=@status WHERE id = @id ELSE INSERT INTO users (id, name, email, erp_id, company_id, department_id, assigned_office_id, auth_type, roles, is_validated, employment_status) VALUES (@id, @name, @email, @erpId, @compId, @deptId, @offId, @auth, @roles, @valid, @status)');
     }
+    res.json({ success: true });
 });
 
 const PORT = process.env.PORT || 3001;
@@ -969,64 +947,53 @@ app.listen(PORT, async () => {
                     </div>
                  </div>
 
+                 {/* SYNC DATA BUTTONS */}
+                 <div className="bg-indigo-900/20 border border-indigo-800 rounded-lg p-4 flex flex-col gap-3">
+                     <div className="flex gap-4 items-start">
+                        <RefreshCw className="text-indigo-400 shrink-0" size={20}/>
+                        <div>
+                            <h4 className="text-white font-bold text-sm">Data Synchronization (Push/Pull)</h4>
+                            <p className="text-slate-400 text-xs mt-1">
+                                Choose how you want to interact with the SQL Database.
+                            </p>
+                        </div>
+                     </div>
+                     <div className="flex gap-3 mt-2">
+                         <button 
+                            onClick={handlePushToSQL}
+                            disabled={isSeeding || isPulling}
+                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
+                         >
+                            {isSeeding ? <RefreshCw className="animate-spin" size={14}/> : <UploadCloud size={14}/>}
+                            PUSH: Local -> SQL
+                         </button>
+                         <button 
+                            onClick={handlePullFromSQL}
+                            disabled={isSeeding || isPulling}
+                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
+                         >
+                            {isPulling ? <RefreshCw className="animate-spin" size={14}/> : <CloudDownload size={14}/>}
+                            PULL: SQL -> Local
+                         </button>
+                     </div>
+                 </div>
+
                  {/* DANGER ZONE - LOCAL DATA CLEARING */}
                  <div className="bg-red-900/10 border border-red-900/30 rounded-lg p-4">
                      <div className="flex items-center gap-2 text-red-400 font-bold mb-3 uppercase text-xs tracking-wider">
                          <AlertTriangle size={14}/> Local Data Management (Danger Zone)
                      </div>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                         <button 
-                            onClick={() => handleClearTable('pontaj_timesheets', 'Pontaje & Ore')}
-                            className="flex items-center justify-between p-3 bg-red-950/30 hover:bg-red-900/50 border border-red-900/30 rounded transition group"
-                         >
-                             <div className="text-left">
-                                 <div className="text-red-300 font-bold text-xs group-hover:text-red-200">Clear Timesheets</div>
-                                 <div className="text-[10px] text-red-500/70">Wipe local history only</div>
-                             </div>
-                             <Trash2 size={16} className="text-red-500 group-hover:text-red-300"/>
-                         </button>
-                         <button 
-                            onClick={handleFactoryReset}
-                            className="flex items-center justify-between p-3 bg-red-950/30 hover:bg-red-900/50 border border-red-900/30 rounded transition group"
-                         >
-                             <div className="text-left">
-                                 <div className="text-red-300 font-bold text-xs group-hover:text-red-200">Factory Reset</div>
-                                 <div className="text-[10px] text-red-500/70">Wipe ALL storage & Reload</div>
-                             </div>
-                             <Power size={16} className="text-red-500 group-hover:text-red-300"/>
-                         </button>
-                     </div>
-                 </div>
-
-                 <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4 flex gap-4 items-start">
-                     <AlertTriangle className="text-blue-400 shrink-0" size={20}/>
-                     <div>
-                         <h4 className="text-white font-bold text-sm">Deployment Readiness (v1.0.{buildVersion})</h4>
-                         <p className="text-slate-400 text-xs mt-1">
-                             System is ready for Microsoft SQL Server deployment. 
-                             Configure your server details in the "Bridge Source" tab, then download the artifacts.
-                         </p>
-                     </div>
-                 </div>
-                 
-                 {/* SEED DATA BUTTON */}
-                 <div className="bg-emerald-900/20 border border-emerald-800 rounded-lg p-4 flex flex-col gap-3">
-                     <div className="flex gap-4 items-start">
-                        <UploadCloud className="text-emerald-400 shrink-0" size={20}/>
-                        <div>
-                            <h4 className="text-white font-bold text-sm">Initial Data Seeding (Resolve Dependencies)</h4>
-                            <p className="text-slate-400 text-xs mt-1">
-                                Use this if you see <code>FOREIGN KEY</code> errors. This will push all Companies, Offices, Departments, and Users from your local defaults to the SQL Server in the correct order.
-                            </p>
-                        </div>
+                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                         <button onClick={() => handleClearTable('pontaj_timesheets', 'Pontaje')} className="p-2 bg-red-950/30 hover:bg-red-900/50 border border-red-900/30 rounded text-red-300 text-xs">Clear Timesheets</button>
+                         <button onClick={() => handleClearTable('pontaj_companies', 'Companii')} className="p-2 bg-red-950/30 hover:bg-red-900/50 border border-red-900/30 rounded text-red-300 text-xs">Clear Companies</button>
+                         <button onClick={() => handleClearTable('pontaj_departments', 'Departamente')} className="p-2 bg-red-950/30 hover:bg-red-900/50 border border-red-900/30 rounded text-red-300 text-xs">Clear Depts</button>
+                         <button onClick={() => handleClearTable('pontaj_offices', 'Sedii')} className="p-2 bg-red-950/30 hover:bg-red-900/50 border border-red-900/30 rounded text-red-300 text-xs">Clear Offices</button>
                      </div>
                      <button 
-                        onClick={handlePushToSQL}
-                        disabled={isSeeding}
-                        className="self-end bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-900/50"
+                        onClick={handleFactoryReset}
+                        className="w-full mt-3 flex items-center justify-center gap-2 p-3 bg-red-900 hover:bg-red-800 text-white border border-red-700 rounded transition group font-bold text-xs"
                      >
-                        {isSeeding ? <RefreshCw className="animate-spin" size={14}/> : <UploadCloud size={14}/>}
-                        {isSeeding ? 'Seeding...' : 'Push Local Data to SQL'}
+                         <Power size={14}/> FACTORY RESET (WIPE ALL)
                      </button>
                  </div>
              </div>
