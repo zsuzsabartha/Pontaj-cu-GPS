@@ -1,7 +1,7 @@
 
-import React from 'react';
-import { Timesheet, ShiftStatus, BreakStatus, Office, User, BreakConfig, Company } from '../types';
-import { MapPin, CheckSquare, Edit2, AlertCircle, CloudOff, Info, User as UserIcon, Bot, Clock, UserCog } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Timesheet, ShiftStatus, BreakStatus, Office, User, BreakConfig, Company, CorrectionRequest } from '../types';
+import { MapPin, CheckSquare, Edit2, AlertCircle, CloudOff, Info, User as UserIcon, Bot, Clock, UserCog, FileQuestion, Hourglass } from 'lucide-react';
 import SmartTable, { Column } from './SmartTable';
 
 interface TimesheetListProps {
@@ -10,12 +10,50 @@ interface TimesheetListProps {
   users?: User[]; // Needed for resolving names
   companies?: Company[]; // Needed for resolving company names
   breakConfigs?: BreakConfig[]; // Needed to calculate net time (unpaid breaks)
+  correctionRequests?: CorrectionRequest[]; // NEW: To check for pending corrections
   isManagerView?: boolean;
   onApproveBreak?: (timesheetId: string, breakId: string, status: BreakStatus) => void;
   onEditTimesheet?: (timesheet: Timesheet) => void;
 }
 
-const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [], users = [], companies = [], breakConfigs = [], isManagerView, onApproveBreak, onEditTimesheet }) => {
+const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [], users = [], companies = [], breakConfigs = [], correctionRequests = [], isManagerView, onApproveBreak, onEditTimesheet }) => {
+
+  // --- MERGE LOGIC: Combine Real Timesheets with "Virtual" Timesheets from Pending Correction Requests (Missing Punches) ---
+  const combinedData = useMemo(() => {
+      // 1. Start with actual timesheets
+      const combined = [...timesheets];
+
+      // 2. Look for pending correction requests that refer to dates NOT in the timesheet list
+      correctionRequests.forEach(req => {
+          if (req.status !== 'PENDING') return;
+
+          // Check if a timesheet already exists for this request
+          // Match by ID (if editing existing) OR by User+Date (if creating missing)
+          const exists = combined.find(t => 
+              t.id === req.timesheetId || 
+              (t.userId === req.userId && t.date === req.requestedDate)
+          );
+
+          if (!exists && req.requestedDate) {
+              // Create a "Virtual" Timesheet for display purposes
+              const virtualTs: Timesheet & { isVirtual?: boolean } = {
+                  id: req.id, // Use request ID temporarily
+                  userId: req.userId,
+                  date: req.requestedDate,
+                  startTime: req.requestedStartTime,
+                  endTime: req.requestedEndTime,
+                  status: ShiftStatus.COMPLETED, // Placeholder status
+                  breaks: [],
+                  // Custom flag to identify this as a request, not a real record
+                  isVirtual: true 
+              };
+              combined.push(virtualTs);
+          }
+      });
+
+      // 3. Sort by Date Descending
+      return combined.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [timesheets, correctionRequests]);
 
   const calculateBalance = (ts: Timesheet, user?: User) => {
       if (!ts.endTime || !user) return null;
@@ -126,7 +164,8 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
     {
         header: 'Bilanț',
         accessor: 'id', // dummy
-        render: (ts: Timesheet) => {
+        render: (ts: any) => {
+            if (ts.isVirtual) return <span className="text-xs text-gray-400">-</span>;
             if (ts.status === ShiftStatus.WORKING || ts.status === ShiftStatus.ON_BREAK) return <span className="text-xs text-blue-500 italic">În lucru...</span>;
             const user = users.find(u => u.id === ts.userId);
             return calculateBalance(ts, user);
@@ -141,7 +180,9 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
              return 'Extern';
         },
         filterable: true,
-        render: (ts: Timesheet) => {
+        render: (ts: any) => {
+            if (ts.isVirtual) return <span className="text-xs text-orange-400 italic">Corecție</span>;
+
             const matchedOffice = ts.matchedOfficeId ? offices.find(o => o.id === ts.matchedOfficeId) : null;
             const dist = ts.distanceToOffice !== undefined ? (ts.distanceToOffice > 1000 ? `${(ts.distanceToOffice/1000).toFixed(1)}km` : `${ts.distanceToOffice}m`) : null;
             
@@ -168,9 +209,32 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
         accessor: 'status',
         sortable: true,
         filterable: true,
-        render: (ts: Timesheet) => {
+        render: (ts: any) => {
+            // Virtual Timesheet Handling (Missing Punch Request)
+            if (ts.isVirtual) {
+                return (
+                    <div className="flex flex-col gap-1">
+                        <div className="bg-orange-50 border border-orange-200 text-orange-800 px-2 py-1 rounded w-fit">
+                            <div className="flex items-center gap-1 font-bold text-[10px] uppercase">
+                                <Hourglass size={12}/> Solicitare Corecție
+                            </div>
+                            <div className="text-[9px] text-orange-600 font-medium ml-4">
+                                Așteaptă Aprobare
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
             const isSyncing = ts.syncStatus === 'PENDING_SYNC';
-            const isManagerModified = ts.logs?.some(l => l.changedByUserId !== ts.userId && l.changedByUserId !== 'system');
+            const isManagerModified = ts.logs?.some((l: any) => l.changedByUserId !== ts.userId && l.changedByUserId !== 'system');
+            
+            // Check for pending correction request on EXISTING timesheet
+            const pendingCorrection = correctionRequests.find(c => 
+                c.userId === ts.userId && 
+                c.status === 'PENDING' && 
+                (c.timesheetId === ts.id || c.requestedDate === ts.date)
+            );
 
             return (
                 <div className="flex flex-col gap-1">
@@ -182,6 +246,16 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
                     </div>
                     
                     {/* Flags */}
+                    {pendingCorrection && (
+                        <div className="bg-orange-50 border border-orange-200 text-orange-800 px-2 py-1 rounded w-fit mt-1">
+                            <div className="flex items-center gap-1 font-bold text-[10px] uppercase">
+                                <FileQuestion size={12}/> Corecție Cerută
+                            </div>
+                            <div className="text-[9px] text-orange-600 font-medium ml-4">
+                                Așteaptă Aprobare
+                            </div>
+                        </div>
+                    )}
                     {isSyncing && <span className="text-[9px] bg-yellow-100 text-yellow-700 px-1 rounded flex items-center gap-1 w-fit"><CloudOff size={8}/> Nesincronizat</span>}
                     {ts.isSystemAutoCheckout && (
                         <span className="text-[9px] bg-red-100 text-red-700 px-1 rounded flex items-center gap-1 w-fit border border-red-200" title="Check-out realizat automat de sistem">
@@ -190,7 +264,7 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
                     )}
                     {ts.isHoliday && <span className="text-[9px] bg-purple-100 text-purple-700 px-1 rounded w-fit">Sărbătoare</span>}
                     {isManagerModified && (
-                        <span className="text-[9px] bg-orange-100 text-orange-800 px-1 rounded flex items-center gap-1 w-fit border border-orange-200" title="Modificat de un superior">
+                        <span className="text-[9px] bg-blue-100 text-blue-800 px-1 rounded flex items-center gap-1 w-fit border border-blue-200" title="Modificat de un superior">
                             <UserCog size={10}/> MODIFICAT
                         </span>
                     )}
@@ -204,8 +278,8 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
         header: 'Acțiuni',
         accessor: 'id',
         width: 'w-32',
-        render: (ts: Timesheet) => {
-            const pendingBreaks = ts.breaks.filter(b => b.status === BreakStatus.PENDING).length;
+        render: (ts: any) => {
+            const pendingBreaks = ts.breaks.filter((b: any) => b.status === BreakStatus.PENDING).length;
             
             return (
                 <div className="flex items-center justify-end gap-2">
@@ -215,7 +289,7 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
                             title="Confirmă Pauze"
                             onClick={() => {
                                 // Auto approve first pending break for demo simplicity, or open modal in real app
-                                const firstPending = ts.breaks.find(b => b.status === BreakStatus.PENDING);
+                                const firstPending = ts.breaks.find((b:any) => b.status === BreakStatus.PENDING);
                                 if(firstPending) onApproveBreak(ts.id, firstPending.id, BreakStatus.APPROVED);
                             }}
                         >
@@ -223,7 +297,7 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
                         </button>
                     )}
                     
-                    {onEditTimesheet && (
+                    {onEditTimesheet && !ts.isVirtual && (
                         <button 
                             onClick={() => onEditTimesheet(ts)}
                             className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition"
@@ -231,6 +305,9 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
                         >
                             <Edit2 size={16}/>
                         </button>
+                    )}
+                    {ts.isVirtual && (
+                        <span className="text-xs text-gray-400 italic">În așteptare...</span>
                     )}
                 </div>
             )
@@ -246,7 +323,7 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
       </h3>
       
       <SmartTable 
-        data={timesheets}
+        data={combinedData}
         columns={columns}
         pageSize={isManagerView ? 15 : 10}
         className="shadow-md"

@@ -223,7 +223,14 @@ CREATE TABLE timesheets (
 );
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='breaks' AND xtype='U') 
 CREATE TABLE breaks (
-    id NVARCHAR(50) PRIMARY KEY, timesheet_id NVARCHAR(50), type_id NVARCHAR(50), start_time DATETIME2, end_time DATETIME2, status NVARCHAR(20)
+    id NVARCHAR(50) PRIMARY KEY, 
+    timesheet_id NVARCHAR(50), 
+    type_id NVARCHAR(50), 
+    type_name NVARCHAR(100),
+    start_time DATETIME2, 
+    end_time DATETIME2, 
+    status NVARCHAR(20),
+    manager_note NVARCHAR(255)
 );
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='leave_requests' AND xtype='U') 
 CREATE TABLE leave_requests (
@@ -455,7 +462,7 @@ app.post('/api/v1/config/schedules', asyncHandler(async (req, res) => {
 app.get('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
     const pool = await connectDB();
     const { recordset } = await pool.request().query(\`
-        SELECT t.*, b.id as bid, b.type_id, b.start_time as bstart, b.end_time as bend, b.status as bstatus, bc.name as bname
+        SELECT t.*, b.id as bid, b.type_id, b.type_name, b.start_time as bstart, b.end_time as bend, b.status as bstatus, b.manager_note, bc.name as config_name
         FROM timesheets t
         LEFT JOIN breaks b ON b.timesheet_id = t.id
         LEFT JOIN break_configs bc ON bc.id = b.type_id
@@ -474,8 +481,10 @@ app.get('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
         }
         if (r.bid) {
             map.get(r.id).breaks.push({
-                id: r.bid, typeId: r.type_id, typeName: r.bname,
-                startTime: r.bstart, endTime: r.bend, status: r.bstatus
+                id: r.bid, typeId: r.type_id, 
+                // Fallback to config name if available, else use saved snapshot, else default
+                typeName: r.config_name || r.type_name || 'Unknown Break',
+                startTime: r.bstart, endTime: r.bend, status: r.bstatus, managerNote: r.manager_note
             });
         }
     });
@@ -506,10 +515,10 @@ app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
             if (t.breaks) {
                 for (const b of t.breaks) {
                     await transaction.request()
-                       .input('id', b.id).input('tid', t.id).input('type', b.typeId)
-                       .input('start', b.startTime).input('end', b.endTime || null).input('status', b.status)
-                       .query(\`INSERT INTO breaks (id, timesheet_id, type_id, start_time, end_time, status) 
-                               VALUES (@id, @tid, @type, @start, @end, @status)\`);
+                       .input('id', b.id).input('tid', t.id).input('type', b.typeId).input('name', b.typeName)
+                       .input('start', b.startTime).input('end', b.endTime || null).input('status', b.status).input('note', b.managerNote || null)
+                       .query(\`INSERT INTO breaks (id, timesheet_id, type_id, type_name, start_time, end_time, status, manager_note) 
+                               VALUES (@id, @tid, @type, @name, @start, @end, @status, @note)\`);
                 }
             }
         }

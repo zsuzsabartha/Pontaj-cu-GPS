@@ -98,8 +98,16 @@ export default function App() {
   const [serverStatus, setServerStatus] = useState<'CONNECTING' | 'ONLINE' | 'OFFLINE'>('CONNECTING');
   const [isGlobalLoading, setIsGlobalLoading] = useState(false); // For blocking UI during async actions
   
-  // Edit Timesheet State
-  const [editModalData, setEditModalData] = useState<{isOpen: boolean, timesheet: Timesheet | null}>({isOpen: false, timesheet: null});
+  // Edit Timesheet State - UPDATED TO INCLUDE TARGET USER ID
+  const [editModalData, setEditModalData] = useState<{
+      isOpen: boolean, 
+      timesheet: Timesheet | null,
+      targetUserId: string | null 
+  }>({
+      isOpen: false, 
+      timesheet: null,
+      targetUserId: null
+  });
   
   // Rejection/Cancellation Modal State
   const [rejectionModal, setRejectionModal] = useState<{
@@ -340,7 +348,15 @@ export default function App() {
       }
   };
 
-  const openTimesheetModal = (ts: Timesheet | null) => setEditModalData({ isOpen: true, timesheet: ts });
+  // Helper to open modal with correct context (target user ID)
+  const openTimesheetModal = (ts: Timesheet | null, targetUserId?: string) => {
+      setEditModalData({ 
+          isOpen: true, 
+          timesheet: ts,
+          // If editing existing, use ts.userId. If new, use passed targetUserId or default to current user
+          targetUserId: ts ? ts.userId : (targetUserId || currentUser?.id || null)
+      });
+  };
   
   const handleTimesheetDelete = async (id: string) => {
       if(!confirm("Sigur doriți să ștergeți acest pontaj?")) return;
@@ -348,7 +364,7 @@ export default function App() {
       try {
           await SQLService.deleteTimesheet(id);
           setTimesheets(prev => prev.filter(t => t.id !== id));
-          setEditModalData({isOpen: false, timesheet: null});
+          setEditModalData({isOpen: false, timesheet: null, targetUserId: null});
       } catch (e) {
           alert("Eroare server: Nu s-a putut șterge pontajul.");
       } finally {
@@ -361,6 +377,16 @@ export default function App() {
       setIsGlobalLoading(true);
       
       const isManager = hasRole(Role.MANAGER) || hasRole(Role.ADMIN);
+      
+      // Determine the owner of this timesheet
+      // If editing, use existing owner. If creating, use targetUserId stored in state
+      const ownerId = editModalData.targetUserId; 
+
+      if (!ownerId) {
+          alert("Eroare internă: Nu s-a putut identifica utilizatorul țintă.");
+          setIsGlobalLoading(false);
+          return;
+      }
 
       try {
           if (data.type === 'WORK') {
@@ -376,17 +402,19 @@ export default function App() {
                          startTime: data.start, 
                          endTime: data.end, 
                          status: data.end ? ShiftStatus.COMPLETED : ShiftStatus.WORKING,
-                         detectedScheduleId: data.scheduleId 
+                         detectedScheduleId: data.scheduleId,
+                         logs: [...(existing.logs || []), { id: `log-${Date.now()}`, changedByUserId: currentUser.id, changeDate: new Date().toISOString(), details: 'Manager Edit' }]
                      };
                   } else {
                      newTs = {
                          id: `ts-${Date.now()}`, 
-                         userId: currentUser.id, // Or selected user if manager context is different
+                         userId: ownerId, // CORRECTED: Use target user ID, not currentUser.id
                          date: data.date, 
                          startTime: data.start, 
                          endTime: data.end, 
                          status: data.end ? ShiftStatus.COMPLETED : ShiftStatus.WORKING,
-                         breaks: []
+                         breaks: [],
+                         logs: [{ id: `log-${Date.now()}`, changedByUserId: currentUser.id, changeDate: new Date().toISOString(), details: 'Manager Created' }]
                      };
                   }
                   await SQLService.upsertTimesheet(newTs);
@@ -416,7 +444,8 @@ export default function App() {
           } else {
               // LEAVE Logic (Same for both, usually creates a Request)
               const newLeave: LeaveRequest = {
-                  id: `lr-${Date.now()}`, userId: currentUser!.id, 
+                  id: `lr-${Date.now()}`, 
+                  userId: ownerId, 
                   typeId: data.leaveTypeId,
                   typeName: leaveConfigs.find(lc => lc.id === data.leaveTypeId)?.name || 'Manual',
                   startDate: data.date,
@@ -435,7 +464,7 @@ export default function App() {
                   setTimesheets(prev => prev.filter(t => t.id !== data.tsId));
               }
           }
-          setEditModalData({isOpen: false, timesheet: null});
+          setEditModalData({isOpen: false, timesheet: null, targetUserId: null});
       } catch (e) {
           alert("Eroare server: Salvarea a eșuat.");
       } finally {
@@ -451,10 +480,8 @@ export default function App() {
               // 1. Update Correction Request Status
               const updatedReq = { ...target, status: 'APPROVED' as const };
               await SQLService.upsertCorrection(updatedReq);
-              setCorrectionRequests(prev => prev.map(c => c.id === reqId ? updatedReq : c));
-
+              
               // 2. Apply the Correction (Upsert Timesheet)
-              // We need to fetch the existing timesheet if it exists, or create new
               let existingTs = timesheets.find(t => t.id === target.timesheetId);
               
               const newTs: Timesheet = {
@@ -465,22 +492,16 @@ export default function App() {
                   endTime: target.requestedEndTime,
                   status: target.requestedEndTime ? ShiftStatus.COMPLETED : ShiftStatus.WORKING,
                   breaks: existingTs ? existingTs.breaks : [],
-                  // Keep location data if existing
                   startLocation: existingTs?.startLocation,
                   endLocation: existingTs?.endLocation,
                   matchedOfficeId: existingTs?.matchedOfficeId,
-                  // Mark as modified
                   logs: [...(existingTs?.logs || []), { id: `log-${Date.now()}`, changedByUserId: currentUser!.id, changeDate: new Date().toISOString(), details: `Correction Approved: ${target.reason}` }]
               };
 
               await SQLService.upsertTimesheet(newTs);
               
-              // Update local timesheets state
-              if (existingTs) {
-                  setTimesheets(prev => prev.map(t => t.id === newTs.id ? newTs : t));
-              } else {
-                  setTimesheets(prev => [newTs, ...prev]);
-              }
+              // 3. REFRESH ALL DATA to ensure consistent state
+              await fetchAllData();
           }
       } catch (e) {
           alert("Eroare server la aprobarea corecției.");
@@ -564,6 +585,7 @@ export default function App() {
               updatedTs = { ...activeOrTodayTimesheet, status: ShiftStatus.WORKING, breaks: updatedBreaks };
           } else {
               if (!config) return;
+              // Ensure we capture the typeName locally for immediate UI update and persistence
               const newBreak: Break = { 
                   id: `br-${Date.now()}`, typeId: config.id, typeName: config.name, startTime: new Date().toISOString(), status: BreakStatus.PENDING, startLocation: loc 
               };
@@ -648,7 +670,7 @@ export default function App() {
   const unreadCount = notifications.filter(n => n.userId === currentUser.id && !n.isRead).length;
   const myNotifications = notifications.filter(n => n.userId === currentUser.id).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  // Define Columns for My Leaves Table
+  // Define Columns for My Leaves Table with SmartGrid features
   const myLeaveColumns: Column<LeaveRequest>[] = [
     {
         header: 'Tip Concediu',
@@ -665,12 +687,23 @@ export default function App() {
         sortable: true,
         filterable: true,
         render: (l) => (
-            <div className="text-sm">
-                <span className="text-gray-600">{new Date(l.startDate).toLocaleDateString('ro-RO')}</span>
-                <span className="mx-2 text-gray-400">→</span>
-                <span className="text-gray-600">{new Date(l.endDate).toLocaleDateString('ro-RO')}</span>
+            <div className="flex flex-col">
+                <div className="text-sm font-medium text-gray-700">
+                    {new Date(l.startDate).toLocaleDateString('ro-RO')} - {new Date(l.endDate).toLocaleDateString('ro-RO')}
+                </div>
             </div>
         )
+    },
+    {
+        header: 'Zile',
+        accessor: 'id',
+        render: (l) => {
+            const start = new Date(l.startDate);
+            const end = new Date(l.endDate);
+            // Rough calculation including weekends for display
+            const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            return <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">{days} zile</span>
+        }
     },
     {
         header: 'Motiv / Detalii',
@@ -679,7 +712,8 @@ export default function App() {
         render: (l) => (
             <div className="text-xs text-gray-500 max-w-xs truncate" title={l.reason}>
                 {l.reason || '-'}
-                {l.cancellationReason && <div className="text-red-500 mt-1">Anulat: {l.cancellationReason}</div>}
+                {l.cancellationReason && <div className="text-red-500 mt-1 font-bold">Motiv Anulare: {l.cancellationReason}</div>}
+                {l.managerComment && <div className="text-blue-500 mt-1">Notă Manager: {l.managerComment}</div>}
             </div>
         )
     },
@@ -693,6 +727,7 @@ export default function App() {
             if(l.status === LeaveStatus.APPROVED) color = 'bg-green-100 text-green-700 border-green-200';
             if(l.status === LeaveStatus.PENDING) color = 'bg-yellow-100 text-yellow-700 border-yellow-200';
             if(l.status === LeaveStatus.REJECTED) color = 'bg-red-100 text-red-700 border-red-200';
+            if(l.status === LeaveStatus.CANCELLED) color = 'bg-gray-200 text-gray-500 border-gray-300 decoration-slice line-through';
             
             return (
                 <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${color}`}>
@@ -704,19 +739,21 @@ export default function App() {
     {
         header: 'Acțiuni',
         accessor: 'id',
+        width: 'w-24',
         render: (l) => {
             const notConsumed = new Date(l.startDate) >= new Date(new Date().setHours(0,0,0,0));
-            if (l.status === LeaveStatus.APPROVED && notConsumed) {
+            // Allow cancellation if approved AND in future, OR if pending
+            if ((l.status === LeaveStatus.APPROVED && notConsumed) || l.status === LeaveStatus.PENDING) {
                 return (
                     <button 
                         onClick={() => initiateRejection('LEAVE_CANCEL', l.id)} 
-                        className="text-xs text-red-600 hover:bg-red-50 px-3 py-1.5 rounded border border-red-200 transition font-medium"
+                        className="text-xs text-red-600 hover:bg-red-50 px-3 py-1.5 rounded border border-red-200 transition font-medium w-full"
                     >
                         Anulează
                     </button>
                 );
             }
-            return null;
+            return <span className="text-gray-300 text-xs">-</span>;
         }
     }
   ];
@@ -837,7 +874,15 @@ export default function App() {
                                 <PlusCircle size={18}/> Solicită Corecție
                             </button>
                         </div>
-                        <TimesheetList timesheets={myTimesheets} offices={offices} users={users} breakConfigs={breakConfigs} onEditTimesheet={openTimesheetModal} isManagerView={false} />
+                        <TimesheetList 
+                            timesheets={myTimesheets} 
+                            offices={offices} 
+                            users={users} 
+                            breakConfigs={breakConfigs} 
+                            correctionRequests={correctionRequests} // ADDED THIS PROP
+                            onEditTimesheet={openTimesheetModal} 
+                            isManagerView={false} 
+                        />
                     </div>
                 )}
             </div>
@@ -927,7 +972,7 @@ export default function App() {
       </main>
 
       <LeaveModal isOpen={isLeaveModalOpen} onClose={() => setLeaveModalOpen(false)} leaveConfigs={leaveConfigs} lockedDate={lockedDate} onSubmit={handleLeaveSubmit} />
-      <TimesheetEditModal isOpen={editModalData.isOpen} onClose={() => setEditModalData({isOpen: false, timesheet: null})} timesheet={editModalData.timesheet} isManager={hasRole(Role.MANAGER) || hasRole(Role.ADMIN)} lockedDate={lockedDate} leaveConfigs={leaveConfigs} onSave={handleTimesheetSave} onDelete={handleTimesheetDelete} />
+      <TimesheetEditModal isOpen={editModalData.isOpen} onClose={() => setEditModalData({isOpen: false, timesheet: null, targetUserId: null})} timesheet={editModalData.timesheet} isManager={hasRole(Role.MANAGER) || hasRole(Role.ADMIN)} lockedDate={lockedDate} leaveConfigs={leaveConfigs} onSave={handleTimesheetSave} onDelete={handleTimesheetDelete} />
       <RejectionModal isOpen={rejectionModal.isOpen} onClose={() => setRejectionModal({ ...rejectionModal, isOpen: false })} onSubmit={handleConfirmRejection} title={rejectionModal.type === 'LEAVE_CANCEL' ? 'Motiv Anulare' : 'Motiv Respingere'} />
     </div>
   );

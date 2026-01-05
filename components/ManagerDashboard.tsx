@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { User, Timesheet, LeaveRequest, CorrectionRequest, BreakStatus, LeaveStatus, ShiftStatus, Company, Office, BreakConfig, LeaveConfig, Holiday, Role } from '../types';
-import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight, Slash, LogIn, LogOut, PartyPopper, Moon, Sun, XCircle, History } from 'lucide-react';
+import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight, Slash, LogIn, LogOut, PartyPopper, Moon, Sun, XCircle, History, Download, BarChart3 } from 'lucide-react';
 import TimesheetList from './TimesheetList';
 import LeaveCalendarReport from './LeaveCalendarReport';
 
@@ -21,20 +21,25 @@ interface ManagerDashboardProps {
   onReject: (type: 'LEAVE' | 'CORRECTION' | 'BREAK', id: string, parentId?: string) => void;
   onApproveBreak: (tsId: string, brId: string, status: BreakStatus) => void;
   onApproveCorrection: (id: string) => void;
-  onOpenTimesheetModal: (ts: Timesheet | null) => void;
+  onOpenTimesheetModal: (ts: Timesheet | null, userId?: string) => void; // UPDATED SIGNATURE
 }
 
 const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
-  users, currentUser, timesheets, leaves, correctionRequests, companies, offices, breakConfigs, leaveConfigs, holidays,
+  users, currentUser, timesheets, leaves, correctionRequests, companies, offices, breakConfigs = [], leaveConfigs, holidays,
   canViewAllCompanies, onApproveLeave, onReject, onApproveBreak, onApproveCorrection, onOpenTimesheetModal
 }) => {
-  const [activeTab, setActiveTab] = useState<'status' | 'history' | 'leaves' | 'breaks' | 'calendar'>('status');
+  // Added 'corrections' and 'reports' to activeTab state
+  const [activeTab, setActiveTab] = useState<'status' | 'history' | 'leaves' | 'breaks' | 'corrections' | 'calendar' | 'reports'>('status');
   const [selectedTeamCompany, setSelectedTeamCompany] = useState<string>('ALL');
   const [dashboardDate, setDashboardDate] = useState<string>(new Date().toISOString().split('T')[0]);
   
+  // Reporting State
+  const [reportMonth, setReportMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
+
   // Filters for sub-tabs
   const [leaveFilter, setLeaveFilter] = useState<'PENDING' | 'HISTORY'>('PENDING');
   const [breakFilter, setBreakFilter] = useState<'PENDING' | 'HISTORY'>('PENDING');
+  const [correctionFilter, setCorrectionFilter] = useState<'PENDING' | 'HISTORY'>('PENDING');
 
   const changeDashboardDate = (offset: number) => {
       const current = new Date(dashboardDate);
@@ -44,7 +49,6 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
 
   // --- FILTER DATA ---
   const teamUsers = users.filter(u => {
-      // REMOVED: Exclusion of current user. Admins/Managers should see themselves in the team view if they choose.
       if (canViewAllCompanies) {
           if (selectedTeamCompany !== 'ALL' && u.companyId !== selectedTeamCompany) return false;
           return true;
@@ -87,8 +91,15 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
   }, [teamAllBreaks, breakFilter, teamPendingBreaks]);
 
 
-  // 3. CORRECTIONS
-  const teamPendingCorrections = correctionRequests.filter(r => r.status === 'PENDING' && teamUsers.some(u => u.id === r.userId));
+  // 3. CORRECTIONS LOGIC
+  const teamAllCorrections = correctionRequests.filter(r => teamUsers.some(u => u.id === r.userId));
+  const teamPendingCorrections = teamAllCorrections.filter(r => r.status === 'PENDING');
+  
+  const displayedCorrections = useMemo(() => {
+      if (correctionFilter === 'PENDING') return teamPendingCorrections;
+      return teamAllCorrections.filter(r => r.status !== 'PENDING').sort((a,b) => (b.requestedDate || '').localeCompare(a.requestedDate || ''));
+  }, [teamAllCorrections, correctionFilter, teamPendingCorrections]);
+
 
   // Helper to format location text based on available data
   const formatLocation = (matchedOfficeId?: string, distance?: number): { text: string, color: string } => {
@@ -101,6 +112,100 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
           return { text: `Extern (${distance}m)`, color };
       }
       return { text: '-', color: 'text-gray-400' };
+  };
+
+  // --- REPORT GENERATION LOGIC ---
+  const generateMonthlyReport = () => {
+      const [yearStr, monthStr] = reportMonth.split('-');
+      const year = parseInt(yearStr);
+      const monthIndex = parseInt(monthStr) - 1; // 0-based
+      const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+
+      // Headers
+      let csvContent = "\uFEFF"; // BOM for Excel UTF-8
+      const headerRow = ["Nume Angajat", "Companie", "ID ERP"];
+      for (let d = 1; d <= daysInMonth; d++) {
+          headerRow.push(String(d));
+      }
+      headerRow.push("Total Ore Lucrate");
+      headerRow.push("Zile Concediu");
+      csvContent += headerRow.join(",") + "\n";
+
+      // Rows
+      teamUsers.forEach(user => {
+          const companyName = companies.find(c => c.id === user.companyId)?.name || '-';
+          const rowData = [`"${user.name}"`, `"${companyName}"`, user.erpId || '-'];
+          
+          let totalMonthlyHours = 0;
+          let totalLeaveDays = 0;
+
+          for (let d = 1; d <= daysInMonth; d++) {
+              const dateStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+              
+              // 1. Check Approved Leaves
+              const leave = leaves.find(l => 
+                  l.userId === user.id && 
+                  l.status === LeaveStatus.APPROVED && 
+                  dateStr >= l.startDate && dateStr <= l.endDate
+              );
+
+              // 2. Check Timesheets
+              const timesheet = timesheets.find(t => t.userId === user.id && t.date === dateStr);
+              
+              // 3. Check Holiday / Weekend
+              const isHoliday = holidays.some(h => h.date === dateStr);
+              const dayOfWeek = new Date(dateStr).getDay();
+              const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+              let cellValue = "";
+
+              if (leave) {
+                  // Use Config Code if available (e.g., CO, CM), else Type Name
+                  const config = leaveConfigs.find(c => c.id === leave.typeId);
+                  cellValue = config?.code || "C";
+                  // Only count leave days if it's not a weekend/holiday (standard rule, though simplified here)
+                  if (!isWeekend && !isHoliday) totalLeaveDays++;
+              } else if (timesheet && timesheet.endTime) {
+                  // Calculate Net Hours
+                  const start = new Date(timesheet.startTime).getTime();
+                  const end = new Date(timesheet.endTime).getTime();
+                  let durationMs = end - start;
+
+                  // Subtract Unpaid Breaks
+                  const unpaidBreaksMs = timesheet.breaks.reduce((acc, b) => {
+                      const bConfig = breakConfigs.find(bc => bc.id === b.typeId);
+                      if (bConfig && !bConfig.isPaid && b.endTime && b.startTime) {
+                          return acc + (new Date(b.endTime).getTime() - new Date(b.startTime).getTime());
+                      }
+                      return acc;
+                  }, 0);
+
+                  const netHours = Math.max(0, (durationMs - unpaidBreaksMs) / 3600000);
+                  cellValue = netHours.toFixed(1); // e.g. "8.5"
+                  totalMonthlyHours += netHours;
+              } else if (isHoliday) {
+                  cellValue = "L"; // Libera Legala
+              } else if (isWeekend) {
+                  cellValue = "W"; // Weekend
+              }
+
+              rowData.push(cellValue);
+          }
+
+          rowData.push(totalMonthlyHours.toFixed(1));
+          rowData.push(String(totalLeaveDays));
+          csvContent += rowData.join(",") + "\n";
+      });
+
+      // Trigger Download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Raport_Pontaj_${reportMonth}_${selectedTeamCompany}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
   };
 
   // Live Status Logic
@@ -225,7 +330,13 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                      <button onClick={() => setActiveTab('breaks')} className={`px-3 py-1.5 rounded text-xs font-bold transition whitespace-nowrap flex items-center gap-1 ${activeTab === 'breaks' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-600 hover:bg-gray-50'}`}>
                          Pauze {pendingBreaksCount > 0 && <span className="bg-indigo-500 text-white rounded-full px-1.5 text-[9px]">{pendingBreaksCount}</span>}
                      </button>
-                     <button onClick={() => setActiveTab('calendar')} className={`px-3 py-1.5 rounded text-xs font-bold transition whitespace-nowrap ${activeTab === 'calendar' ? 'bg-green-100 text-green-700' : 'text-gray-600 hover:bg-gray-50'}`}>Calendar</button>
+                     <button onClick={() => setActiveTab('corrections')} className={`px-3 py-1.5 rounded text-xs font-bold transition whitespace-nowrap flex items-center gap-1 ${activeTab === 'corrections' ? 'bg-orange-100 text-orange-700' : 'text-gray-600 hover:bg-gray-50'}`}>
+                         Corecții {teamPendingCorrections.length > 0 && <span className="bg-orange-500 text-white rounded-full px-1.5 text-[9px]">{teamPendingCorrections.length}</span>}
+                     </button>
+                     <button onClick={() => setActiveTab('reports')} className={`px-3 py-1.5 rounded text-xs font-bold transition whitespace-nowrap flex items-center gap-1 ${activeTab === 'reports' ? 'bg-green-100 text-green-700' : 'text-gray-600 hover:bg-gray-50'}`}>
+                         <BarChart3 size={12}/> Rapoarte
+                     </button>
+                     <button onClick={() => setActiveTab('calendar')} className={`px-3 py-1.5 rounded text-xs font-bold transition whitespace-nowrap ${activeTab === 'calendar' ? 'bg-gray-100 text-gray-700' : 'text-gray-600 hover:bg-gray-50'}`}>Calendar</button>
                  </div>
 
                  {/* Company Filter (if applicable) */}
@@ -344,7 +455,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                              </div>
                                          </td>
                                          <td className="px-4 py-3 text-right align-top">
-                                             <button onClick={() => onOpenTimesheetModal(null)} className="text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition"><PlusCircle size={18}/></button>
+                                             <button onClick={() => onOpenTimesheetModal(null, user.id)} className="text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition"><PlusCircle size={18}/></button>
                                          </td>
                                      </tr>
                                  ))}
@@ -368,8 +479,9 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                         users={users}
                         companies={companies}
                         breakConfigs={breakConfigs}
+                        correctionRequests={correctionRequests} // ADDED THIS PROP
                         isManagerView={true} 
-                        onEditTimesheet={onOpenTimesheetModal}
+                        onEditTimesheet={(ts) => onOpenTimesheetModal(ts)}
                     />
                 </div>
             </div>
@@ -447,7 +559,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
             </div>
         )}
 
-        {/* --- TAB: BREAKS & CORRECTIONS --- */}
+        {/* --- TAB: BREAKS --- */}
         {activeTab === 'breaks' && (
             <div className="space-y-8 animate-in fade-in">
                 {/* 1. Breaks */}
@@ -537,44 +649,126 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                         </div>
                     )}
                 </div>
+            </div>
+        )}
 
-                {/* 2. Corrections (Grouped here for convenience as they are also "Approvals") */}
-                {teamPendingCorrections.length > 0 && (
-                    <div className="space-y-4 pt-4 border-t border-gray-200">
-                        <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 flex justify-between items-center">
-                            <div>
-                                <h3 className="font-bold text-orange-900">Solicitări Corecție / Pontaj Lipsă</h3>
-                            </div>
-                            <span className="text-2xl font-bold text-orange-700">{teamPendingCorrections.length}</span>
+        {/* --- TAB: CORRECTIONS --- */}
+        {activeTab === 'corrections' && (
+            <div className="space-y-6 animate-in fade-in">
+                
+                {/* Header Stats */}
+                <div className="flex flex-col md:flex-row gap-4 items-stretch">
+                    <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 flex justify-between items-center flex-1">
+                        <div>
+                            <h3 className="font-bold text-orange-900">Solicitări Corecție</h3>
+                            <p className="text-xs text-orange-700">Cereri de modificare pontaj sau pontaj lipsă.</p>
                         </div>
-                        <div className="grid gap-4 md:grid-cols-2">
-                            {teamPendingCorrections.map(req => {
-                                const requester = users.find(u => u.id === req.userId);
-                                const reqCompany = companies.find(c => c.id === requester?.companyId);
-                                return (
-                                    <div key={req.id} className="bg-white p-4 rounded-xl border border-orange-200 shadow-sm flex flex-col gap-3">
-                                        <div className="flex items-center gap-2">
-                                            <img src={requester?.avatarUrl} className="w-8 h-8 rounded-full"/>
-                                            <div>
-                                                <span className="font-bold text-sm text-gray-800 block">{requester?.name}</span>
-                                                {reqCompany && <span className="text-[10px] text-gray-500">{reqCompany.name}</span>}
-                                            </div>
-                                        </div>
-                                        <div className="text-xs text-gray-600">
-                                            <p><span className="font-semibold">Data:</span> {req.requestedDate || 'N/A'}</p>
-                                            <p className="mt-1"><span className="font-semibold">Interval:</span> {new Date(req.requestedStartTime).toLocaleTimeString()} - {req.requestedEndTime ? new Date(req.requestedEndTime).toLocaleTimeString() : '...'}</p>
-                                            <p className="mt-2 bg-gray-50 p-2 rounded italic">"{req.reason}"</p>
-                                        </div>
-                                        <div className="flex gap-2 mt-auto">
-                                            <button onClick={() => onApproveCorrection(req.id)} className="flex-1 bg-green-600 text-white py-1.5 rounded text-xs font-bold">Aprobă</button>
-                                            <button onClick={() => onReject('CORRECTION', req.id)} className="flex-1 border border-red-200 text-red-600 py-1.5 rounded text-xs font-bold">Respinge</button>
-                                        </div>
-                                    </div>
-                                )
-                            })}
+                        <div className="flex flex-col items-end">
+                            <span className="text-2xl font-bold text-orange-700">{teamPendingCorrections.length}</span>
+                            <span className="text-[10px] text-orange-600 font-bold uppercase">De Aprobat</span>
                         </div>
                     </div>
-                )}
+                    <div className="bg-white p-2 rounded-xl border border-gray-200 flex items-center">
+                        <button 
+                            onClick={() => setCorrectionFilter('PENDING')} 
+                            className={`flex-1 px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${correctionFilter === 'PENDING' ? 'bg-orange-500 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                        >
+                            <AlertOctagon size={16}/> În Așteptare
+                        </button>
+                        <button 
+                            onClick={() => setCorrectionFilter('HISTORY')} 
+                            className={`flex-1 px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${correctionFilter === 'HISTORY' ? 'bg-orange-500 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                        >
+                            <History size={16}/> Istoric
+                        </button>
+                    </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                    {displayedCorrections.length === 0 && <p className="col-span-full text-center text-gray-400 italic py-8">Nu există solicitări de corecție conform filtrului.</p>}
+                    
+                    {displayedCorrections.map(req => {
+                        const requester = users.find(u => u.id === req.userId);
+                        const reqCompany = companies.find(c => c.id === requester?.companyId);
+                        const isPending = req.status === 'PENDING';
+
+                        return (
+                            <div key={req.id} className={`bg-white p-4 rounded-xl border shadow-sm flex flex-col gap-3 ${isPending ? 'border-orange-200' : 'border-gray-200 opacity-80'}`}>
+                                <div className="flex items-center gap-2">
+                                    <img src={requester?.avatarUrl} className="w-8 h-8 rounded-full"/>
+                                    <div>
+                                        <span className="font-bold text-sm text-gray-800 block">{requester?.name}</span>
+                                        {reqCompany && <span className="text-[10px] text-gray-500">{reqCompany.name}</span>}
+                                    </div>
+                                    {!isPending && (
+                                        <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                            req.status === 'APPROVED' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
+                                        }`}>
+                                            {req.status === 'APPROVED' ? 'APROBAT' : 'RESPINS'}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="text-xs text-gray-600 bg-gray-50 p-3 rounded-lg">
+                                    <p className="flex justify-between"><span className="font-semibold">Data Solicitată:</span> <span>{req.requestedDate || 'N/A'}</span></p>
+                                    <p className="mt-1 flex justify-between"><span className="font-semibold">Interval:</span> <span>{new Date(req.requestedStartTime).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} - {req.requestedEndTime ? new Date(req.requestedEndTime).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '...'}</span></p>
+                                    <div className="mt-2 pt-2 border-t border-gray-200">
+                                        <span className="font-semibold block mb-1">Motiv:</span>
+                                        <p className="italic">"{req.reason}"</p>
+                                    </div>
+                                </div>
+                                
+                                {isPending && (
+                                    <div className="flex gap-2 mt-auto">
+                                        <button onClick={() => onApproveCorrection(req.id)} className="flex-1 bg-green-600 text-white py-2 rounded-lg text-xs font-bold hover:bg-green-700 shadow-sm transition">Aprobă Solicitarea</button>
+                                        <button onClick={() => onReject('CORRECTION', req.id)} className="flex-1 border border-red-200 text-red-600 py-2 rounded-lg text-xs font-bold hover:bg-red-50 transition">Respinge</button>
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    })}
+                </div>
+            </div>
+        )}
+
+        {/* --- TAB: REPORTS (Monthly Excel) --- */}
+        {activeTab === 'reports' && (
+            <div className="space-y-6 animate-in fade-in">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                    <div className="flex items-start gap-4">
+                        <div className="bg-green-100 p-3 rounded-xl text-green-700">
+                            <FileText size={32}/>
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="text-lg font-bold text-gray-800">Raport Lunar Pontaj</h3>
+                            <p className="text-sm text-gray-500 mt-1 mb-4">
+                                Generați un raport detaliat în format CSV (compatibil Excel) care include orele lucrate și zilele de concediu pentru toți angajații selectați.
+                            </p>
+                            
+                            <div className="flex flex-wrap gap-4 items-end bg-gray-50 p-4 rounded-lg border border-gray-100">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Luna de Raportare</label>
+                                    <input 
+                                        type="month" 
+                                        value={reportMonth}
+                                        onChange={(e) => setReportMonth(e.target.value)}
+                                        className="border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-green-500 outline-none bg-white"
+                                    />
+                                </div>
+                                
+                                <button 
+                                    onClick={generateMonthlyReport}
+                                    className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700 shadow-md flex items-center gap-2 transition"
+                                >
+                                    <Download size={18}/> Export Excel / CSV
+                                </button>
+                            </div>
+                            
+                            <div className="mt-4 text-xs text-gray-400 italic">
+                                * Raportul include orele nete (pauzele neplătite sunt scăzute) și codurile de concediu aprobate.
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         )}
 
@@ -585,7 +779,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                     users={teamUsers} 
                     leaves={leaves} 
                     leaveConfigs={leaveConfigs}
-                    holidays={holidays} // PASSED HOLIDAYS TO COMPONENT
+                    holidays={holidays} 
                 />
             </div>
         )}
