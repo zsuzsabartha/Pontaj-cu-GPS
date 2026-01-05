@@ -5,7 +5,11 @@ import {
   INITIAL_LEAVE_CONFIGS,
   INITIAL_WORK_SCHEDULES,
   HOLIDAYS_RO,
-  getDefaultLockedDate
+  getDefaultLockedDate,
+  MOCK_USERS,
+  MOCK_COMPANIES,
+  MOCK_DEPARTMENTS,
+  MOCK_OFFICES
 } from './constants';
 import { 
   User, 
@@ -72,8 +76,8 @@ function usePersistedState<T>(key: string, defaultValue: T) {
 
 export default function App() {
   // --- Auth State ---
-  // Default to empty array to prevent auto-injection of mock users
-  const [users, setUsers] = usePersistedState<User[]>('pontaj_users', []); 
+  // Default to MOCK_USERS to ensure test data exists on fresh load
+  const [users, setUsers] = usePersistedState<User[]>('pontaj_users', MOCK_USERS); 
   const [currentUser, setCurrentUser] = useState<User | null>(null); 
 
   // --- App Data State (Persisted) ---
@@ -84,7 +88,6 @@ export default function App() {
   const [notifications, setNotifications] = usePersistedState<Notification[]>('pontaj_notifications', []);
   
   // --- Configuration State (Persisted) ---
-  // Keep config defaults as they are structural, not transactional
   const [breakConfigs, setBreakConfigs] = usePersistedState<BreakConfig[]>('pontaj_break_configs', INITIAL_BREAK_CONFIGS);
   const [leaveConfigs, setLeaveConfigs] = usePersistedState<LeaveConfig[]>('pontaj_leave_configs', INITIAL_LEAVE_CONFIGS);
   const [workSchedules, setWorkSchedules] = usePersistedState<WorkSchedule[]>('pontaj_work_schedules', INITIAL_WORK_SCHEDULES);
@@ -94,9 +97,9 @@ export default function App() {
   const [lockedDate, setLockedDate] = usePersistedState<string>('pontaj_locked_date', getDefaultLockedDate());
 
   // Office & Department Management State (Persisted)
-  const [companies, setCompanies] = usePersistedState<Company[]>('pontaj_companies', []);
-  const [departments, setDepartments] = usePersistedState<Department[]>('pontaj_departments', []);
-  const [offices, setOffices] = usePersistedState<Office[]>('pontaj_offices', []);
+  const [companies, setCompanies] = usePersistedState<Company[]>('pontaj_companies', MOCK_COMPANIES);
+  const [departments, setDepartments] = usePersistedState<Department[]>('pontaj_departments', MOCK_DEPARTMENTS);
+  const [offices, setOffices] = usePersistedState<Office[]>('pontaj_offices', MOCK_OFFICES);
   
   // UI State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'team' | 'leaves' | 'offices' | 'users' | 'nomenclator' | 'backend' | 'calendar' | 'notifications' | 'companies'>('dashboard');
@@ -140,17 +143,16 @@ export default function App() {
                   SQLService.getLeaveRequests()
               ]);
 
-              // Update State - Only overwrite if DB returns data, 
-              // otherwise we might overwrite local work with empty DB if connection is flaky but checkHealth passed
-              if (dbUsers) setUsers(dbUsers);
-              if (dbCompanies) setCompanies(dbCompanies);
-              if (dbDepts) setDepartments(dbDepts);
-              if (dbOffices) setOffices(dbOffices);
-              if (dbBreaks) setBreakConfigs(dbBreaks);
-              if (dbLeaves) setLeaveConfigs(dbLeaves);
-              if (dbHolidays) setHolidays(dbHolidays);
-              if (dbTimesheets) setTimesheets(dbTimesheets);
-              if (dbLeaveReqs) setLeaves(dbLeaveReqs);
+              // Update State - Only overwrite if DB returns data
+              if (dbUsers && dbUsers.length > 0) setUsers(dbUsers);
+              if (dbCompanies && dbCompanies.length > 0) setCompanies(dbCompanies);
+              if (dbDepts && dbDepts.length > 0) setDepartments(dbDepts);
+              if (dbOffices && dbOffices.length > 0) setOffices(dbOffices);
+              if (dbBreaks && dbBreaks.length > 0) setBreakConfigs(dbBreaks);
+              if (dbLeaves && dbLeaves.length > 0) setLeaveConfigs(dbLeaves);
+              if (dbHolidays && dbHolidays.length > 0) setHolidays(dbHolidays);
+              if (dbTimesheets && dbTimesheets.length > 0) setTimesheets(dbTimesheets);
+              if (dbLeaveReqs && dbLeaveReqs.length > 0) setLeaves(dbLeaveReqs);
 
           } catch (e) {
               console.warn("Working Offline: Could not connect to SQL Bridge.", e);

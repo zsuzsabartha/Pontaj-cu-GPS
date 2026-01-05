@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { User, Timesheet, LeaveRequest, CorrectionRequest, BreakStatus, LeaveStatus, ShiftStatus, Company, Office, BreakConfig, LeaveConfig, Holiday, Role } from '../types';
 import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight, Slash, LogIn, LogOut } from 'lucide-react';
@@ -298,6 +299,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                         timesheets={teamTimesheets} 
                         offices={offices} 
                         users={users}
+                        companies={companies}
                         breakConfigs={breakConfigs}
                         isManagerView={true} 
                         onEditTimesheet={onOpenTimesheetModal}
@@ -386,11 +388,15 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                         <div className="grid gap-4 md:grid-cols-2">
                             {teamPendingCorrections.map(req => {
                                 const requester = users.find(u => u.id === req.userId);
+                                const reqCompany = companies.find(c => c.id === requester?.companyId);
                                 return (
                                     <div key={req.id} className="bg-white p-4 rounded-xl border border-orange-200 shadow-sm flex flex-col gap-3">
                                         <div className="flex items-center gap-2">
-                                            <img src={requester?.avatarUrl} className="w-6 h-6 rounded-full"/>
-                                            <span className="font-bold text-sm text-gray-800">{requester?.name}</span>
+                                            <img src={requester?.avatarUrl} className="w-8 h-8 rounded-full"/>
+                                            <div>
+                                                <span className="font-bold text-sm text-gray-800 block">{requester?.name}</span>
+                                                {reqCompany && <span className="text-[10px] text-gray-500">{reqCompany.name}</span>}
+                                            </div>
                                         </div>
                                         <div className="text-xs text-gray-600">
                                             <p><span className="font-semibold">Data:</span> {req.requestedDate || 'N/A'}</p>

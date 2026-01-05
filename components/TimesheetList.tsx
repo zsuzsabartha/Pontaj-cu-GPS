@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { Timesheet, ShiftStatus, BreakStatus, Office, User, BreakConfig } from '../types';
+import { Timesheet, ShiftStatus, BreakStatus, Office, User, BreakConfig, Company } from '../types';
 import { MapPin, CheckSquare, Edit2, AlertCircle, CloudOff, Info, User as UserIcon, Bot, Clock, UserCog } from 'lucide-react';
 import SmartTable, { Column } from './SmartTable';
 
@@ -7,13 +8,14 @@ interface TimesheetListProps {
   timesheets: Timesheet[];
   offices?: Office[]; 
   users?: User[]; // Needed for resolving names
+  companies?: Company[]; // Needed for resolving company names
   breakConfigs?: BreakConfig[]; // Needed to calculate net time (unpaid breaks)
   isManagerView?: boolean;
   onApproveBreak?: (timesheetId: string, breakId: string, status: BreakStatus) => void;
   onEditTimesheet?: (timesheet: Timesheet) => void;
 }
 
-const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [], users = [], breakConfigs = [], isManagerView, onApproveBreak, onEditTimesheet }) => {
+const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [], users = [], companies = [], breakConfigs = [], isManagerView, onApproveBreak, onEditTimesheet }) => {
 
   const calculateBalance = (ts: Timesheet, user?: User) => {
       if (!ts.endTime || !user) return null;
@@ -71,10 +73,14 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
         filterable: true,
         render: (ts: Timesheet) => {
             const user = users.find(u => u.id === ts.userId);
+            const company = companies.find(c => c.id === user?.companyId);
             return (
                 <div className="flex items-center gap-2">
-                    {user?.avatarUrl && <img src={user.avatarUrl} className="w-6 h-6 rounded-full border border-gray-200"/>}
-                    <span className="font-bold text-gray-800">{user?.name || 'Unknown User'}</span>
+                    {user?.avatarUrl && <img src={user.avatarUrl} className="w-8 h-8 rounded-full border border-gray-200"/>}
+                    <div>
+                        <div className="font-bold text-gray-800 leading-tight">{user?.name || 'Unknown User'}</div>
+                        {company && <div className="text-[10px] text-gray-500">{company.name}</div>}
+                    </div>
                 </div>
             )
         }
