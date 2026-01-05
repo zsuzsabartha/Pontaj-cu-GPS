@@ -37,7 +37,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                  authType: 'MICROSOFT',
                  isValidated: false,
                  requiresGPS: true,
-                 allowedScheduleIds: ['sch1'], // Default schedule
+                 alternativeScheduleIds: ['sch1'], // Default schedule
                  shareBirthday: false
              };
              onLogin(newUser, true);

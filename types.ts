@@ -147,6 +147,7 @@ export interface Timesheet {
   syncStatus?: 'SYNCED' | 'PENDING_SYNC'; // For offline capability
   detectedScheduleId?: string; // ID of the automatically detected WorkSchedule
   detectedScheduleName?: string; // Snapshot name
+  isSystemAutoCheckout?: boolean; // NEW: Flag for auto-checkout
 }
 
 export interface CorrectionRequest {
@@ -188,7 +189,11 @@ export interface User {
   pin?: string; // Only for PIN auth users
   isValidated: boolean; // Access control
   requiresGPS: boolean; // If true, clock-in is blocked without valid location
-  allowedScheduleIds: string[]; // List of possible schedules for this user
+  
+  // SCHEDULE MANAGEMENT
+  mainScheduleId?: string; // The primary default schedule
+  alternativeScheduleIds: string[]; // Other allowed schedules
+  
   birthDate?: string; // YYYY-MM-DD
   shareBirthday: boolean; // If true, show notification to colleagues
   contractHours?: number; // e.g. 8 for full-time

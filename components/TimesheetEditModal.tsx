@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { Timesheet, CorrectionRequest } from '../types';
+import { Timesheet, LeaveConfig } from '../types';
 import { MOCK_SCHEDULES, isDateInLockedPeriod } from '../constants';
-import { X, Clock, FileText, AlertCircle, CalendarClock, PlusCircle, Lock } from 'lucide-react';
+import { X, Clock, AlertCircle, CalendarClock, PlusCircle, Lock, Briefcase, Palmtree } from 'lucide-react';
 
 interface TimesheetEditModalProps {
   isOpen: boolean;
@@ -10,7 +10,17 @@ interface TimesheetEditModalProps {
   timesheet: Timesheet | null; // If null, it's creation mode
   isManager: boolean;
   lockedDate: string; // Dynamic locked date
-  onSave: (data: { tsId?: string, date: string, start: string, end: string, reason: string, scheduleId?: string }) => void;
+  leaveConfigs?: LeaveConfig[]; // Needed for manager leave injection
+  onSave: (data: { 
+      tsId?: string, 
+      date: string, 
+      type: 'WORK' | 'LEAVE',
+      start?: string, 
+      end?: string, 
+      leaveTypeId?: string,
+      reason: string, 
+      scheduleId?: string 
+  }) => void;
 }
 
 // Generate 30-minute intervals (00:00, 00:30, ... 23:30)
@@ -39,12 +49,19 @@ const snapToNearestSlot = (isoString?: string): string => {
     return `${h.toString().padStart(2, '0')}:${roundedM}`;
 };
 
-const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose, timesheet, isManager, lockedDate, onSave }) => {
+const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose, timesheet, isManager, lockedDate, leaveConfigs = [], onSave }) => {
+  const [activeTab, setActiveTab] = useState<'WORK' | 'LEAVE'>('WORK');
   const [date, setDate] = useState('');
+  
+  // Work State
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
-  const [reason, setReason] = useState('');
   const [scheduleId, setScheduleId] = useState('');
+  
+  // Leave State
+  const [leaveTypeId, setLeaveTypeId] = useState('');
+
+  const [reason, setReason] = useState('');
   const [isLocked, setIsLocked] = useState(false);
 
   useEffect(() => {
@@ -66,9 +83,11 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
           setScheduleId('');
         }
         setReason('');
+        setActiveTab('WORK');
+        setLeaveTypeId(leaveConfigs[0]?.id || '');
         setIsLocked(isDateInLockedPeriod(targetDate, lockedDate));
     }
-  }, [isOpen, timesheet, lockedDate]);
+  }, [isOpen, timesheet, lockedDate, leaveConfigs]);
 
   // Handler for date change in creation mode
   const handleDateChange = (newDate: string) => {
@@ -87,18 +106,30 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
         return;
     }
     
-    // Construct ISO strings
-    const startISO = `${date}T${startTime}:00`;
-    const endISO = endTime ? `${date}T${endTime}:00` : '';
+    // Construct Payload
+    if (activeTab === 'WORK') {
+        const startISO = `${date}T${startTime}:00`;
+        const endISO = endTime ? `${date}T${endTime}:00` : undefined;
+        onSave({
+            tsId: timesheet?.id,
+            date: date,
+            type: 'WORK',
+            start: startISO,
+            end: endISO,
+            reason,
+            scheduleId
+        });
+    } else {
+        // Leave Payload
+        onSave({
+            tsId: timesheet?.id, // If modifying a timesheet, we pass this so parent can delete it
+            date: date,
+            type: 'LEAVE',
+            leaveTypeId,
+            reason
+        });
+    }
     
-    onSave({
-        tsId: timesheet?.id,
-        date: date,
-        start: startISO,
-        end: endISO,
-        reason,
-        scheduleId
-    });
     onClose();
   };
 
@@ -111,7 +142,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
           <h3 className="font-bold text-lg flex items-center gap-2">
             {isLocked ? <Lock size={20}/> : (isCreation ? <PlusCircle size={20}/> : <Clock size={20}/>)}
             {isCreation 
-                ? (isManager ? 'Adăugare Pontaj Manual' : 'Solicitare Pontaj Lipsă') 
+                ? (isManager ? 'Gestionare Pontaj / Concediu' : 'Solicitare Pontaj Lipsă') 
                 : (isManager ? 'Modificare Pontaj' : 'Solicitare Corecție')
             }
           </h3>
@@ -127,6 +158,26 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
                       <p className="text-sm font-bold text-red-800">Lună Închisă</p>
                       <p className="text-xs text-red-700">Această dată aparține unei luni fiscale închise. Nu se mai pot efectua modificări.</p>
                   </div>
+              </div>
+          )}
+
+          {/* Activity Type Switcher (Manager Only) */}
+          {isManager && !isLocked && (
+              <div className="flex bg-gray-100 p-1 rounded-lg mb-4">
+                  <button 
+                    type="button"
+                    onClick={() => setActiveTab('WORK')}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-bold transition ${activeTab === 'WORK' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                      <Briefcase size={16}/> Pontaj (Lucru)
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setActiveTab('LEAVE')}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-bold transition ${activeTab === 'LEAVE' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                      <Palmtree size={16}/> Concediu
+                  </button>
               </div>
           )}
 
@@ -147,64 +198,88 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
               )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Ora Start</label>
-              <select 
-                required
-                disabled={isLocked}
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-mono disabled:bg-gray-100 disabled:text-gray-400"
-              >
-                  {TIME_OPTIONS.map(t => (
-                      <option key={`start-${t}`} value={t}>{t}</option>
-                  ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Ora Sfârșit</label>
-              <select 
-                disabled={isLocked}
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-mono disabled:bg-gray-100 disabled:text-gray-400"
-              >
-                  <option value="">-- În lucru --</option>
-                  {TIME_OPTIONS.map(t => (
-                      <option key={`end-${t}`} value={t}>{t}</option>
-                  ))}
-              </select>
-            </div>
-          </div>
-          
-          <div className="text-[11px] text-gray-400 italic text-center">
-              * Programul poate fi setat doar la oră fixă sau jumătate de oră.
-          </div>
-          
-          {/* Admin Schedule Override */}
-          {isManager && (
-            <div className={`p-3 rounded-lg border border-blue-100 ${isLocked ? 'bg-gray-50 opacity-50' : 'bg-blue-50'}`}>
-                <label className={`block text-sm font-medium mb-1 flex items-center gap-1 ${isLocked ? 'text-gray-500' : 'text-blue-800'}`}>
-                    <CalendarClock size={14}/> Tip Program (Override)
-                </label>
-                <select 
-                    disabled={isLocked}
-                    value={scheduleId}
-                    onChange={(e) => setScheduleId(e.target.value)}
-                    className="w-full p-2 border rounded text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100"
-                >
-                    <option value="">-- Auto Detectat --</option>
-                    {MOCK_SCHEDULES.map(sch => (
-                        <option key={sch.id} value={sch.id}>{sch.name}</option>
-                    ))}
-                </select>
-            </div>
+          {/* --- WORK FORM --- */}
+          {activeTab === 'WORK' && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Ora Start</label>
+                    <select 
+                        required
+                        disabled={isLocked}
+                        value={startTime}
+                        onChange={(e) => setStartTime(e.target.value)}
+                        className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-mono disabled:bg-gray-100 disabled:text-gray-400"
+                    >
+                        {TIME_OPTIONS.map(t => (
+                            <option key={`start-${t}`} value={t}>{t}</option>
+                        ))}
+                    </select>
+                    </div>
+                    <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Ora Sfârșit</label>
+                    <select 
+                        disabled={isLocked}
+                        value={endTime}
+                        onChange={(e) => setEndTime(e.target.value)}
+                        className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-mono disabled:bg-gray-100 disabled:text-gray-400"
+                    >
+                        <option value="">-- În lucru --</option>
+                        {TIME_OPTIONS.map(t => (
+                            <option key={`end-${t}`} value={t}>{t}</option>
+                        ))}
+                    </select>
+                    </div>
+                </div>
+                
+                <div className="text-[11px] text-gray-400 italic text-center">
+                    * Programul poate fi setat doar la oră fixă sau jumătate de oră.
+                </div>
+                
+                {/* Schedule Override */}
+                {isManager && (
+                    <div className={`p-3 rounded-lg border border-blue-100 ${isLocked ? 'bg-gray-50 opacity-50' : 'bg-blue-50'}`}>
+                        <label className={`block text-sm font-medium mb-1 flex items-center gap-1 ${isLocked ? 'text-gray-500' : 'text-blue-800'}`}>
+                            <CalendarClock size={14}/> Tip Program (Override)
+                        </label>
+                        <select 
+                            disabled={isLocked}
+                            value={scheduleId}
+                            onChange={(e) => setScheduleId(e.target.value)}
+                            className="w-full p-2 border rounded text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100"
+                        >
+                            <option value="">-- Auto Detectat --</option>
+                            {MOCK_SCHEDULES.map(sch => (
+                                <option key={sch.id} value={sch.id}>{sch.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+              </>
+          )}
+
+          {/* --- LEAVE FORM --- */}
+          {activeTab === 'LEAVE' && (
+              <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
+                  <label className="block text-sm font-medium text-purple-900 mb-2">Tip Concediu</label>
+                  <select
+                    value={leaveTypeId}
+                    onChange={e => setLeaveTypeId(e.target.value)}
+                    className="w-full p-2 border border-purple-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                  >
+                      {leaveConfigs.map(c => (
+                          <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
+                      ))}
+                  </select>
+                  <p className="text-xs text-purple-700 mt-2 italic">
+                      Acest concediu va fi aprobat automat și va înlocui orice pontaj existent pentru data de <strong>{date}</strong>.
+                  </p>
+              </div>
           )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-                {isManager ? 'Motiv (pentru istoric)' : 'Motiv Solicitare (Obligatoriu)'}
+                {isManager ? 'Motiv (Audit Log)' : 'Motiv Solicitare (Obligatoriu)'}
             </label>
             <textarea 
               disabled={isLocked}
@@ -213,7 +288,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-none disabled:bg-gray-100"
-              placeholder={isManager ? "Ex: Adăugare manuală..." : "Ex: Am uitat să scanez la plecare..."}
+              placeholder={isManager ? "Ex: Adăugare manuală / Rectificare..." : "Ex: Am uitat să scanez la plecare..."}
             ></textarea>
           </div>
           
@@ -230,7 +305,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
               disabled={isLocked}
               className={`w-full text-white font-semibold py-3 rounded-xl transition-all shadow-lg disabled:opacity-50 disabled:grayscale ${isManager ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-orange-500 hover:bg-orange-600 shadow-orange-200'}`}
             >
-              {isLocked ? 'Perioadă Închisă' : (isManager ? 'Salvează' : 'Trimite Solicitarea')}
+              {isLocked ? 'Perioadă Închisă' : (isManager ? 'Salvează Modificări' : 'Trimite Solicitarea')}
             </button>
           </div>
         </form>

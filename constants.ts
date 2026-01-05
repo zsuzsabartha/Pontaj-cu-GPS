@@ -10,39 +10,28 @@ export const APP_CONFIG: AppConfig = {
 };
 
 // --- HELPER FUNC: DATE LOCKING (CLOSED MONTH) ---
-// This provides the DEFAULT lock date if no manual override is set
 export const getDefaultLockedDate = (): string => {
     const today = new Date();
     const currentDay = today.getDate();
     const cutoffDay = APP_CONFIG.monthCutoffDay;
-
-    // Logic:
-    // If today > cutoff (e.g. 10th), previous month is fully closed. Lock Date = Last Day of Prev Month.
-    // If today <= cutoff (e.g. 3rd), previous month is still open for corrections. Month BEFORE prev is closed. Lock Date = Last Day of (Month - 2).
     
-    // Start with last day of previous month
-    // new Date(y, m, 0) returns the last day of month m-1
     let lockDateObj = new Date(today.getFullYear(), today.getMonth(), 0); 
     
     if (currentDay <= cutoffDay) {
-        // Grace period: Go back one more month
         lockDateObj = new Date(today.getFullYear(), today.getMonth() - 1, 0);
     }
     
-    // Format to YYYY-MM-DD using local time logic (simple slice)
     const offset = lockDateObj.getTimezoneOffset() * 60000;
     const localISOTime = (new Date(lockDateObj.getTime() - offset)).toISOString().slice(0, 10);
     return localISOTime;
 };
 
-// Refactored to accept the dynamic locked date from App state
 export const isDateInLockedPeriod = (dateStr: string, lockedDate: string): boolean => {
     if (!dateStr || !lockedDate) return false;
     return dateStr <= lockedDate;
 };
 
 // --- API CONNECTION CONFIG ---
-// In a real scenario, this would come from import.meta.env.VITE_API_URL
 export const API_CONFIG = {
     BASE_URL: 'http://localhost:3001/api/v1',
     TIMEOUT: 10000
@@ -65,11 +54,16 @@ export const INITIAL_LEAVE_CONFIGS: LeaveConfig[] = [
   { id: 'lc6', name: 'Fără Plată', code: 'CFP', requiresApproval: true }
 ];
 
-export const MOCK_SCHEDULES: WorkSchedule[] = [
+// Renamed from MOCK_SCHEDULES to INITIAL... as this will now be editable state
+export const INITIAL_WORK_SCHEDULES: WorkSchedule[] = [
   { id: 'sch1', name: 'Standard (09:00 - 17:00)', startTime: '09:00', endTime: '17:00', crossesMidnight: false },
   { id: 'sch2', name: 'Schimbul 2 (14:00 - 22:00)', startTime: '14:00', endTime: '22:00', crossesMidnight: false },
   { id: 'sch3', name: 'Schimb Noapte (22:00 - 06:00)', startTime: '22:00', endTime: '06:00', crossesMidnight: true }
 ];
+
+// KEEPING MOCK_SCHEDULES for backward compatibility during refactor if needed by other files, 
+// but pointing to the new constant
+export const MOCK_SCHEDULES = INITIAL_WORK_SCHEDULES;
 
 // --- INITIAL SCHEDULE PLANS (Calendar) ---
 export const INITIAL_SCHEDULE_PLANS: DailySchedule[] = [
@@ -124,11 +118,12 @@ export const MOCK_USERS: User[] = [
     departmentId: 'd1',
     email: 'alex.popescu@techgroup.ro',
     avatarUrl: 'https://picsum.photos/100/100',
-    authType: 'PIN', // Changed for easier testing
+    authType: 'PIN', 
     pin: '1111',
     isValidated: true,
     requiresGPS: true,
-    allowedScheduleIds: ['sch1'],
+    mainScheduleId: 'sch1',
+    alternativeScheduleIds: [],
     birthDate: '1985-05-20',
     shareBirthday: true,
     contractHours: 8,
@@ -149,7 +144,8 @@ export const MOCK_USERS: User[] = [
     pin: '1234',
     isValidated: true,
     requiresGPS: true,
-    allowedScheduleIds: ['sch1', 'sch2'],
+    mainScheduleId: 'sch1',
+    alternativeScheduleIds: ['sch2'],
     birthDate: '1990-10-15',
     shareBirthday: true,
     contractHours: 8,
@@ -170,13 +166,14 @@ export const MOCK_USERS: User[] = [
     pin: '0000',
     isValidated: true,
     requiresGPS: false,
-    allowedScheduleIds: ['sch1', 'sch3'], // Can work Night Shift
+    mainScheduleId: 'sch1',
+    alternativeScheduleIds: ['sch3'], // Can work Night Shift
     birthDate: new Date().toISOString().split('T')[0], // Simulate birthday today for demo
     shareBirthday: true,
     contractHours: 8,
     assignedOfficeId: 'off2',
     lastLoginDate: undefined, // Never logged in
-    employmentStatus: 'ACTIVE' // Will likely be suspended by the automated job
+    employmentStatus: 'ACTIVE' 
   },
   {
     id: 'u4',
@@ -187,14 +184,15 @@ export const MOCK_USERS: User[] = [
     departmentId: 'd2',
     email: 'ioana.hr@techgroup.ro',
     avatarUrl: 'https://picsum.photos/103/103',
-    authType: 'PIN', // Changed for easier testing
+    authType: 'PIN', 
     pin: '4444',
     isValidated: true,
     requiresGPS: true,
-    allowedScheduleIds: ['sch1'],
+    mainScheduleId: 'sch1',
+    alternativeScheduleIds: [],
     birthDate: '1988-03-12',
-    shareBirthday: false, // Hides birthday
-    contractHours: 4, // Part time
+    shareBirthday: false, 
+    contractHours: 4, 
     assignedOfficeId: 'off1',
     lastLoginDate: new Date().toISOString(),
     employmentStatus: 'ACTIVE'
@@ -207,11 +205,12 @@ export const MOCK_USERS: User[] = [
     companyId: 'c1',
     email: 'admin@techgroup.ro',
     avatarUrl: 'https://picsum.photos/104/104',
-    authType: 'PIN', // Changed for easier testing
+    authType: 'PIN', 
     pin: '9999',
     isValidated: true,
     requiresGPS: false,
-    allowedScheduleIds: ['sch1', 'sch2', 'sch3'],
+    mainScheduleId: 'sch1',
+    alternativeScheduleIds: ['sch2', 'sch3'],
     birthDate: '1980-01-01',
     shareBirthday: true,
     contractHours: 8,

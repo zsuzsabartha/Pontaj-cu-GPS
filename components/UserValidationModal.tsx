@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, Company, Department, Office, Role } from '../types';
-import { X, CheckCircle, Save, Building, Clock, Fingerprint, Briefcase } from 'lucide-react';
+import { User, Company, Department, Office, Role, WorkSchedule } from '../types';
+import { X, CheckCircle, Save, Building, Clock, Fingerprint, Briefcase, CalendarClock } from 'lucide-react';
 
 interface UserValidationModalProps {
   isOpen: boolean;
@@ -10,10 +10,11 @@ interface UserValidationModalProps {
   companies: Company[];
   departments: Department[];
   offices: Office[];
+  workSchedules: WorkSchedule[]; // New Prop
   onValidate: (updatedUser: User) => void;
 }
 
-const UserValidationModal: React.FC<UserValidationModalProps> = ({ isOpen, onClose, user, companies, departments, offices, onValidate }) => {
+const UserValidationModal: React.FC<UserValidationModalProps> = ({ isOpen, onClose, user, companies, departments, offices, workSchedules, onValidate }) => {
   const [formData, setFormData] = useState<Partial<User>>({});
   
   // Available selections based on current company selection
@@ -36,6 +37,13 @@ const UserValidationModal: React.FC<UserValidationModalProps> = ({ isOpen, onClo
         onClose();
     }
   };
+
+  const toggleAltSchedule = (scheduleId: string) => {
+      const currentAlts = formData.alternativeScheduleIds || [];
+      const exists = currentAlts.includes(scheduleId);
+      const newAlts = exists ? currentAlts.filter(id => id !== scheduleId) : [...currentAlts, scheduleId];
+      setFormData({ ...formData, alternativeScheduleIds: newAlts });
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -125,6 +133,46 @@ const UserValidationModal: React.FC<UserValidationModalProps> = ({ isOpen, onClo
                      <option value="">-- Fără Sediu (Remote/Mobil) --</option>
                      {availableOffices.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
                   </select>
+               </div>
+           </div>
+
+           {/* Schedule Config */}
+           <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+               <h4 className="text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-1">
+                   <CalendarClock size={14}/> Configurare Orar
+               </h4>
+               <div className="mb-3">
+                   <label className="block text-xs font-medium text-gray-700 mb-1">Program Principal</label>
+                   <select 
+                        value={formData.mainScheduleId || ''}
+                        onChange={(e) => setFormData({...formData, mainScheduleId: e.target.value})}
+                        className="w-full p-2 border rounded text-sm bg-white"
+                   >
+                       <option value="">Selectează...</option>
+                       {workSchedules.map(sch => (
+                           <option key={sch.id} value={sch.id}>{sch.name}</option>
+                       ))}
+                   </select>
+               </div>
+               <div>
+                   <label className="block text-xs font-medium text-gray-700 mb-1">Programe Alternative</label>
+                   <div className="flex flex-wrap gap-2">
+                       {workSchedules.map(sch => {
+                           const isMain = formData.mainScheduleId === sch.id;
+                           const isChecked = isMain || (formData.alternativeScheduleIds || []).includes(sch.id);
+                           return (
+                               <button
+                                  type="button" 
+                                  key={sch.id}
+                                  disabled={isMain}
+                                  onClick={() => toggleAltSchedule(sch.id)}
+                                  className={`px-2 py-1 rounded text-xs border ${isChecked ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-white text-gray-600'}`}
+                               >
+                                   {sch.name} {isMain && '(Main)'}
+                               </button>
+                           )
+                       })}
+                   </div>
                </div>
            </div>
            

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { DailySchedule, WorkSchedule, User, Role, Holiday } from '../types';
-import { MOCK_SCHEDULES, isDateInLockedPeriod } from '../constants';
+import { isDateInLockedPeriod } from '../constants';
 import { ChevronLeft, ChevronRight, CalendarClock, Moon, Sun, Clock, PartyPopper, X, Check, Trash2, Edit, ShieldCheck, Lock } from 'lucide-react';
 
 interface ScheduleCalendarProps {
@@ -10,10 +10,11 @@ interface ScheduleCalendarProps {
   schedules: DailySchedule[];
   holidays: Holiday[];
   lockedDate: string; // Passed from App state
+  workSchedules: WorkSchedule[]; // New Prop
   onAssignSchedule: (userId: string, date: string, scheduleId: string) => void;
 }
 
-const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users, schedules, holidays, lockedDate, onAssignSchedule }) => {
+const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users, schedules, holidays, lockedDate, workSchedules, onAssignSchedule }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedUser, setSelectedUser] = useState<string>(currentUser.id);
   const [selectionModal, setSelectionModal] = useState<{ isOpen: boolean, dateStr: string, day: number } | null>(null);
@@ -59,7 +60,7 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const plan = schedules.find(s => s.userId === selectedUser && s.date === dateStr);
       if (plan && plan.scheduleId) {
-          return MOCK_SCHEDULES.find(s => s.id === plan.scheduleId);
+          return workSchedules.find(s => s.id === plan.scheduleId);
       }
       return null;
   };
@@ -210,8 +211,13 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
                                 );
                             }
 
-                            const isEssentialStaff = targetUserObj.allowedScheduleIds.some(id => 
-                                MOCK_SCHEDULES.find(s => s.id === id)?.crossesMidnight
+                            const allAllowedSchedules = [
+                                targetUserObj.mainScheduleId, 
+                                ...(targetUserObj.alternativeScheduleIds || [])
+                            ];
+
+                            const isEssentialStaff = allAllowedSchedules.some(id => 
+                                workSchedules.find(s => s.id === id)?.crossesMidnight
                             );
 
                             if (holiday) {
@@ -237,11 +243,19 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
                             <>
                                 <p className="text-xs font-bold text-gray-500 uppercase mb-2">Selectați Orarul:</p>
                                 
-                                {MOCK_SCHEDULES.map(schedule => {
+                                {workSchedules.map(schedule => {
                                     const holiday = getHolidayForDay(selectionModal.day);
-                                    const isAllowedUser = targetUserObj.allowedScheduleIds.includes(schedule.id);
-                                    const isEssentialStaff = targetUserObj.allowedScheduleIds.some(id => 
-                                        MOCK_SCHEDULES.find(s => s.id === id)?.crossesMidnight
+                                    
+                                    const allAllowedSchedules = [
+                                        targetUserObj.mainScheduleId, 
+                                        ...(targetUserObj.alternativeScheduleIds || [])
+                                    ];
+                                    
+                                    const isAllowedUser = allAllowedSchedules.includes(schedule.id);
+                                    
+                                    // Check if user has ANY night shift capability
+                                    const isEssentialStaff = allAllowedSchedules.some(id => 
+                                        workSchedules.find(s => s.id === id)?.crossesMidnight
                                     );
 
                                     let isAllowedDay = true;

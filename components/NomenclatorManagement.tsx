@@ -1,29 +1,33 @@
+
 import React, { useState } from 'react';
-import { BreakConfig, LeaveConfig, Holiday } from '../types';
-import { Plus, Trash2, Save, Coffee, FileText, Check, X, CalendarDays, PartyPopper, RefreshCw, Settings, Lock } from 'lucide-react';
+import { BreakConfig, LeaveConfig, Holiday, WorkSchedule } from '../types';
+import { Plus, Trash2, Save, Coffee, FileText, Check, X, CalendarDays, PartyPopper, RefreshCw, Settings, Lock, CalendarClock, Sun, Moon } from 'lucide-react';
 import { API_CONFIG } from '../constants';
 
 interface NomenclatorManagementProps {
   breakConfigs: BreakConfig[];
   leaveConfigs: LeaveConfig[];
+  workSchedules: WorkSchedule[]; // NEW
   holidays: Holiday[];
   currentLockedDate: string;
   onUpdateBreaks: (configs: BreakConfig[]) => void;
   onUpdateLeaves: (configs: LeaveConfig[]) => void;
+  onUpdateSchedules: (configs: WorkSchedule[]) => void; // NEW
   onUpdateHolidays: (configs: Holiday[]) => void;
   onUpdateLockedDate: (date: string) => void;
 }
 
 const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ 
-  breakConfigs, leaveConfigs, holidays, currentLockedDate,
-  onUpdateBreaks, onUpdateLeaves, onUpdateHolidays, onUpdateLockedDate 
+  breakConfigs, leaveConfigs, workSchedules, holidays, currentLockedDate,
+  onUpdateBreaks, onUpdateLeaves, onUpdateSchedules, onUpdateHolidays, onUpdateLockedDate 
 }) => {
-  const [activeTab, setActiveTab] = useState<'breaks' | 'leaves' | 'holidays' | 'settings'>('breaks');
+  const [activeTab, setActiveTab] = useState<'breaks' | 'leaves' | 'schedules' | 'holidays' | 'settings'>('breaks');
   const [isSaving, setIsSaving] = useState(false);
   
   // Local state for editing to avoid constant prop updates
   const [localBreaks, setLocalBreaks] = useState(breakConfigs);
   const [localLeaves, setLocalLeaves] = useState(leaveConfigs);
+  const [localSchedules, setLocalSchedules] = useState(workSchedules);
   const [localHolidays, setLocalHolidays] = useState(holidays);
   const [localLockedDate, setLocalLockedDate] = useState(currentLockedDate);
 
@@ -74,12 +78,8 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
   };
 
   const saveBreaks = async () => {
-    // 1. Update App State (Immediate UI Feedback)
     onUpdateBreaks(localBreaks);
-    
-    // 2. Try Sync to SQL
     const synced = await saveToSQL('breaks', localBreaks);
-    
     alert(`Nomenclator Pauze actualizat! ${synced ? '(Sincronizat cu SQL Server)' : '(Doar Local - Bridge Offline)'}`);
   };
 
@@ -107,6 +107,44 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
     const synced = await saveToSQL('leaves', localLeaves);
     alert(`Nomenclator Concedii actualizat! ${synced ? '(Sincronizat cu SQL Server)' : '(Doar Local - Bridge Offline)'}`);
   };
+
+  // --- Schedule Handlers ---
+  const addSchedule = () => {
+      const newSchedule: WorkSchedule = {
+          id: `sch-${Date.now()}`,
+          name: 'Program Nou',
+          startTime: '09:00',
+          endTime: '17:00',
+          crossesMidnight: false
+      };
+      setLocalSchedules([...localSchedules, newSchedule]);
+  }
+
+  const updateSchedule = (id: string, field: keyof WorkSchedule, value: any) => {
+      setLocalSchedules(prev => prev.map(s => {
+          if (s.id !== id) return s;
+          const updated = { ...s, [field]: value };
+          // Auto-calc midnight crossing
+          if (field === 'startTime' || field === 'endTime') {
+              // Simple check: if End < Start, it crosses midnight (e.g. 22:00 to 06:00)
+              // NOTE: This assumes start/end are just times.
+              if (updated.startTime && updated.endTime) {
+                  updated.crossesMidnight = updated.endTime < updated.startTime;
+              }
+          }
+          return updated;
+      }));
+  }
+
+  const deleteSchedule = (id: string) => {
+      setLocalSchedules(prev => prev.filter(s => s.id !== id));
+  }
+
+  const saveSchedules = async () => {
+      onUpdateSchedules(localSchedules);
+      // await saveToSQL('schedules', localSchedules); // Assuming backend support exists or handled locally
+      alert("Programe de Lucru actualizate!");
+  }
 
   // --- Holiday Handlers ---
   const addHoliday = () => {
@@ -152,6 +190,12 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
           className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'leaves' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
         >
           <FileText size={18} /> Tipuri Concedii
+        </button>
+        <button 
+          onClick={() => setActiveTab('schedules')}
+          className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'schedules' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
+        >
+          <CalendarClock size={18} /> Programe de Lucru
         </button>
         <button 
           onClick={() => setActiveTab('holidays')}
@@ -282,6 +326,70 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
               </button>
             </div>
           </div>
+        )}
+
+        {/* SCHEDULES TAB */}
+        {activeTab === 'schedules' && (
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
+                <div className="grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 uppercase mb-2">
+                    <div className="col-span-4">Denumire Program</div>
+                    <div className="col-span-2">Start</div>
+                    <div className="col-span-2">Stop</div>
+                    <div className="col-span-2 text-center">Tip</div>
+                    <div className="col-span-2 text-right">Acțiuni</div>
+                </div>
+
+                {localSchedules.map(sch => (
+                    <div key={sch.id} className="grid grid-cols-12 gap-2 items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
+                        <div className="col-span-4">
+                            <input 
+                                type="text"
+                                value={sch.name}
+                                onChange={(e) => updateSchedule(sch.id, 'name', e.target.value)}
+                                className="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
+                        <div className="col-span-2">
+                            <input 
+                                type="time"
+                                value={sch.startTime}
+                                onChange={(e) => updateSchedule(sch.id, 'startTime', e.target.value)}
+                                className="w-full p-2 border rounded text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
+                        <div className="col-span-2">
+                            <input 
+                                type="time"
+                                value={sch.endTime}
+                                onChange={(e) => updateSchedule(sch.id, 'endTime', e.target.value)}
+                                className="w-full p-2 border rounded text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
+                        <div className="col-span-2 flex justify-center">
+                            <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded ${sch.crossesMidnight ? 'bg-indigo-100 text-indigo-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                {sch.crossesMidnight ? <Moon size={12}/> : <Sun size={12}/>}
+                                {sch.crossesMidnight ? 'NOAPTE' : 'ZI'}
+                            </span>
+                        </div>
+                        <div className="col-span-2 flex justify-end">
+                            <button onClick={() => deleteSchedule(sch.id)} className="text-gray-400 hover:text-red-500 p-2"><Trash2 size={16}/></button>
+                        </div>
+                    </div>
+                ))}
+
+                <div className="flex justify-between pt-4 border-t border-gray-100">
+                    <button onClick={addSchedule} className="flex items-center gap-2 text-blue-600 text-sm font-medium hover:bg-blue-50 px-3 py-2 rounded">
+                        <Plus size={16}/> Adaugă Program
+                    </button>
+                    <button 
+                        onClick={saveSchedules} 
+                        disabled={isSaving}
+                        className="flex items-center gap-2 bg-blue-600 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-blue-700 shadow-md disabled:opacity-70"
+                    >
+                        {isSaving ? <RefreshCw className="animate-spin" size={16}/> : <Save size={16}/>} Salvează Programe
+                    </button>
+                </div>
+            </div>
         )}
 
         {activeTab === 'holidays' && (

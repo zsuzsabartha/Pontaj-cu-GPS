@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, User as UserIcon, Utensils, Cigarette, Home, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff } from 'lucide-react';
+import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, User as UserIcon, Utensils, Cigarette, Home, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff, History } from 'lucide-react';
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
 import { ShiftStatus, Coordinates, Office, User, BreakConfig, Holiday, LeaveRequest, LeaveStatus } from '../types';
 
@@ -56,6 +57,11 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
       statusText = "ZI ÎNCHEIATĂ";
       statusColor = "bg-blue-100 text-blue-700 border-blue-200";
   }
+
+  // Format Start Time for Display
+  const startTimeDisplay = shiftStartTime 
+    ? new Date(shiftStartTime).toLocaleTimeString('ro-RO', {hour: '2-digit', minute:'2-digit'})
+    : null;
 
   // --- Robust Timer Logic ---
   useEffect(() => {
@@ -309,6 +315,14 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
           {elapsed}
         </div>
         
+        {/* Start Time Indicator */}
+        {(currentStatus === ShiftStatus.WORKING || currentStatus === ShiftStatus.ON_BREAK) && startTimeDisplay && (
+            <div className="mb-4 text-xs font-medium text-blue-600 bg-blue-50 px-3 py-1 rounded-full flex items-center gap-1">
+                <History size={12}/>
+                Ora Start: <span className="font-mono font-bold">{startTimeDisplay}</span>
+            </div>
+        )}
+        
         {/* Pause Duration Indicator */}
         {currentStatus === ShiftStatus.ON_BREAK && (
             <div className="mb-6 flex items-center gap-2 text-orange-600 bg-orange-50 px-3 py-1 rounded-full animate-pulse border border-orange-100">
@@ -318,7 +332,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
             </div>
         )}
         {/* Spacer if not on break to keep layout stable */}
-        {currentStatus !== ShiftStatus.ON_BREAK && <div className="mb-8"></div>}
+        {currentStatus !== ShiftStatus.ON_BREAK && <div className="mb-4"></div>}
         
         {/* Buttons Grid */}
         <div className="grid grid-cols-2 gap-4 w-full">
