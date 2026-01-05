@@ -143,16 +143,20 @@ export default function App() {
                   SQLService.getLeaveRequests()
               ]);
 
-              // Update State - Only overwrite if DB returns data
+              // Update State
+              
+              // Structural Data: Keep local mocks if DB is empty to prevent lockout (Demo Mode)
               if (dbUsers && dbUsers.length > 0) setUsers(dbUsers);
               if (dbCompanies && dbCompanies.length > 0) setCompanies(dbCompanies);
               if (dbDepts && dbDepts.length > 0) setDepartments(dbDepts);
               if (dbOffices && dbOffices.length > 0) setOffices(dbOffices);
-              if (dbBreaks && dbBreaks.length > 0) setBreakConfigs(dbBreaks);
-              if (dbLeaves && dbLeaves.length > 0) setLeaveConfigs(dbLeaves);
-              if (dbHolidays && dbHolidays.length > 0) setHolidays(dbHolidays);
-              if (dbTimesheets && dbTimesheets.length > 0) setTimesheets(dbTimesheets);
-              if (dbLeaveReqs && dbLeaveReqs.length > 0) setLeaves(dbLeaveReqs);
+
+              // Configs & Transactions: Trust DB state even if empty (to allow clearing data)
+              if (Array.isArray(dbBreaks)) setBreakConfigs(dbBreaks);
+              if (Array.isArray(dbLeaves)) setLeaveConfigs(dbLeaves);
+              if (Array.isArray(dbHolidays)) setHolidays(dbHolidays);
+              if (Array.isArray(dbTimesheets)) setTimesheets(dbTimesheets);
+              if (Array.isArray(dbLeaveReqs)) setLeaves(dbLeaveReqs);
 
           } catch (e) {
               console.warn("Working Offline: Could not connect to SQL Bridge.", e);
