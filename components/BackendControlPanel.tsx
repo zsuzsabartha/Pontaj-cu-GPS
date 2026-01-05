@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen, Plug, Wifi, FileText, Clipboard, Lock, Package, UploadCloud } from 'lucide-react';
+import { Activity, Database, Server, Code, FileCode, CheckCircle, AlertTriangle, Play, RefreshCw, Layers, Download, Copy, Terminal, Shield, Settings, Save, BookOpen, Plug, Wifi, FileText, Clipboard, Lock, Package, UploadCloud, Trash2, Power } from 'lucide-react';
 import { API_CONFIG, MOCK_COMPANIES, MOCK_DEPARTMENTS, MOCK_OFFICES, MOCK_USERS, INITIAL_BREAK_CONFIGS, INITIAL_LEAVE_CONFIGS, HOLIDAYS_RO } from '../constants';
 
 const BackendControlPanel: React.FC = () => {
@@ -12,6 +12,9 @@ const BackendControlPanel: React.FC = () => {
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
   
+  // --- VERSIONING STATE ---
+  const [buildVersion, setBuildVersion] = useState<number>(1);
+
   // --- CONNECTION CONFIGURATION STATE ---
   const [dbConfig, setDbConfig] = useState({
       server: 'localhost',
@@ -22,6 +25,16 @@ const BackendControlPanel: React.FC = () => {
   });
 
   const [jwtSecret, setJwtSecret] = useState('production_secret_key_change_me');
+
+  // --- INITIALIZE VERSION ---
+  useEffect(() => {
+      const stored = localStorage.getItem('pontaj_build_count');
+      const current = stored ? parseInt(stored) : 1;
+      // Increment only on mount to simulate a new "build" of the artifacts
+      const next = current + 1;
+      localStorage.setItem('pontaj_build_count', next.toString());
+      setBuildVersion(next);
+  }, []);
 
   const generateNewSecret = () => {
       const array = new Uint8Array(32);
@@ -125,6 +138,21 @@ const BackendControlPanel: React.FC = () => {
       }
   };
 
+  // --- LOCAL DATA MANAGEMENT ---
+  const handleClearTable = (key: string, label: string) => {
+      if(confirm(`Sigur doriți să ștergeți datele locale pentru: ${label}? Această acțiune nu poate fi anulată.`)) {
+          localStorage.removeItem(key);
+          window.location.reload();
+      }
+  };
+
+  const handleFactoryReset = () => {
+      if(confirm("FACTORY RESET: Această acțiune va șterge TOATE datele locale (Pontaje, Useri, Config) și va reseta aplicația la starea inițială hardcodată. Continuați?")) {
+          localStorage.clear();
+          window.location.reload();
+      }
+  };
+
   // --- ARTIFACT GENERATORS ---
 
   const generateSQLScript = () => {
@@ -133,6 +161,7 @@ const BackendControlPanel: React.FC = () => {
    ----------------------------------------------------------------
    DEPLOYMENT SCRIPT - MICROSOFT SQL SERVER
    Database: ${dbConfig.database}
+   Version: 1.0.${buildVersion}
    Generated: ${new Date().toISOString()}
    ----------------------------------------------------------------
 */
@@ -198,7 +227,7 @@ CREATE TABLE offices (
 -- MIGRATION: Remove old company_id from offices if it exists
 IF EXISTS (SELECT * FROM sys.columns WHERE Name = N'company_id' AND Object_ID = Object_ID(N'offices'))
 BEGIN
-    -- Drop constraint if exists (Generic approach for unnamed constraints is complex in T-SQL, assuming named or just dropping column)
+    -- Drop constraint if exists
     DECLARE @ConstraintName nvarchar(200)
     SELECT @ConstraintName = Name FROM SYS.DEFAULT_CONSTRAINTS WHERE PARENT_OBJECT_ID = OBJECT_ID('offices') AND PARENT_COLUMN_ID = (SELECT column_id FROM sys.columns WHERE NAME = N'company_id' AND object_id = OBJECT_ID(N'offices'))
     IF @ConstraintName IS NOT NULL
@@ -317,7 +346,7 @@ CREATE TABLE correction_requests (
     manager_note NVARCHAR(MAX)
 );
 
--- Indexes (Check existence before creating)
+-- Indexes
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_timesheets_user_date' AND object_id = OBJECT_ID('timesheets'))
 BEGIN
     CREATE INDEX idx_timesheets_user_date ON timesheets(user_id, date);
@@ -338,12 +367,13 @@ PRINT 'Installation Complete. Database ${dbConfig.database} is ready.';
     readme: `---------------------------------------------------------
  PONTAJ API BRIDGE - DOCUMENTATION
 ---------------------------------------------------------
+Version: 1.0.${buildVersion}
 1. npm install
 2. node server.js
 `,
     package: `{
   "name": "pontaj-api-bridge-mssql",
-  "version": "1.0.0",
+  "version": "1.0.${buildVersion}",
   "type": "module",
   "main": "server.js",
   "scripts": {
@@ -412,6 +442,7 @@ export const connectDB = async () => {
   =============================================================
   PONTAJ API BRIDGE - SERVER ENTRY POINT
   File: server.js
+  Version: 1.0.${buildVersion}
   Usage: node server.js
   =============================================================
 */
@@ -425,25 +456,27 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const BRIDGE_VERSION = '1.0.${buildVersion}';
+
 // --- HEALTH CHECK ---
 app.get('/health', async (req, res) => {
   try {
     const pool = await connectDB();
     const result = await pool.request().query('SELECT GETDATE() as now');
-    res.json({ status: 'ONLINE', db_time: result.recordset[0].now, server: 'MSSQL' });
+    res.json({ status: 'ONLINE', db_time: result.recordset[0].now, server: 'MSSQL', version: BRIDGE_VERSION });
   } catch (err) {
-    res.status(500).json({ status: 'ERROR', error: err.message });
+    res.status(500).json({ status: 'ERROR', error: err.message, version: BRIDGE_VERSION });
   }
 });
 
 // --- CLOCK IN/OUT ENDPOINTS ---
 
-// GET All Timesheets (for loading history)
+// GET All Timesheets
 app.get('/api/v1/timesheets', async (req, res) => {
   try {
     const pool = await connectDB();
     
-    // Fetch Timesheets (Aliased to avoid ambiguity)
+    // Fetch Timesheets
     const tsResult = await pool.request().query(\`
       SELECT 
         t.id, t.user_id as userId, t.start_time as startTime, t.end_time as endTime, 
@@ -455,7 +488,7 @@ app.get('/api/v1/timesheets', async (req, res) => {
     
     const timesheets = tsResult.recordset;
 
-    // Fetch Breaks (Strictly aliased)
+    // Fetch Breaks
     const brResult = await pool.request().query(\`
       SELECT 
         b.id, b.timesheet_id as timesheetId, b.type_id as typeId, bc.name as typeName,
@@ -468,24 +501,17 @@ app.get('/api/v1/timesheets', async (req, res) => {
     // Merge breaks into timesheets
     const finalData = timesheets.map(ts => ({
         ...ts,
-        // Convert SQL Dates to ISO strings for JS
         startTime: ts.startTime ? new Date(ts.startTime).toISOString() : null,
         endTime: ts.endTime ? new Date(ts.endTime).toISOString() : null,
         date: ts.date ? new Date(ts.date).toISOString().split('T')[0] : null,
-        
-        // Reconstruct Location Objects
         startLocation: (ts.start_lat != null && ts.start_long != null) ? { latitude: ts.start_lat, longitude: ts.start_long } : undefined,
         endLocation: (ts.end_lat != null && ts.end_long != null) ? { latitude: ts.end_lat, longitude: ts.end_long } : undefined,
-        
-        // Attach Breaks
         breaks: breaks.filter(b => b.timesheetId === ts.id).map(b => ({
             ...b,
             startTime: b.startTime ? new Date(b.startTime).toISOString() : null,
             endTime: b.endTime ? new Date(b.endTime).toISOString() : null
         })),
-        
-        // Defaults
-        logs: [], // Logs not stored in DB yet
+        logs: [],
         syncStatus: 'SYNCED'
     }));
 
@@ -505,7 +531,6 @@ app.post('/api/v1/clock-in', async (req, res) => {
       OUTPUT INSERTED.id, INSERTED.user_id, INSERTED.start_time, INSERTED.status 
       VALUES (@id, @userId, GETDATE(), CAST(GETDATE() AS DATE), @lat, @long, @officeId, 'WORKING')
     \`;
-    // Use client ID if provided, otherwise generate one (fallback)
     const tsId = id || \`ts-\${Date.now()}\`;
     
     const result = await pool.request()
@@ -584,12 +609,9 @@ app.post('/api/v1/breaks/end', async (req, res) => {
 
 // --- LEAVE & CORRECTIONS ---
 
-// GET All Leaves (Load on Init)
 app.get('/api/v1/leaves', async (req, res) => {
   try {
     const pool = await connectDB();
-    
-    // FETCH leaves with joined config name using strict aliasing
     const richResult = await pool.request().query(\`
         SELECT 
             leave_requests.id, 
@@ -604,7 +626,6 @@ app.get('/api/v1/leaves', async (req, res) => {
         FROM leave_requests
         LEFT JOIN leave_configs ON leave_requests.type_id = leave_configs.id
     \`);
-
     res.json(richResult.recordset);
   } catch (err) {
     console.error(err);
@@ -620,7 +641,6 @@ app.post('/api/v1/leaves', async (req, res) => {
       INSERT INTO leave_requests (id, user_id, type_id, start_date, end_date, reason, status)
       VALUES (@id, @userId, @typeId, @startDate, @endDate, @reason, @status)
     \`;
-    
     await pool.request()
         .input('id', sql.NVarChar, id)
         .input('userId', sql.NVarChar, userId)
@@ -630,7 +650,6 @@ app.post('/api/v1/leaves', async (req, res) => {
         .input('reason', sql.NVarChar, reason)
         .input('status', sql.NVarChar, status)
         .query(query);
-        
     res.status(201).json({ success: true });
   } catch (err) {
     console.error(err);
@@ -638,7 +657,6 @@ app.post('/api/v1/leaves', async (req, res) => {
   }
 });
 
-// Update Leave Status (Approve/Reject)
 app.put('/api/v1/leaves/:id/status', async (req, res) => {
     const { id } = req.params;
     const { status, managerComment } = req.body;
@@ -664,7 +682,6 @@ app.post('/api/v1/corrections', async (req, res) => {
       INSERT INTO correction_requests (id, user_id, timesheet_id, requested_date, requested_start, requested_end, reason)
       VALUES (@id, @userId, @tsId, @rDate, @rStart, @rEnd, @reason)
     \`;
-    
     await pool.request()
         .input('id', sql.NVarChar, id)
         .input('userId', sql.NVarChar, userId)
@@ -674,7 +691,6 @@ app.post('/api/v1/corrections', async (req, res) => {
         .input('rEnd', sql.DateTime2, requestedEnd || null)
         .input('reason', sql.NVarChar, reason)
         .query(query);
-        
     res.status(201).json({ success: true });
   } catch (err) {
     console.error(err);
@@ -682,19 +698,17 @@ app.post('/api/v1/corrections', async (req, res) => {
   }
 });
 
-// --- NOMENCLATOR ENDPOINTS ---
+// --- CONFIG ENDPOINTS ---
 
-// 1. Break Configs (Delete All & Replace)
 app.post('/api/v1/config/breaks', async (req, res) => {
     const breaks = req.body;
     if (!Array.isArray(breaks)) return res.status(400).json({error: 'Expected array'});
-
     const pool = await connectDB();
     const transaction = new sql.Transaction(pool);
     try {
         await transaction.begin();
         const request = new sql.Request(transaction);
-        await request.query('DELETE FROM break_configs'); // Safe for configs
+        await request.query('DELETE FROM break_configs'); 
         for (const b of breaks) {
             const req = new sql.Request(transaction);
             await req.input('id', sql.NVarChar, b.id)
@@ -711,11 +725,9 @@ app.post('/api/v1/config/breaks', async (req, res) => {
     }
 });
 
-// 2. Leave Configs (Delete All & Replace)
 app.post('/api/v1/config/leaves', async (req, res) => {
     const leaves = req.body;
     if (!Array.isArray(leaves)) return res.status(400).json({error: 'Expected array'});
-
     const pool = await connectDB();
     const transaction = new sql.Transaction(pool);
     try {
@@ -738,11 +750,9 @@ app.post('/api/v1/config/leaves', async (req, res) => {
     }
 });
 
-// 3. Holidays
 app.post('/api/v1/config/holidays', async (req, res) => {
     const holidays = req.body;
     if (!Array.isArray(holidays)) return res.status(400).json({error: 'Expected array'});
-
     const pool = await connectDB();
     const transaction = new sql.Transaction(pool);
     try {
@@ -764,130 +774,75 @@ app.post('/api/v1/config/holidays', async (req, res) => {
     }
 });
 
-// --- STRUCTURAL ENDPOINTS (UPSERT LOGIC) ---
+// --- STRUCTURAL (UPSERT) ---
 
-// 4. Companies (Upsert to avoid FK errors)
 app.post('/api/v1/config/companies', async (req, res) => {
     const list = req.body;
     if (!Array.isArray(list)) return res.status(400).json({error: 'Expected array'});
-    
     const pool = await connectDB();
     try {
         for (const item of list) {
              const request = pool.request();
-             await request
-               .input('id', sql.NVarChar, item.id)
-               .input('name', sql.NVarChar, item.name)
-               .query(\`
-                  IF EXISTS (SELECT 1 FROM companies WHERE id = @id)
-                    UPDATE companies SET name = @name WHERE id = @id
-                  ELSE
-                    INSERT INTO companies (id, name) VALUES (@id, @name)
-               \`);
+             await request.input('id', sql.NVarChar, item.id).input('name', sql.NVarChar, item.name)
+               .query('IF EXISTS (SELECT 1 FROM companies WHERE id = @id) UPDATE companies SET name = @name WHERE id = @id ELSE INSERT INTO companies (id, name) VALUES (@id, @name)');
         }
-        res.json({ success: true, message: 'Companies synced (Upsert)' });
+        res.json({ success: true });
     } catch (err) {
-        console.error(err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// 5. Offices
 app.post('/api/v1/config/offices', async (req, res) => {
     const list = req.body;
     if (!Array.isArray(list)) return res.status(400).json({error: 'Expected array'});
-    
     const pool = await connectDB();
     try {
         for (const item of list) {
              const request = pool.request();
-             await request
-               .input('id', sql.NVarChar, item.id)
-               .input('name', sql.NVarChar, item.name)
-               .input('lat', sql.Decimal(10,8), item.coordinates.latitude)
-               .input('long', sql.Decimal(11,8), item.coordinates.longitude)
-               .input('rad', sql.Int, item.radiusMeters)
-               .query(\`
-                  IF EXISTS (SELECT 1 FROM offices WHERE id = @id)
-                    UPDATE offices SET name = @name, latitude = @lat, longitude = @long, radius_meters = @rad WHERE id = @id
-                  ELSE
-                    INSERT INTO offices (id, name, latitude, longitude, radius_meters) VALUES (@id, @name, @lat, @long, @rad)
-               \`);
+             await request.input('id', sql.NVarChar, item.id).input('name', sql.NVarChar, item.name).input('lat', sql.Decimal(10,8), item.coordinates.latitude).input('long', sql.Decimal(11,8), item.coordinates.longitude).input('rad', sql.Int, item.radiusMeters)
+               .query('IF EXISTS (SELECT 1 FROM offices WHERE id = @id) UPDATE offices SET name = @name, latitude = @lat, longitude = @long, radius_meters = @rad WHERE id = @id ELSE INSERT INTO offices (id, name, latitude, longitude, radius_meters) VALUES (@id, @name, @lat, @long, @rad)');
         }
-        res.json({ success: true, message: 'Offices synced (Upsert)' });
+        res.json({ success: true });
     } catch (err) {
-        console.error(err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// 6. Departments
 app.post('/api/v1/config/departments', async (req, res) => {
     const list = req.body;
     if (!Array.isArray(list)) return res.status(400).json({error: 'Expected array'});
-    
     const pool = await connectDB();
     try {
         for (const item of list) {
              const request = pool.request();
-             await request
-               .input('id', sql.NVarChar, item.id)
-               .input('compId', sql.NVarChar, item.companyId)
-               .input('name', sql.NVarChar, item.name)
-               .input('email', sql.Bit, item.emailNotifications ? 1 : 0)
-               .query(\`
-                  IF EXISTS (SELECT 1 FROM departments WHERE id = @id)
-                    UPDATE departments SET name = @name, company_id = @compId, email_notifications = @email WHERE id = @id
-                  ELSE
-                    INSERT INTO departments (id, company_id, name, email_notifications) VALUES (@id, @compId, @name, @email)
-               \`);
+             await request.input('id', sql.NVarChar, item.id).input('compId', sql.NVarChar, item.companyId).input('name', sql.NVarChar, item.name).input('email', sql.Bit, item.emailNotifications ? 1 : 0)
+               .query('IF EXISTS (SELECT 1 FROM departments WHERE id = @id) UPDATE departments SET name = @name, company_id = @compId, email_notifications = @email WHERE id = @id ELSE INSERT INTO departments (id, company_id, name, email_notifications) VALUES (@id, @compId, @name, @email)');
         }
-        res.json({ success: true, message: 'Departments synced (Upsert)' });
+        res.json({ success: true });
     } catch (err) {
-        console.error(err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// 7. Users
 app.post('/api/v1/config/users', async (req, res) => {
     const list = req.body;
     if (!Array.isArray(list)) return res.status(400).json({error: 'Expected array'});
-    
     const pool = await connectDB();
     try {
         for (const u of list) {
              const request = pool.request();
-             await request
-               .input('id', sql.NVarChar, u.id)
-               .input('erpId', sql.NVarChar, u.erpId || null)
-               .input('compId', sql.NVarChar, u.companyId)
-               .input('deptId', sql.NVarChar, u.departmentId || null)
-               .input('offId', sql.NVarChar, u.assignedOfficeId || null)
-               .input('name', sql.NVarChar, u.name)
-               .input('email', sql.NVarChar, u.email)
-               .input('auth', sql.NVarChar, u.authType)
-               .input('roles', sql.NVarChar, JSON.stringify(u.roles))
-               .input('valid', sql.Bit, u.isValidated ? 1 : 0)
-               .input('status', sql.NVarChar, u.employmentStatus || 'ACTIVE')
-               .query(\`
-                  IF EXISTS (SELECT 1 FROM users WHERE id = @id)
-                    UPDATE users SET name=@name, email=@email, erp_id=@erpId, company_id=@compId, department_id=@deptId, assigned_office_id=@offId, roles=@roles, is_validated=@valid, employment_status=@status WHERE id = @id
-                  ELSE
-                    INSERT INTO users (id, name, email, erp_id, company_id, department_id, assigned_office_id, auth_type, roles, is_validated, employment_status) 
-                    VALUES (@id, @name, @email, @erpId, @compId, @deptId, @offId, @auth, @roles, @valid, @status)
-               \`);
+             await request.input('id', sql.NVarChar, u.id).input('erpId', sql.NVarChar, u.erpId || null).input('compId', sql.NVarChar, u.companyId).input('deptId', sql.NVarChar, u.departmentId || null).input('offId', sql.NVarChar, u.assignedOfficeId || null).input('name', sql.NVarChar, u.name).input('email', sql.NVarChar, u.email).input('auth', sql.NVarChar, u.authType).input('roles', sql.NVarChar, JSON.stringify(u.roles)).input('valid', sql.Bit, u.isValidated ? 1 : 0).input('status', sql.NVarChar, u.employmentStatus || 'ACTIVE')
+               .query('IF EXISTS (SELECT 1 FROM users WHERE id = @id) UPDATE users SET name=@name, email=@email, erp_id=@erpId, company_id=@compId, department_id=@deptId, assigned_office_id=@offId, roles=@roles, is_validated=@valid, employment_status=@status WHERE id = @id ELSE INSERT INTO users (id, name, email, erp_id, company_id, department_id, assigned_office_id, auth_type, roles, is_validated, employment_status) VALUES (@id, @name, @email, @erpId, @compId, @deptId, @offId, @auth, @roles, @valid, @status)');
         }
-        res.json({ success: true, message: 'Users synced' });
+        res.json({ success: true });
     } catch (err) {
-        console.error(err);
         res.status(500).json({ error: err.message });
     }
 });
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, async () => {
-  console.log(\`Bridge Server running on port \${PORT}\`);
+  console.log(\`Bridge Server v\${BRIDGE_VERSION} running on port \${PORT}\`);
   try {
     await connectDB();
     console.log("✅ SUCCESS: Database connected successfully!");
@@ -939,7 +894,7 @@ app.listen(PORT, async () => {
 
   useEffect(() => {
     generateSQLScript();
-  }, [dbConfig]);
+  }, [dbConfig, buildVersion]); // Added buildVersion dependency
 
   return (
     <div className="bg-slate-900 text-slate-200 rounded-xl overflow-hidden shadow-2xl border border-slate-700 font-mono text-sm h-[calc(100vh-5rem)] flex flex-col">
@@ -956,6 +911,7 @@ app.listen(PORT, async () => {
           </div>
 
           <div className="flex items-center gap-3">
+             <span className="text-[10px] text-slate-500 font-medium">Build: v1.0.{buildVersion}</span>
              <span className={`flex items-center gap-1.5 text-[10px] px-3 py-1.5 rounded border font-bold uppercase transition-colors ${
                  connectionStatus === 'ONLINE' ? 'bg-green-900/30 text-green-400 border-green-800' : 
                  connectionStatus === 'CONNECTING' ? 'bg-yellow-900/30 text-yellow-400 border-yellow-800' :
@@ -1013,10 +969,39 @@ app.listen(PORT, async () => {
                     </div>
                  </div>
 
+                 {/* DANGER ZONE - LOCAL DATA CLEARING */}
+                 <div className="bg-red-900/10 border border-red-900/30 rounded-lg p-4">
+                     <div className="flex items-center gap-2 text-red-400 font-bold mb-3 uppercase text-xs tracking-wider">
+                         <AlertTriangle size={14}/> Local Data Management (Danger Zone)
+                     </div>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                         <button 
+                            onClick={() => handleClearTable('pontaj_timesheets', 'Pontaje & Ore')}
+                            className="flex items-center justify-between p-3 bg-red-950/30 hover:bg-red-900/50 border border-red-900/30 rounded transition group"
+                         >
+                             <div className="text-left">
+                                 <div className="text-red-300 font-bold text-xs group-hover:text-red-200">Clear Timesheets</div>
+                                 <div className="text-[10px] text-red-500/70">Wipe local history only</div>
+                             </div>
+                             <Trash2 size={16} className="text-red-500 group-hover:text-red-300"/>
+                         </button>
+                         <button 
+                            onClick={handleFactoryReset}
+                            className="flex items-center justify-between p-3 bg-red-950/30 hover:bg-red-900/50 border border-red-900/30 rounded transition group"
+                         >
+                             <div className="text-left">
+                                 <div className="text-red-300 font-bold text-xs group-hover:text-red-200">Factory Reset</div>
+                                 <div className="text-[10px] text-red-500/70">Wipe ALL storage & Reload</div>
+                             </div>
+                             <Power size={16} className="text-red-500 group-hover:text-red-300"/>
+                         </button>
+                     </div>
+                 </div>
+
                  <div className="bg-blue-900/20 border border-blue-800 rounded-lg p-4 flex gap-4 items-start">
                      <AlertTriangle className="text-blue-400 shrink-0" size={20}/>
                      <div>
-                         <h4 className="text-white font-bold text-sm">Deployment Readiness</h4>
+                         <h4 className="text-white font-bold text-sm">Deployment Readiness (v1.0.{buildVersion})</h4>
                          <p className="text-slate-400 text-xs mt-1">
                              System is ready for Microsoft SQL Server deployment. 
                              Configure your server details in the "Bridge Source" tab, then download the artifacts.
