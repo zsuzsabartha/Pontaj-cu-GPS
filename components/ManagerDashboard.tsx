@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { User, Timesheet, LeaveRequest, CorrectionRequest, BreakStatus, LeaveStatus, ShiftStatus, Company, Office, BreakConfig, LeaveConfig, Holiday, Role } from '../types';
-import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight, Slash, LogIn, LogOut } from 'lucide-react';
+import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight, Slash, LogIn, LogOut, PartyPopper, Moon, Sun, XCircle, History } from 'lucide-react';
 import TimesheetList from './TimesheetList';
 import LeaveCalendarReport from './LeaveCalendarReport';
 
@@ -31,6 +31,10 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
   const [activeTab, setActiveTab] = useState<'status' | 'history' | 'leaves' | 'breaks' | 'calendar'>('status');
   const [selectedTeamCompany, setSelectedTeamCompany] = useState<string>('ALL');
   const [dashboardDate, setDashboardDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  
+  // Filters for sub-tabs
+  const [leaveFilter, setLeaveFilter] = useState<'PENDING' | 'HISTORY'>('PENDING');
+  const [breakFilter, setBreakFilter] = useState<'PENDING' | 'HISTORY'>('PENDING');
 
   const changeDashboardDate = (offset: number) => {
       const current = new Date(dashboardDate);
@@ -49,12 +53,42 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
       }
   });
 
-  // Pending Actions
-  const teamPendingLeaves = leaves.filter(l => l.status === LeaveStatus.PENDING && teamUsers.some(u => u.id === l.userId));
-  const teamPendingCorrections = correctionRequests.filter(r => r.status === 'PENDING' && teamUsers.some(u => u.id === r.userId));
+  // 1. LEAVES LOGIC
+  const teamAllLeaves = leaves.filter(l => teamUsers.some(u => u.id === l.userId));
+  const teamPendingLeaves = teamAllLeaves.filter(l => l.status === LeaveStatus.PENDING);
+  
+  const displayedLeaves = useMemo(() => {
+      if (leaveFilter === 'PENDING') return teamPendingLeaves;
+      // History: Approved, Rejected, Cancelled
+      return teamAllLeaves.filter(l => l.status !== LeaveStatus.PENDING).sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+  }, [teamAllLeaves, leaveFilter]);
+
+  // 2. BREAKS LOGIC
   const teamTimesheets = timesheets.filter(t => teamUsers.some(u => u.id === t.userId));
-  const teamPendingBreaks = teamTimesheets.filter(ts => ts.breaks.some(b => b.status === BreakStatus.PENDING));
-  const pendingBreaksCount = teamPendingBreaks.reduce((count, ts) => count + ts.breaks.filter(b => b.status === BreakStatus.PENDING).length, 0);
+  
+  // Extract all breaks from team timesheets
+  const teamAllBreaks = useMemo(() => {
+      const allBreaks: { breakData: any, user: User | undefined, tsId: string }[] = [];
+      teamTimesheets.forEach(ts => {
+          const u = users.find(user => user.id === ts.userId);
+          ts.breaks.forEach(b => {
+              allBreaks.push({ breakData: b, user: u, tsId: ts.id });
+          });
+      });
+      return allBreaks.sort((a,b) => new Date(b.breakData.startTime).getTime() - new Date(a.breakData.startTime).getTime());
+  }, [teamTimesheets, users]);
+
+  const teamPendingBreaks = teamAllBreaks.filter(b => b.breakData.status === BreakStatus.PENDING);
+  const pendingBreaksCount = teamPendingBreaks.length;
+
+  const displayedBreaks = useMemo(() => {
+      if (breakFilter === 'PENDING') return teamPendingBreaks;
+      return teamAllBreaks.filter(b => b.breakData.status !== BreakStatus.PENDING);
+  }, [teamAllBreaks, breakFilter, teamPendingBreaks]);
+
+
+  // 3. CORRECTIONS
+  const teamPendingCorrections = correctionRequests.filter(r => r.status === 'PENDING' && teamUsers.some(u => u.id === r.userId));
 
   // Helper to format location text based on available data
   const formatLocation = (matchedOfficeId?: string, distance?: number): { text: string, color: string } => {
@@ -74,11 +108,21 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
       const activeLeave = leaves.find(l => l.userId === user.id && l.startDate <= dashboardDate && l.endDate >= dashboardDate && l.status === LeaveStatus.APPROVED);
       const dailyTs = timesheets.find(t => t.userId === user.id && t.date === dashboardDate);
       
+      // Determine Status
       let status = 'ABSENT'; 
+      let statusColor = 'bg-red-50 text-red-600 border-red-100';
+
+      // Check context for absent status (Weekend/Holiday)
+      const dateObj = new Date(dashboardDate);
+      const dayOfWeek = dateObj.getDay();
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const holiday = holidays.find(h => h.date === dashboardDate);
+
       let events: { icon: React.ReactNode, label: string, time: string, loc: string, locColor: string }[] = [];
 
       if (activeLeave) {
           status = 'LEAVE';
+          statusColor = 'bg-purple-100 text-purple-700 border-purple-200';
           events.push({ 
               icon: <Palmtree size={12}/>, 
               label: 'Concediu', 
@@ -87,9 +131,16 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
               locColor: 'text-purple-600' 
           });
       } else if (dailyTs) {
-          if (dailyTs.status === ShiftStatus.WORKING) status = 'WORKING';
-          else if (dailyTs.status === ShiftStatus.ON_BREAK) status = 'BREAK';
-          else status = 'COMPLETED';
+          if (dailyTs.status === ShiftStatus.WORKING) {
+              status = 'WORKING';
+              statusColor = 'bg-green-100 text-green-700 border-green-200';
+          } else if (dailyTs.status === ShiftStatus.ON_BREAK) {
+              status = 'BREAK';
+              statusColor = 'bg-orange-100 text-orange-700 border-orange-200';
+          } else {
+              status = 'COMPLETED';
+              statusColor = 'bg-blue-50 text-blue-700 border-blue-100';
+          }
 
           // 1. Clock In Event
           const startLoc = formatLocation(dailyTs.matchedOfficeId, dailyTs.distanceToOffice);
@@ -137,8 +188,18 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                   locColor: endLoc.color
               });
           }
+      } else {
+          // Logic to not show 'ABSENT' on non-working days
+          if (holiday) {
+              status = 'HOLIDAY';
+              statusColor = 'bg-indigo-50 text-indigo-600 border-indigo-100';
+          } else if (isWeekend) {
+              status = 'WEEKEND';
+              statusColor = 'bg-gray-100 text-gray-500 border-gray-200';
+          }
       }
-      return { user, status, events };
+
+      return { user, status, statusColor, events, holiday };
   }).sort((a,b) => (a.status === 'WORKING' ? 0 : 1) - (b.status === 'WORKING' ? 0 : 1));
 
   const activeTeamMembersCount = teamMemberStatuses.filter(s => s.status === 'WORKING').length;
@@ -236,7 +297,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                  </tr>
                              </thead>
                              <tbody className="divide-y divide-gray-100">
-                                 {teamMemberStatuses.map(({ user, status, events }) => (
+                                 {teamMemberStatuses.map(({ user, status, statusColor, events, holiday }) => (
                                      <tr key={user.id} className="hover:bg-slate-50 transition">
                                          <td className="px-4 py-3 align-top">
                                              <div className="flex items-center gap-3">
@@ -251,20 +312,26 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                              </div>
                                          </td>
                                          <td className="px-4 py-3 align-top">
-                                             <span className={`px-2 py-1 rounded-full text-xs font-bold border ${
-                                                 status === 'WORKING' ? 'bg-green-100 text-green-700 border-green-200' :
-                                                 status === 'BREAK' ? 'bg-orange-100 text-orange-700 border-orange-200' :
-                                                 status === 'LEAVE' ? 'bg-purple-100 text-purple-700 border-purple-200' :
-                                                 status === 'COMPLETED' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                                                 'bg-red-50 text-red-600 border-red-100'
-                                             }`}>
-                                                 {status === 'WORKING' ? 'ACTIV' : status}
+                                             <span className={`px-2 py-1 rounded-full text-xs font-bold border ${statusColor}`}>
+                                                 {status === 'WORKING' ? 'ACTIV' : 
+                                                  status === 'HOLIDAY' ? 'SĂRBĂTOARE' : 
+                                                  status === 'WEEKEND' ? 'WEEKEND' : status}
                                              </span>
                                          </td>
                                          <td className="px-4 py-3">
                                              {/* Render Event Stream */}
                                              <div className="space-y-1">
-                                                 {events.length === 0 && <span className="text-xs text-gray-400 italic">Nicio activitate înregistrată.</span>}
+                                                 {status === 'HOLIDAY' && holiday && (
+                                                     <div className="flex items-center gap-2 text-xs text-indigo-600 font-bold">
+                                                         <PartyPopper size={12}/> {holiday.name}
+                                                     </div>
+                                                 )}
+                                                 {status === 'WEEKEND' && (
+                                                     <div className="flex items-center gap-2 text-xs text-gray-400 font-medium">
+                                                         <Moon size={12}/> Zi liberă (Weekend)
+                                                     </div>
+                                                 )}
+                                                 {events.length === 0 && status === 'ABSENT' && <span className="text-xs text-red-400 italic">Nepontat (Absență nemotivată?)</span>}
                                                  {events.map((evt, idx) => (
                                                      <div key={idx} className="flex items-center gap-2 text-xs">
                                                          <span className="text-gray-400 w-4 flex justify-center">{evt.icon}</span>
@@ -311,20 +378,39 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
         {/* --- TAB: LEAVES (Requests) --- */}
         {activeTab === 'leaves' && (
             <div className="space-y-6 animate-in fade-in">
-                <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 flex justify-between items-center">
-                    <div>
-                        <h3 className="font-bold text-purple-900">Cereri de Concediu în Așteptare</h3>
-                        <p className="text-xs text-purple-700">Aprobați sau respingeți cererile echipei.</p>
+                
+                {/* Stats & Filter Toggle */}
+                <div className="flex flex-col md:flex-row gap-4 items-stretch">
+                    <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 flex justify-between items-center flex-1">
+                        <div>
+                            <h3 className="font-bold text-purple-900">Cereri Concediu</h3>
+                            <p className="text-xs text-purple-700">Gestionați cererile echipei.</p>
+                        </div>
+                        <span className="text-2xl font-bold text-purple-700">{teamPendingLeaves.length} <span className="text-xs font-normal">noi</span></span>
                     </div>
-                    <span className="text-2xl font-bold text-purple-700">{teamPendingLeaves.length}</span>
+                    
+                    <div className="bg-white p-2 rounded-xl border border-gray-200 flex items-center">
+                        <button 
+                            onClick={() => setLeaveFilter('PENDING')} 
+                            className={`flex-1 px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${leaveFilter === 'PENDING' ? 'bg-purple-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                        >
+                            <AlertCircle size={16}/> În Așteptare
+                        </button>
+                        <button 
+                            onClick={() => setLeaveFilter('HISTORY')} 
+                            className={`flex-1 px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${leaveFilter === 'HISTORY' ? 'bg-purple-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                        >
+                            <History size={16}/> Istoric / Aprobate
+                        </button>
+                    </div>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {teamPendingLeaves.length === 0 && <p className="col-span-full text-center text-gray-400 italic py-8">Nu există cereri de concediu în așteptare.</p>}
-                    {teamPendingLeaves.map(req => {
+                    {displayedLeaves.length === 0 && <p className="col-span-full text-center text-gray-400 italic py-8">Nu există date conform filtrului selectat.</p>}
+                    {displayedLeaves.map(req => {
                         const requester = users.find(u => u.id === req.userId);
                         return (
-                            <div key={req.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between gap-4">
+                            <div key={req.id} className={`bg-white p-4 rounded-xl border shadow-sm flex flex-col justify-between gap-4 ${req.status === LeaveStatus.APPROVED ? 'border-green-200' : req.status === LeaveStatus.REJECTED ? 'border-red-200' : 'border-gray-200'}`}>
                                 <div>
                                     <div className="flex items-center gap-3 mb-3">
                                         <img src={requester?.avatarUrl} className="w-8 h-8 rounded-full"/>
@@ -332,17 +418,28 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                             <p className="font-bold text-sm text-gray-800">{requester?.name}</p>
                                             <p className="text-[10px] text-gray-500">{requester?.email}</p>
                                         </div>
+                                        <span className={`ml-auto text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
+                                            req.status === LeaveStatus.APPROVED ? 'bg-green-100 text-green-700' : 
+                                            req.status === LeaveStatus.REJECTED ? 'bg-red-100 text-red-700' : 
+                                            req.status === LeaveStatus.CANCELLED ? 'bg-gray-100 text-gray-500' :
+                                            'bg-yellow-100 text-yellow-700'
+                                        }`}>
+                                            {req.status}
+                                        </span>
                                     </div>
-                                    <div className="bg-purple-50 p-3 rounded-lg text-xs space-y-2">
-                                        <div className="font-bold text-purple-800">{req.typeName}</div>
+                                    <div className="bg-gray-50 p-3 rounded-lg text-xs space-y-2">
+                                        <div className="font-bold text-gray-800">{req.typeName}</div>
                                         <div className="flex items-center gap-1 text-gray-600"><Calendar size={12}/> {new Date(req.startDate).toLocaleDateString()} - {new Date(req.endDate).toLocaleDateString()}</div>
-                                        {req.reason && <div className="italic text-gray-500 border-t border-purple-100 pt-2 mt-2">"{req.reason}"</div>}
+                                        {req.reason && <div className="italic text-gray-500 border-t border-gray-100 pt-2 mt-2">"{req.reason}"</div>}
                                     </div>
                                 </div>
-                                <div className="flex gap-2">
-                                    <button onClick={() => onApproveLeave(req.id)} className="flex-1 bg-green-600 text-white py-2 rounded-lg text-xs font-bold hover:bg-green-700 transition">Aprobă</button>
-                                    <button onClick={() => onReject('LEAVE', req.id)} className="flex-1 bg-white border border-red-200 text-red-600 py-2 rounded-lg text-xs font-bold hover:bg-red-50 transition">Respinge</button>
-                                </div>
+                                
+                                {req.status === LeaveStatus.PENDING && (
+                                    <div className="flex gap-2">
+                                        <button onClick={() => onApproveLeave(req.id)} className="flex-1 bg-green-600 text-white py-2 rounded-lg text-xs font-bold hover:bg-green-700 transition">Aprobă</button>
+                                        <button onClick={() => onReject('LEAVE', req.id)} className="flex-1 bg-white border border-red-200 text-red-600 py-2 rounded-lg text-xs font-bold hover:bg-red-50 transition">Respinge</button>
+                                    </div>
+                                )}
                             </div>
                         )
                     })}
@@ -355,24 +452,89 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
             <div className="space-y-8 animate-in fade-in">
                 {/* 1. Breaks */}
                 <div className="space-y-4">
-                    <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex justify-between items-center">
-                        <div>
-                            <h3 className="font-bold text-indigo-900">Pauze Neconfirmate (Luare la Cunoștință)</h3>
-                            <p className="text-xs text-indigo-700">Angajații au marcat aceste pauze. Managerul trebuie să confirme.</p>
+                    
+                    {/* Stats & Toggle */}
+                    <div className="flex flex-col md:flex-row gap-4 items-stretch">
+                        <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex justify-between items-center flex-1">
+                            <div>
+                                <h3 className="font-bold text-indigo-900">Monitorizare Pauze</h3>
+                                <p className="text-xs text-indigo-700">Confirmare timp nelucrat.</p>
+                            </div>
+                            <div className="flex flex-col items-end">
+                                <span className="text-2xl font-bold text-indigo-700">{pendingBreaksCount}</span>
+                                <span className="text-[10px] text-indigo-600 font-bold uppercase">Neconfirmate</span>
+                            </div>
                         </div>
-                        <span className="text-2xl font-bold text-indigo-700">{pendingBreaksCount}</span>
+                        <div className="bg-white p-2 rounded-xl border border-gray-200 flex items-center">
+                            <button 
+                                onClick={() => setBreakFilter('PENDING')} 
+                                className={`flex-1 px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${breakFilter === 'PENDING' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                            >
+                                <AlertCircle size={16}/> Neconfirmate
+                            </button>
+                            <button 
+                                onClick={() => setBreakFilter('HISTORY')} 
+                                className={`flex-1 px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${breakFilter === 'HISTORY' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                            >
+                                <History size={16}/> Toate (Istoric)
+                            </button>
+                        </div>
                     </div>
-                    {teamPendingBreaks.length === 0 ? (
-                        <p className="text-center text-gray-400 italic py-4">Toate pauzele au fost verificate.</p>
+
+                    {/* Pending Callout - Always visible if there are pending items */}
+                    {pendingBreaksCount > 0 && breakFilter !== 'PENDING' && (
+                        <div className="bg-orange-50 border border-orange-200 p-3 rounded-lg flex items-center justify-between animate-pulse">
+                            <span className="text-sm font-bold text-orange-800 flex items-center gap-2"><AlertCircle size={16}/> Aveți {pendingBreaksCount} pauze care necesită confirmare!</span>
+                            <button onClick={() => setBreakFilter('PENDING')} className="text-xs bg-white border border-orange-200 px-3 py-1 rounded text-orange-700 font-bold hover:bg-orange-50">Vezi Acum</button>
+                        </div>
+                    )}
+
+                    {/* Breaks List - Custom Rendering instead of TimesheetList to show individual breaks better */}
+                    {displayedBreaks.length === 0 ? (
+                        <p className="text-center text-gray-400 italic py-4">Nu există pauze conform filtrului.</p>
                     ) : (
-                        <TimesheetList 
-                            timesheets={teamPendingBreaks} 
-                            offices={offices}
-                            users={users}
-                            breakConfigs={breakConfigs}
-                            isManagerView={true} 
-                            onApproveBreak={onApproveBreak}
-                        />
+                        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase">
+                                    <tr>
+                                        <th className="px-4 py-3">Angajat</th>
+                                        <th className="px-4 py-3">Tip Pauză</th>
+                                        <th className="px-4 py-3">Interval</th>
+                                        <th className="px-4 py-3">Status</th>
+                                        <th className="px-4 py-3 text-right">Acțiuni</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {displayedBreaks.map(({ breakData, user, tsId }, idx) => (
+                                        <tr key={`${tsId}-${breakData.id}-${idx}`} className="hover:bg-slate-50">
+                                            <td className="px-4 py-3 font-medium text-gray-800">{user?.name}</td>
+                                            <td className="px-4 py-3 text-gray-600">{breakData.typeName}</td>
+                                            <td className="px-4 py-3 font-mono text-gray-700">
+                                                {new Date(breakData.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} - 
+                                                {breakData.endTime ? new Date(breakData.endTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '...'}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className={`text-[10px] font-bold px-2 py-1 rounded border ${
+                                                    breakData.status === BreakStatus.PENDING ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                                                    breakData.status === BreakStatus.APPROVED ? 'bg-green-100 text-green-700 border-green-200' :
+                                                    'bg-red-100 text-red-700 border-red-200'
+                                                }`}>
+                                                    {breakData.status}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-right">
+                                                {breakData.status === BreakStatus.PENDING && (
+                                                    <div className="flex justify-end gap-2">
+                                                        <button onClick={() => onApproveBreak(tsId, breakData.id, BreakStatus.APPROVED)} className="p-1.5 bg-green-100 text-green-600 rounded hover:bg-green-200"><CheckCircle size={16}/></button>
+                                                        <button onClick={() => onReject('BREAK', breakData.id, tsId)} className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-200"><XCircle size={16}/></button>
+                                                    </div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     )}
                 </div>
 

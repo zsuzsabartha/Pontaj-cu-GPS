@@ -47,7 +47,7 @@ import ScheduleCalendar from './components/ScheduleCalendar';
 import CompanyManagement from './components/CompanyManagement';
 import ManagerDashboard from './components/ManagerDashboard';
 import LeaveCalendarReport from './components/LeaveCalendarReport';
-import { Users, Settings, LogOut, CheckCircle, XCircle, Building, Clock, UserCog, Database, Server, CalendarRange, Bell, PlusCircle, Briefcase, LayoutList, Palmtree, Slash, Menu, X, Wifi, WifiOff } from 'lucide-react';
+import { Users, Settings, LogOut, CheckCircle, XCircle, Building, Clock, UserCog, Database, Server, CalendarRange, Bell, PlusCircle, Briefcase, LayoutList, Palmtree, Slash, Menu, X, Wifi, WifiOff, Mail, ShieldAlert } from 'lucide-react';
 import { findNearestOffice } from './services/geoService';
 import { SQLService } from './services/sqlService';
 
@@ -218,6 +218,10 @@ export default function App() {
 
   const handleLogout = () => { setCurrentUser(null); setIsSidebarOpen(false); };
 
+  const markAsRead = (id: string) => {
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+  };
+
   const initiateRejection = (type: 'LEAVE' | 'CORRECTION' | 'BREAK' | 'LEAVE_CANCEL', itemId: string, parentId?: string) => { 
       setRejectionModal({ isOpen: true, type, itemId, parentId }); 
   };
@@ -229,7 +233,7 @@ export default function App() {
               const userDept = departments.find(d => d.id === currentUser.departmentId);
               if (userDept?.managerId && userDept.managerId !== currentUser.id) {
                   const newNotif: Notification = {
-                      id: `notif-${Date.now()}`,
+                      id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                       userId: userDept.managerId,
                       title: 'Anulare Concediu Aprobat',
                       message: `Angajatul ${currentUser.name} a anulat concediul de ${targetLeave.typeName} (${targetLeave.startDate} - ${targetLeave.endDate}). Motiv: ${reason}`,
@@ -380,7 +384,9 @@ export default function App() {
   const myLeaves = leaves.filter(l => l.userId === currentUser.id).sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
   const myTimesheets = timesheets.filter(t => t.userId === currentUser.id);
   const activeLeaveRequest = leaves.find(l => l.userId === currentUser.id && l.startDate <= new Date().toISOString().split('T')[0] && l.endDate >= new Date().toISOString().split('T')[0] && l.status === LeaveStatus.APPROVED);
-  
+  const unreadCount = notifications.filter(n => n.userId === currentUser.id && !n.isRead).length;
+  const myNotifications = notifications.filter(n => n.userId === currentUser.id).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
   const getTabClass = (tabName: string) => {
     return activeTab === tabName 
       ? "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-50 bg-blue-50 text-blue-700"
@@ -403,6 +409,12 @@ export default function App() {
             <button onClick={() => setActiveTab('dashboard')} className={getTabClass('dashboard')}><Clock size={18}/> Pontaj</button>
             <button onClick={() => setActiveTab('calendar')} className={getTabClass('calendar')}><CalendarRange size={18}/> Program</button>
             <button onClick={() => setActiveTab('leaves')} className={getTabClass('leaves')}><Settings size={18}/> Concedii</button>
+            <button onClick={() => setActiveTab('notifications')} className={getTabClass('notifications')}>
+                <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-3"><Bell size={18}/> Notificări</div>
+                    {unreadCount > 0 && <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">{unreadCount}</span>}
+                </div>
+            </button>
             {canViewTeam && <button onClick={() => setActiveTab('team')} className={getTabClass('team')}><Users size={18}/> Echipă</button>}
             {canManageUsers && <button onClick={() => setActiveTab('users')} className={getTabClass('users')}><UserCog size={18}/> Useri</button>}
             {isAdmin && <button onClick={() => setActiveTab('companies')} className={getTabClass('companies')}><Briefcase size={18}/> Companii</button>}
@@ -503,6 +515,36 @@ export default function App() {
                 onApproveCorrection={handleApproveCorrection}
                 onOpenTimesheetModal={openTimesheetModal}
              />
+        )}
+
+        {activeTab === 'notifications' && (
+            <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in">
+                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Bell className="text-blue-600"/> Notificări</h2>
+                {myNotifications.length === 0 ? (
+                    <div className="text-center text-gray-400 py-10 flex flex-col items-center">
+                        <div className="bg-gray-100 p-4 rounded-full mb-3"><Bell size={32} className="text-gray-300"/></div>
+                        <p>Nu aveți notificări recente.</p>
+                    </div>
+                ) : (
+                    myNotifications.map(n => (
+                        <div key={n.id} className={`p-4 rounded-xl border shadow-sm transition flex gap-3 ${n.isRead ? 'bg-white border-gray-100' : 'bg-blue-50 border-blue-100'}`}>
+                            <div className={`mt-1 p-2 rounded-full ${n.type === 'ALERT' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
+                                {n.type === 'ALERT' ? <ShieldAlert size={16}/> : <Mail size={16}/>}
+                            </div>
+                            <div className="flex-1">
+                                <div className="flex justify-between items-start">
+                                    <h4 className={`font-bold text-sm ${n.isRead ? 'text-gray-700' : 'text-gray-900'}`}>{n.title}</h4>
+                                    <span className="text-[10px] text-gray-400">{new Date(n.date).toLocaleDateString()} {new Date(n.date).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                                </div>
+                                <p className="text-sm text-gray-600 mt-1">{n.message}</p>
+                                {!n.isRead && (
+                                    <button onClick={() => markAsRead(n.id)} className="text-xs text-blue-600 hover:underline mt-2 font-medium">Marchează citit</button>
+                                )}
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
         )}
 
         {activeTab === 'calendar' && 
