@@ -1,5 +1,5 @@
 
-import { Company, Office, User, Role, Timesheet, ShiftStatus, LeaveRequest, LeaveStatus, Department, CorrectionRequest, BreakConfig, LeaveConfig, WorkSchedule, AppConfig, DailySchedule, Notification, Holiday } from './types';
+import { Company, Office, User, Role, Timesheet, ShiftStatus, LeaveRequest, LeaveStatus, Department, CorrectionRequest, BreakConfig, LeaveConfig, WorkSchedule, AppConfig, DailySchedule, Notification, Holiday, Break, BreakStatus } from './types';
 
 // --- CONFIGURARE APLICATIE (Hardcodata) ---
 export const APP_CONFIG: AppConfig = {
@@ -80,23 +80,28 @@ export const MOCK_COMPANIES: Company[] = [
 export const MOCK_DEPARTMENTS: Department[] = [
   { id: 'd1', name: 'Dezvoltare Software', companyId: 'c1', managerId: 'u1', emailNotifications: true },
   { id: 'd2', name: 'Resurse Umane', companyId: 'c1', managerId: 'u4', emailNotifications: true },
-  { id: 'd3', name: 'Logistică & Transport', companyId: 'c2', managerId: 'u5', emailNotifications: false }
+  { id: 'd3', name: 'Logistică & Transport', companyId: 'c2', managerId: 'u5', emailNotifications: false },
+  { id: 'd4', name: 'Vânzări & Marketing', companyId: 'c1', managerId: 'u1', emailNotifications: true }
 ];
 
 export const MOCK_OFFICES: Office[] = [
   {
     id: 'off1',
     name: 'HQ - București Nord',
-    // companyId: 'c1', // Removed - shared
     coordinates: { latitude: 44.482, longitude: 26.105 },
     radiusMeters: 150
   },
   {
     id: 'off2',
     name: 'Depozit - Ilfov',
-    // companyId: 'c2', // Removed - shared
     coordinates: { latitude: 44.435, longitude: 26.012 },
     radiusMeters: 300
+  },
+  {
+    id: 'off3',
+    name: 'Hub Cluj-Napoca',
+    coordinates: { latitude: 46.7712, longitude: 23.6236 },
+    radiusMeters: 200
   }
 ];
 
@@ -208,15 +213,156 @@ export const MOCK_USERS: User[] = [
     contractHours: 8,
     lastLoginDate: new Date().toISOString(),
     employmentStatus: 'ACTIVE'
+  },
+  {
+    id: 'u6',
+    erpId: 'LOG-202',
+    name: 'Andrei Vasile',
+    roles: [Role.MANAGER],
+    companyId: 'c2',
+    departmentId: 'd3',
+    email: 'andrei.vasile@logistics.ro',
+    avatarUrl: 'https://ui-avatars.com/api/?name=Andrei+Vasile&background=random',
+    authType: 'PIN',
+    pin: '5555',
+    isValidated: true,
+    requiresGPS: true,
+    mainScheduleId: 'sch1',
+    alternativeScheduleIds: ['sch3'],
+    birthDate: '1982-08-08',
+    shareBirthday: true,
+    contractHours: 8,
+    assignedOfficeId: 'off2',
+    employmentStatus: 'ACTIVE'
   }
 ];
 
-// Initial State Mock - CLEARED FOR PRODUCTION/GIT
-export const INITIAL_TIMESHEETS: Timesheet[] = [];
+// Helper to create mock timesheets
+const createMockTimesheet = (id: string, userId: string, dateStr: string, startH: number, endH: number, status: ShiftStatus): Timesheet => {
+    const start = new Date(dateStr); start.setHours(startH, 0, 0);
+    const end = new Date(dateStr); end.setHours(endH, 0, 0);
+    
+    // Random fake location (near Bucharest)
+    const lat = 44.482 + (Math.random() * 0.01 - 0.005);
+    const long = 26.105 + (Math.random() * 0.01 - 0.005);
 
-export const INITIAL_LEAVE_REQUESTS: LeaveRequest[] = [];
+    return {
+        id,
+        userId,
+        date: dateStr,
+        startTime: start.toISOString(),
+        endTime: status === ShiftStatus.COMPLETED ? end.toISOString() : undefined,
+        status: status,
+        startLocation: { latitude: lat, longitude: long },
+        endLocation: status === ShiftStatus.COMPLETED ? { latitude: lat, longitude: long } : undefined,
+        matchedOfficeId: 'off1',
+        distanceToOffice: 50,
+        detectedScheduleId: 'sch1',
+        syncStatus: 'SYNCED',
+        breaks: [
+            {
+                id: `br-${id}`,
+                typeId: 'bc3', // Lunch
+                typeName: 'Pauză de Masă',
+                status: BreakStatus.APPROVED,
+                startTime: new Date(new Date(dateStr).setHours(12, 0, 0)).toISOString(),
+                endTime: new Date(new Date(dateStr).setHours(12, 30, 0)).toISOString()
+            }
+        ]
+    };
+};
 
-export const INITIAL_CORRECTION_REQUESTS: CorrectionRequest[] = [];
+// Generate some recent timesheets
+const generateRecentTimesheets = () => {
+    const ts: Timesheet[] = [];
+    const today = new Date();
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+    const twoDaysAgo = new Date(); twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+
+    const todayStr = today.toISOString().split('T')[0];
+    const yStr = yesterday.toISOString().split('T')[0];
+    const twoStr = twoDaysAgo.toISOString().split('T')[0];
+
+    // Elena (Employee) - Working today
+    ts.push({
+        id: 'ts-u2-today',
+        userId: 'u2',
+        date: todayStr,
+        startTime: new Date(today.setHours(8, 55, 0)).toISOString(),
+        status: ShiftStatus.WORKING,
+        startLocation: { latitude: 44.482, longitude: 26.105 },
+        matchedOfficeId: 'off1',
+        distanceToOffice: 20,
+        detectedScheduleId: 'sch1',
+        syncStatus: 'SYNCED',
+        breaks: []
+    });
+
+    // Mihai (Logistics) - Late today
+    ts.push({
+        id: 'ts-u3-today',
+        userId: 'u3',
+        date: todayStr,
+        startTime: new Date(today.setHours(10, 15, 0)).toISOString(),
+        status: ShiftStatus.WORKING,
+        startLocation: { latitude: 44.435, longitude: 26.012 },
+        matchedOfficeId: 'off2',
+        distanceToOffice: 400, // bit far
+        detectedScheduleId: 'sch1',
+        syncStatus: 'SYNCED',
+        breaks: []
+    });
+
+    // History for everyone
+    [yStr, twoStr].forEach((d, idx) => {
+        ts.push(createMockTimesheet(`ts-u1-${idx}`, 'u1', d, 9, 17, ShiftStatus.COMPLETED));
+        ts.push(createMockTimesheet(`ts-u2-${idx}`, 'u2', d, 9, 17, ShiftStatus.COMPLETED));
+        ts.push(createMockTimesheet(`ts-u3-${idx}`, 'u3', d, 8, 16, ShiftStatus.COMPLETED));
+        ts.push(createMockTimesheet(`ts-u6-${idx}`, 'u6', d, 10, 19, ShiftStatus.COMPLETED));
+    });
+
+    return ts;
+};
+
+export const INITIAL_TIMESHEETS: Timesheet[] = generateRecentTimesheets();
+
+export const INITIAL_LEAVE_REQUESTS: LeaveRequest[] = [
+    {
+        id: 'lr-1',
+        userId: 'u2',
+        typeId: 'lc1',
+        typeName: 'Concediu Odihnă',
+        startDate: new Date(new Date().setDate(new Date().getDate() + 5)).toISOString().split('T')[0], // In 5 days
+        endDate: new Date(new Date().setDate(new Date().getDate() + 10)).toISOString().split('T')[0],
+        reason: 'Vacanta de vara planificata.',
+        status: LeaveStatus.PENDING,
+        createdAt: new Date().toISOString()
+    },
+    {
+        id: 'lr-2',
+        userId: 'u3',
+        typeId: 'lc2',
+        typeName: 'Concediu Medical',
+        startDate: new Date(new Date().setDate(new Date().getDate() - 5)).toISOString().split('T')[0],
+        endDate: new Date(new Date().setDate(new Date().getDate() - 3)).toISOString().split('T')[0],
+        reason: 'Raceala.',
+        status: LeaveStatus.APPROVED,
+        createdAt: new Date().toISOString(),
+        approvedAt: new Date().toISOString()
+    }
+];
+
+export const INITIAL_CORRECTION_REQUESTS: CorrectionRequest[] = [
+    {
+        id: 'cr-1',
+        userId: 'u2',
+        requestedDate: new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0],
+        requestedStartTime: new Date(new Date().setHours(9, 0, 0)).toISOString(),
+        requestedEndTime: new Date(new Date().setHours(18, 0, 0)).toISOString(), // 1h OT
+        reason: 'Am stat peste program pentru proiectul Alpha.',
+        status: 'PENDING'
+    }
+];
 
 // Helper to generate holidays for multiple years
 const generateHolidays = (years: number[]): Holiday[] => {
