@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Office, Company, Department, User, Role } from '../types';
-import { Building, MapPin, Trash2, Plus, Navigation, FolderTree, Mail, BellOff, RefreshCw, Edit2, User as UserIcon } from 'lucide-react';
+import { Building, MapPin, Trash2, Plus, Navigation, FolderTree, Mail, BellOff, RefreshCw, Edit2, User as UserIcon, Briefcase } from 'lucide-react';
 import { getCurrentLocation } from '../services/geoService';
 import { API_CONFIG } from '../constants';
 
@@ -328,10 +328,12 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
       )}
 
       {activeTab === 'departments' && (
-          <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                  <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-100 text-xs text-yellow-800 max-w-xl">
-                      <span className="font-bold">Notă:</span> Activarea notificărilor pe email va trimite alerte către angajați la evenimente critice.
+          <div className="space-y-8">
+              
+              {/* Top Actions & Info */}
+              <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                  <div className="text-sm text-gray-500 max-w-xl">
+                      Gestionați departamentele grupate pe companii. Activarea notificărilor trimite email-uri la evenimente (ex: cereri concediu).
                   </div>
                   <button 
                     onClick={() => {
@@ -339,116 +341,192 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                         setEditingDeptId(null);
                         setDeptFormData({ name: '', companyId: companies[0]?.id || '', managerId: '' });
                     }}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition flex items-center gap-2"
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2 ${isAddingDept ? 'bg-gray-100 text-gray-600' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
                   >
-                      {isAddingDept ? 'Anulează' : <><Plus size={16}/> Adaugă Departament</>}
+                      {isAddingDept ? 'Închide Formular' : <><Plus size={16}/> Departament Nou</>}
                   </button>
               </div>
 
+              {/* Add/Edit Form - Contextually Aware */}
               {isAddingDept && (
-                  <div className="bg-white p-6 rounded-xl shadow-md border border-blue-100 animate-in fade-in slide-in-from-top-4">
-                      <h3 className="font-semibold text-gray-700 mb-4">{editingDeptId ? 'Editare Departament' : 'Departament Nou'}</h3>
-                      <form onSubmit={handleDeptSubmit} className="space-y-4">
-                          <div className="flex flex-col md:flex-row gap-4 items-end">
-                              <div className="flex-1 w-full">
-                                  <label className="block text-sm font-medium text-gray-600 mb-1">Nume Departament</label>
+                  <div id="dept-form" className="bg-white p-6 rounded-xl shadow-lg border-2 border-blue-100 animate-in fade-in slide-in-from-top-4 relative">
+                      <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500 rounded-l-xl"></div>
+                      <h3 className="font-bold text-lg text-gray-800 mb-6 flex items-center gap-2">
+                          {editingDeptId ? <Edit2 size={20} className="text-blue-600"/> : <Plus size={20} className="text-green-600"/>}
+                          {editingDeptId ? 'Editare Departament' : 'Adăugare Departament Nou'}
+                      </h3>
+                      
+                      <form onSubmit={handleDeptSubmit} className="space-y-6">
+                          {/* Company Selection - Highlighted for Clarity */}
+                          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
+                                  <Briefcase size={14}/> Companie asignată
+                              </label>
+                              <select 
+                                value={deptFormData.companyId}
+                                onChange={e => setDeptFormData({...deptFormData, companyId: e.target.value, managerId: ''})}
+                                className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white font-medium text-slate-800"
+                              >
+                                {companies.map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                              </select>
+                              <p className="text-[10px] text-slate-400 mt-1">Acest departament va aparține exclusiv companiei selectate mai sus.</p>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Nume Departament</label>
                                   <input 
                                     required
                                     type="text" 
                                     value={deptFormData.name}
                                     onChange={e => setDeptFormData({...deptFormData, name: e.target.value})}
-                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                     placeholder="Ex: Vânzări"
                                   />
                               </div>
-                              <div className="flex-1 w-full">
-                                  <label className="block text-sm font-medium text-gray-600 mb-1">Companie</label>
+                              
+                              {/* Manager Selection */}
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Manager (Aprobator)</label>
                                   <select 
-                                    value={deptFormData.companyId}
-                                    onChange={e => setDeptFormData({...deptFormData, companyId: e.target.value, managerId: ''})}
-                                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                                    value={deptFormData.managerId}
+                                    onChange={e => setDeptFormData({...deptFormData, managerId: e.target.value})}
+                                    className="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                                   >
-                                    {companies.map(c => (
-                                        <option key={c.id} value={c.id}>{c.name}</option>
-                                    ))}
+                                      <option value="">-- Fără Manager Alocat --</option>
+                                      {users
+                                        .filter(u => u.companyId === deptFormData.companyId && u.roles.includes(Role.MANAGER))
+                                        .map(u => (
+                                          <option key={u.id} value={u.id}>{u.name}</option>
+                                      ))}
                                   </select>
+                                  <p className="text-[10px] text-gray-400 mt-1">Lista afișează doar utilizatorii cu rol MANAGER din compania selectată.</p>
                               </div>
                           </div>
-                          
-                          {/* Manager Selection */}
-                          <div>
-                              <label className="block text-sm font-medium text-gray-600 mb-1">Manager Departament (Aprobator Concedii)</label>
-                              <select 
-                                value={deptFormData.managerId}
-                                onChange={e => setDeptFormData({...deptFormData, managerId: e.target.value})}
-                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                              >
-                                  <option value="">-- Selectează Manager --</option>
-                                  {users
-                                    .filter(u => u.companyId === deptFormData.companyId && u.roles.includes(Role.MANAGER))
-                                    .map(u => (
-                                      <option key={u.id} value={u.id}>{u.name}</option>
-                                  ))}
-                              </select>
-                              <p className="text-[10px] text-gray-400 mt-1 italic">Doar utilizatorii cu rolul "MANAGER" din aceeași companie sunt afișați.</p>
-                          </div>
 
-                          <button type="submit" className="w-full bg-green-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-green-700 transition">
-                              {editingDeptId ? 'Salvează Modificările' : 'Adaugă Departament'}
-                          </button>
+                          <div className="flex justify-end gap-3 pt-2">
+                              <button 
+                                type="button"
+                                onClick={() => setIsAddingDept(false)}
+                                className="px-6 py-2.5 rounded-lg font-medium text-gray-600 hover:bg-gray-100 transition"
+                              >
+                                  Anulează
+                              </button>
+                              <button type="submit" className="bg-blue-600 text-white px-8 py-2.5 rounded-lg font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-200">
+                                  {editingDeptId ? 'Salvează Modificările' : 'Creează Departament'}
+                              </button>
+                          </div>
                       </form>
                   </div>
               )}
               
-              <div className="grid gap-4">
-                  {departments.map(dept => {
-                      const companyName = companies.find(c => c.id === dept.companyId)?.name || 'Companie Necunoscută';
-                      const manager = users.find(u => u.id === dept.managerId);
+              {/* Grouped List by Company */}
+              <div className="space-y-6">
+                  {companies.map(company => {
+                      const compDepts = departments.filter(d => d.companyId === company.id);
                       
                       return (
-                          <div key={dept.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between group hover:shadow-md transition gap-4">
-                              <div className="flex items-center gap-4">
-                                  <div className="bg-indigo-50 p-3 rounded-lg text-indigo-600">
-                                      <FolderTree size={24} />
+                          <div key={company.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                              <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                                  <div className="flex items-center gap-2">
+                                      <div className="bg-white p-1.5 rounded-md border border-gray-200 text-gray-600">
+                                          <Briefcase size={16} />
+                                      </div>
+                                      <span className="font-bold text-gray-800">{company.name}</span>
+                                      <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{compDepts.length}</span>
                                   </div>
-                                  <div>
-                                      <h3 className="font-bold text-gray-800">{dept.name}</h3>
-                                      <p className="text-xs text-gray-500">{companyName}</p>
-                                      
-                                      {manager ? (
-                                          <div className="flex items-center gap-1.5 mt-1.5 text-xs text-indigo-600 bg-indigo-50/50 px-2 py-1 rounded w-fit">
-                                              <UserIcon size={12}/>
-                                              <span className="font-medium">Manager: {manager.name}</span>
-                                          </div>
-                                      ) : (
-                                          <div className="mt-1.5 text-xs text-orange-400 italic">Fără Manager Alocat</div>
-                                      )}
-                                  </div>
-                              </div>
-                              
-                              <div className="flex items-center gap-3 self-end sm:self-auto">
-                                  <div className="flex items-center gap-2 mr-4 opacity-0 group-hover:opacity-100 transition">
-                                      <button onClick={() => startEditDept(dept)} className="text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50"><Edit2 size={16}/></button>
-                                      <button onClick={() => handleDeleteDept(dept.id)} className="text-gray-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50"><Trash2 size={16}/></button>
-                                  </div>
-
-                                  <span className={`text-xs font-medium hidden sm:block ${dept.emailNotifications ? 'text-green-600' : 'text-gray-400'}`}>
-                                      {dept.emailNotifications ? 'Email Activ' : 'Email Oprit'}
-                                  </span>
                                   <button 
-                                      onClick={() => toggleDeptEmail(dept.id)}
-                                      className={`p-2 rounded-lg transition-colors ${dept.emailNotifications ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
-                                      title="Toggle Email Notifications"
+                                      onClick={() => {
+                                          setDeptFormData({ name: '', companyId: company.id, managerId: '' });
+                                          setIsAddingDept(true);
+                                          setEditingDeptId(null);
+                                          document.getElementById('dept-form')?.scrollIntoView({ behavior: 'smooth' });
+                                      }}
+                                      className="text-xs font-medium text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition flex items-center gap-1 border border-transparent hover:border-blue-100"
                                   >
-                                      {dept.emailNotifications ? <Mail size={20} /> : <BellOff size={20} />}
+                                      <Plus size={14}/> Adaugă Departament Aici
                                   </button>
                               </div>
-                          </div>
-                      );
-                  })}
-              </div>
-          </div>
-      )}
+
+                              <div className="divide-y divide-gray-100">
+                                  {compDepts.length === 0 ? (
+                                      <div className="p-6 text-center text-sm text-gray-400 italic">
+                                          Niciun departament configurat pentru {company.name}.
+                                      </div>
+                                  ) : (
+                                      compDepts.map(dept => {
+                                          const manager = users.find(u => u.id === dept.managerId);
+                                          const isEditing = editingDeptId === dept.id;
+
+                                          return (
+                                              <div key={dept.id} className={`p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-gray-50 transition ${isEditing ? 'bg-blue-50/50' : ''}`}>
+                                                  <div className="flex items-center gap-4">
+                                                      <div className={`p-2 rounded-lg ${isEditing ? 'bg-blue-100 text-blue-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                                                          <FolderTree size={20} />
+                                                      </div>
+                                                      <div>
+                                                          <div className="flex items-center gap-2">
+                                                              <h4 className="font-bold text-gray-800 text-sm">{dept.name}</h4>
+                                                              {isEditing && <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider bg-blue-100 px-1.5 rounded">Editing</span>}
+                                                          </div>
+                                                          
+                                                          {manager ? (
+                                                              <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5">
+                                                                  <UserIcon size={12} className="text-indigo-400"/>
+                                                                  <span>Manager: <span className="font-medium text-gray-700">{manager.name}</span></span>
+                                                              </div>
+                                                          ) : (
+                                                              <div className="text-[10px] text-orange-400 mt-0.5 italic">Fără Manager</div>
+                                                          )}
+                                                      </div>
+                                                  </div>
+
+                                                  <div className="flex items-center gap-2 self-end md:self-auto">
+                                                      <button 
+                                                          onClick={() => toggleDeptEmail(dept.id)}
+                                                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                                                              dept.emailNotifications 
+                                                                  ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100' 
+                                                                  : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
+                                                          }`}
+                                                      >
+                                                          {dept.emailNotifications ? <Mail size={12}/> : <BellOff size={12}/>}
+                                                          {dept.emailNotifications ? 'Notificări Active' : 'Fără Notificări'}
+                                                      </button>
+
+                                                      <div className="w-px h-6 bg-gray-200 mx-1"></div>
+
+                                                      <button 
+                                                          onClick={() => {
+                                                              startEditDept(dept);
+                                                              document.getElementById('dept-form')?.scrollIntoView({ behavior: 'smooth' });
+                                                          }} 
+                                                          className="text-gray-400 hover:text-blue-600 p-2 hover:bg-white rounded-lg transition"
+                                                          title="Editează"
+                                                      >
+                                                          <Edit2 size={16}/>
+                                                      </button>
+                                                      <button 
+                                                          onClick={() => handleDeleteDept(dept.id)} 
+                                                          className="text-gray-400 hover:text-red-600 p-2 hover:bg-white rounded-lg transition"
+                                                          title="Șterge"
+                                                      >
+                                                          <Trash2 size={16}/>
+                                              </button>
+                                          </div>
+                                      </div>
+                                  )
+                              })
+                          )}
+                      </div>
+                  </div>
+              );
+          })}
+      </div>
+  </div>
+)}
     </div>
   );
 };
