@@ -1,6 +1,6 @@
 
 import { API_CONFIG } from '../constants';
-import { Timesheet, LeaveRequest, CorrectionRequest } from '../types';
+import { Timesheet, LeaveRequest, CorrectionRequest, User } from '../types';
 
 const get = async (endpoint: string) => {
     try {
@@ -37,17 +37,13 @@ const post = async (endpoint: string, body: any) => {
     }
 };
 
-const put = async (endpoint: string, body: any) => {
+const remove = async (endpoint: string) => {
     try {
         const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
+            method: 'DELETE',
         });
         if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            console.error(`[SQL Error] PUT ${endpoint}:`, errData);
-            throw new Error(`HTTP ${response.status}: ${errData.error || JSON.stringify(errData)}`);
+            throw new Error(`HTTP ${response.status}`);
         }
         return await response.json();
     } catch (error) {
@@ -56,6 +52,7 @@ const put = async (endpoint: string, body: any) => {
 };
 
 export const SQLService = {
+    BASE_URL: API_CONFIG.BASE_URL,
     checkHealth: () => get('/health'),
     getUsers: () => get('/config/users'),
     getCompanies: () => get('/config/companies'),
@@ -71,21 +68,15 @@ export const SQLService = {
 
     // --- REAL TIME TRANSACTION METHODS ---
     
-    // Timesheets - Uses the dedicated endpoints from your server code
-    addTimesheet: (ts: Timesheet) => post('/timesheets', {
-        ...ts,
-        // Ensure format matches server expectation if needed, or send full object if server parses it
-        userId: ts.userId === 'u1' ? 1 : (parseInt(ts.userId.replace(/\D/g,'')) || 0) // Basic fallback for ID mapping if string
-    }),
+    upsertTimesheet: (ts: Timesheet) => post('/seed/timesheets', [ts]),
+    deleteTimesheet: (id: string) => remove(`/timesheets/${id}`),
     
-    // NOTE: For this specific prototype, we are using the /seed/ endpoints 
-    // for single-item upserts as well, because the server implementation for 
-    // /api/v1/timesheets/ is strict Zod validation that might conflict with our mock string IDs.
-    // The /seed endpoints use "DELETE then INSERT" which acts as a perfect Upsert for us.
+    upsertLeave: (leave: LeaveRequest) => post('/seed/leaves', [leave]),
+    deleteLeave: (id: string) => remove(`/leaves/${id}`),
+    
+    upsertCorrection: (req: CorrectionRequest) => post('/seed/corrections', [req]),
+    deleteCorrection: (id: string) => remove(`/corrections/${id}`),
 
-    upsertTimesheet: (ts: Timesheet) => post('/seed/timesheets', [ts]), // Send as array of 1
-    
-    upsertLeave: (leave: LeaveRequest) => post('/seed/leaves', [leave]), // Send as array of 1
-    
-    upsertCorrection: (req: CorrectionRequest) => post('/seed/corrections', [req]), // Send as array of 1
+    // User management
+    upsertUser: (user: User) => post('/config/users', [user]),
 };

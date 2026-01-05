@@ -292,7 +292,6 @@ app.get('/api/v1/health', asyncHandler(async (_, res) => {
 
 const handleConfigSync = async (table, data, mapFn) => {
     const pool = await connectDB();
-    // CORRECT TRANSACTION USAGE FOR MSSQL v10
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
@@ -485,7 +484,6 @@ app.get('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
 
 app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
     const pool = await connectDB();
-    // CORRECT TRANSACTION USAGE FOR MSSQL v10
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
@@ -523,6 +521,15 @@ app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
     }
 }));
 
+// DELETE TIMESHEET
+app.delete('/api/v1/timesheets/:id', asyncHandler(async (req, res) => {
+    const pool = await connectDB();
+    const id = req.params.id;
+    await pool.request().input('id', id).query('DELETE FROM breaks WHERE timesheet_id = @id');
+    await pool.request().input('id', id).query('DELETE FROM timesheets WHERE id = @id');
+    res.json({ success: true, deletedId: id });
+}));
+
 // LEAVES
 app.get('/api/v1/seed/leaves', asyncHandler(async (req, res) => {
     const pool = await connectDB();
@@ -546,6 +553,13 @@ app.post('/api/v1/seed/leaves', asyncHandler(async (req, res) => {
     res.json({ success: true });
 }));
 
+// DELETE LEAVE
+app.delete('/api/v1/leaves/:id', asyncHandler(async (req, res) => {
+    const pool = await connectDB();
+    await pool.request().input('id', req.params.id).query('DELETE FROM leave_requests WHERE id = @id');
+    res.json({ success: true });
+}));
+
 // CORRECTIONS
 app.get('/api/v1/seed/corrections', asyncHandler(async (req, res) => {
     const pool = await connectDB();
@@ -562,6 +576,13 @@ app.post('/api/v1/seed/corrections', asyncHandler(async (req, res) => {
         query: 'INSERT INTO correction_requests (id, user_id, timesheet_id, requested_date, requested_start_time, requested_end_time, reason, status, manager_note) VALUES (@id, @uid, @tid, @date, @start, @end, @reason, @status, @note)',
         params: { id: c.id, uid: c.userId, tid: c.timesheetId, date: c.requestedDate, start: c.requestedStartTime, end: c.requestedEndTime, reason: c.reason, status: c.status, note: c.managerNote }
     }));
+    res.json({ success: true });
+}));
+
+// DELETE CORRECTION
+app.delete('/api/v1/corrections/:id', asyncHandler(async (req, res) => {
+    const pool = await connectDB();
+    await pool.request().input('id', req.params.id).query('DELETE FROM correction_requests WHERE id = @id');
     res.json({ success: true });
 }));
 

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { User, Role, Company, Department, Office, WorkSchedule, Timesheet, LeaveRequest, CorrectionRequest, ShiftStatus, LeaveStatus } from '../types';
-import { UserPlus, ShieldAlert, Database, RefreshCw, Mail, Eye, AlertTriangle, BellRing, Upload, Edit2, X, Save, Wand2, Users, FileText, Download } from 'lucide-react';
+import { UserPlus, ShieldAlert, Database, RefreshCw, Mail, Eye, AlertTriangle, BellRing, Upload, Edit2, X, Save, Wand2, Users, FileText, Download, Briefcase, Building, Clock, MapPin, CalendarClock } from 'lucide-react';
 import UserValidationModal from './UserValidationModal';
 import { API_CONFIG, HOLIDAYS_RO, INITIAL_LEAVE_CONFIGS } from '../constants';
 import SmartTable, { Column } from './SmartTable';
@@ -75,12 +75,23 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
     alert(`User creat! PIN: ${user.pin}`);
   };
 
+  // Toggle helper for edit modal
+  const toggleAltSchedule = (scheduleId: string) => {
+      if (!editingUser) return;
+      const currentAlts = editingUser.alternativeScheduleIds || [];
+      const exists = currentAlts.includes(scheduleId);
+      const newAlts = exists 
+          ? currentAlts.filter(id => id !== scheduleId)
+          : [...currentAlts, scheduleId];
+      setEditingUser({ ...editingUser, alternativeScheduleIds: newAlts });
+  };
+
   const generateSQL2025 = () => {
       if (!generatedData) return;
       const { timesheets, leaves } = generatedData;
 
       let sql = `-- SCRIPT GENERAT AUTOMAT PENTRU PONTAJ 2025\n`;
-      sql += `-- Conține: Nomenclator Ture, Alocare Ture Utilizatori, Pontaje 2025, Concedii 2025\n\n`;
+      sql += `-- Conține: Nomenclator Ture, Sărbători Legale 2025, Alocare Ture Utilizatori, Pontaje 2025, Concedii 2025\n\n`;
       sql += `USE PontajSmart;\nGO\n\n`;
 
       // 1. Nomenclature (Work Schedules)
@@ -91,8 +102,17 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
       });
       sql += `GO\n\n`;
 
-      // 2. User Assignments
-      sql += `-- 2. ALOCARE PROGRAME UTILIZATORI\n`;
+      // 2. Holidays 2025
+      sql += `-- 2. SĂRBĂTORI LEGALE 2025\n`;
+      const holidays2025 = HOLIDAYS_RO.filter(h => h.date.startsWith('2025'));
+      holidays2025.forEach(h => {
+          sql += `IF NOT EXISTS (SELECT * FROM holidays WHERE date = '${h.date}') \n`;
+          sql += `  INSERT INTO holidays (id, date, name) VALUES ('${h.id}', '${h.date}', N'${h.name}');\n`;
+      });
+      sql += `GO\n\n`;
+
+      // 3. User Assignments
+      sql += `-- 3. ALOCARE PROGRAME UTILIZATORI\n`;
       users.forEach(u => {
           if (u.mainScheduleId) {
               sql += `UPDATE users SET main_schedule_id = '${u.mainScheduleId}' WHERE id = '${u.id}';\n`;
@@ -100,8 +120,8 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
       });
       sql += `GO\n\n`;
 
-      // 3. Leaves
-      sql += `-- 3. CONCEDII 2025 (${leaves.length} înregistrări)\n`;
+      // 4. Leaves
+      sql += `-- 4. CONCEDII 2025 (${leaves.length} înregistrări)\n`;
       // Use chunks or batching if really large, but for demo simpler is fine
       leaves.forEach(l => {
           const reasonClean = l.reason.replace(/'/g, "''");
@@ -109,8 +129,8 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
       });
       sql += `GO\n\n`;
 
-      // 4. Timesheets
-      sql += `-- 4. PONTAJE 2025 (${timesheets.length} înregistrări)\n`;
+      // 5. Timesheets
+      sql += `-- 5. PONTAJE 2025 (${timesheets.length} înregistrări)\n`;
       timesheets.forEach(t => {
           // SQL Server prefers YYYY-MM-DD HH:MM:SS for strings implicitly cast to datetime2
           const start = t.startTime.replace('T', ' ').substring(0, 19);
@@ -135,7 +155,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
 
   const generateMockData2025 = async () => {
       if (!onBulkImport) return;
-      if (!confirm("Generare date 2025? (Această acțiune va popula interfața și va pregăti scriptul SQL)")) return;
+      if (!confirm("Generare date 2025? (Sistemul va genera pontaje doar pentru zilele lucrătoare, excluzând Weekend-urile și Sărbătorile Legale)")) return;
 
       setIsGenerating(true);
       
@@ -153,27 +173,37 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
 
       const userLeavePlans: Record<string, string[]> = {}; 
 
+      // 1. Pre-calculate Leave Plans (Summer/Winter), strictly avoiding Holidays
       users.forEach(user => {
           userLeavePlans[user.id] = [];
           let daysAllocated = 0;
-          // 1. Summer Block
+          
+          // Summer Block
           const summerMonth = Math.random() > 0.5 ? 6 : 7; 
           const summerStartDay = Math.floor(Math.random() * 15) + 1;
           for (let i = 0; i < 10; i++) {
               const d = new Date(year, summerMonth, summerStartDay + i);
-              // Safe date string construction
               const safeDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-              if (d.getDay() !== 0 && d.getDay() !== 6) { 
+              
+              const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+              const isHoliday = HOLIDAYS_RO.some(h => h.date === safeDate);
+
+              if (!isWeekend && !isHoliday) { 
                   userLeavePlans[user.id].push(safeDate);
                   daysAllocated++;
               }
           }
-          // 2. Winter Block
-          const winterStartDay = 20; 
+          
+          // Winter Block
+          const winterStartDay = 15; 
           for (let i = 0; i < 7; i++) { 
               const d = new Date(year, 11, winterStartDay + i);
               const safeDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-              if (d.getDay() !== 0 && d.getDay() !== 6 && daysAllocated < 21) {
+              
+              const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+              const isHoliday = HOLIDAYS_RO.some(h => h.date === safeDate);
+
+              if (!isWeekend && !isHoliday && daysAllocated < 21) {
                   userLeavePlans[user.id].push(safeDate);
               }
           }
@@ -198,6 +228,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
               users.forEach(user => {
                   if (!user.isValidated) return;
 
+                  // 2. Generate Planned Leaves (Already filtered for holidays above)
                   if (userLeavePlans[user.id].includes(dateStr)) {
                       if (coConfig) {
                           generatedLeaves.push({
@@ -210,6 +241,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                       return;
                   }
 
+                  // 3. Generate Work Days (Skip Weekend AND Holidays)
                   if (!isWeekend && !isHoliday) {
                       const rand = Math.random();
                       if (rand < 0.001 && cmConfig) {
@@ -274,7 +306,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
       onBulkImport(generatedTimesheets, generatedLeaves, generatedCorrections);
       setGeneratedData({ timesheets: generatedTimesheets, leaves: generatedLeaves, corrections: generatedCorrections });
 
-      alert(`Generare Completă!\n\nTimesheets: ${generatedTimesheets.length}\nConcedii: ${generatedLeaves.length}\n\nAcum puteți descărca scriptul SQL.`);
+      alert(`Generare Completă!\n\nTimesheets: ${generatedTimesheets.length}\nConcedii: ${generatedLeaves.length}\n\nDatele exclud automat Sărbătorile Legale 2025.`);
       setIsGenerating(false);
   };
 
@@ -305,7 +337,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                   <div className="bg-purple-100 p-3 rounded-xl text-purple-600"><Wand2 size={32} /></div>
                   <div className="flex-1">
                       <h3 className="text-lg font-bold text-gray-800">Generator Date 2025</h3>
-                      <p className="text-sm text-gray-500 mt-1">Simulează un an complet de activitate: Pontaje, Concedii (21 zile), Delegații și Ture alocate.</p>
+                      <p className="text-sm text-gray-500 mt-1">Simulează un an complet de activitate. Sistemul detectează și exclude automat <strong>Sărbătorile Legale 2025</strong> din generarea pontajelor.</p>
                       
                       <div className="flex gap-4 mt-4">
                           <button onClick={generateMockData2025} disabled={isGenerating} className="bg-purple-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-purple-700 shadow-md flex items-center gap-2">
@@ -359,14 +391,195 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
         </div>
       )}
 
+      {/* FULL USER EDIT MODAL */}
       {editingUser && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl p-6">
-                  <h3 className="font-bold text-lg mb-4">Editare: {editingUser.name}</h3>
-                  <input type="text" value={editingUser.name} onChange={e => setEditingUser({...editingUser, name: e.target.value})} className="w-full p-2 border rounded mb-4"/>
-                  <div className="flex justify-end gap-2">
-                      <button onClick={() => setEditingUser(null)} className="px-4 py-2 border rounded text-sm">Anulează</button>
-                      <button onClick={() => { onUpdateUser(editingUser); setEditingUser(null); }} className="px-4 py-2 bg-blue-600 text-white rounded text-sm">Salvează</button>
+              <div className="bg-white rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                  <div className="bg-blue-600 p-4 flex justify-between items-center text-white shrink-0">
+                      <h3 className="font-bold text-lg flex items-center gap-2"><Edit2 size={20}/> Editare Utilizator</h3>
+                      <button onClick={() => setEditingUser(null)} className="hover:bg-white/20 p-1 rounded"><X size={20}/></button>
+                  </div>
+                  
+                  <div className="p-6 overflow-y-auto space-y-6">
+                      
+                      {/* Identity Section */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nume Complet</label>
+                              <input 
+                                type="text" 
+                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={editingUser.name} 
+                                onChange={e => setEditingUser({...editingUser, name: e.target.value})} 
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
+                              <input 
+                                type="email" 
+                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                value={editingUser.email} 
+                                onChange={e => setEditingUser({...editingUser, email: e.target.value})} 
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">ID ERP</label>
+                              <input 
+                                type="text" 
+                                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                                value={editingUser.erpId || ''} 
+                                onChange={e => setEditingUser({...editingUser, erpId: e.target.value})} 
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Status Angajare</label>
+                              <select 
+                                value={editingUser.employmentStatus || 'ACTIVE'} 
+                                onChange={e => setEditingUser({...editingUser, employmentStatus: e.target.value as any})}
+                                className={`w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold ${
+                                    editingUser.employmentStatus === 'TERMINATED' ? 'text-red-600 bg-red-50' : 
+                                    editingUser.employmentStatus === 'SUSPENDED' ? 'text-orange-600 bg-orange-50' : 'text-green-600 bg-green-50'
+                                }`}
+                              >
+                                  <option value="ACTIVE">Activ</option>
+                                  <option value="SUSPENDED">Suspendat (CIC etc.)</option>
+                                  <option value="TERMINATED">Încetat (Ex-angajat)</option>
+                              </select>
+                          </div>
+                      </div>
+
+                      {/* Organization Section */}
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                          <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2"><Briefcase size={16}/> Organizație</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                  <label className="block text-xs text-gray-500 mb-1">Companie</label>
+                                  <select 
+                                    className="w-full p-2 border rounded bg-white"
+                                    value={editingUser.companyId}
+                                    onChange={e => setEditingUser({...editingUser, companyId: e.target.value, departmentId: ''})}
+                                  >
+                                      {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                  </select>
+                              </div>
+                              <div>
+                                  <label className="block text-xs text-gray-500 mb-1">Departament</label>
+                                  <select 
+                                    className="w-full p-2 border rounded bg-white"
+                                    value={editingUser.departmentId || ''}
+                                    onChange={e => setEditingUser({...editingUser, departmentId: e.target.value})}
+                                  >
+                                      <option value="">Fără departament</option>
+                                      {departments.filter(d => d.companyId === editingUser.companyId).map(d => (
+                                          <option key={d.id} value={d.id}>{d.name}</option>
+                                      ))}
+                                  </select>
+                              </div>
+                              <div>
+                                  <label className="block text-xs text-gray-500 mb-1">Sediu Alocat</label>
+                                  <select 
+                                    className="w-full p-2 border rounded bg-white"
+                                    value={editingUser.assignedOfficeId || ''}
+                                    onChange={e => setEditingUser({...editingUser, assignedOfficeId: e.target.value})}
+                                  >
+                                      <option value="">Niciunul (Remote/Mobil)</option>
+                                      {offices.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                                  </select>
+                              </div>
+                          </div>
+                      </div>
+
+                      {/* Schedule & Rules */}
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                          <h4 className="text-sm font-bold text-gray-700 mb-3 flex items-center gap-2"><Clock size={16}/> Program & Reguli</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                  <label className="block text-xs text-gray-500 mb-1">Normă (Ore)</label>
+                                  <input 
+                                    type="number" 
+                                    min={1} max={12}
+                                    className="w-full p-2 border rounded bg-white"
+                                    value={editingUser.contractHours || 8}
+                                    onChange={e => setEditingUser({...editingUser, contractHours: parseInt(e.target.value) || 8})}
+                                  />
+                              </div>
+                              <div>
+                                  <label className="block text-xs text-gray-500 mb-1">Program Principal</label>
+                                  <select 
+                                    className="w-full p-2 border rounded bg-white"
+                                    value={editingUser.mainScheduleId || ''}
+                                    onChange={e => setEditingUser({...editingUser, mainScheduleId: e.target.value})}
+                                  >
+                                      {workSchedules.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                  </select>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={editingUser.requiresGPS}
+                                    onChange={e => setEditingUser({...editingUser, requiresGPS: e.target.checked})}
+                                    className="w-4 h-4 text-blue-600 rounded"
+                                  />
+                                  <span className="text-sm">Necesită GPS la pontaj</span>
+                              </div>
+                          </div>
+
+                          {/* Alternative Schedules */}
+                          <div className="col-span-full mt-4 border-t border-gray-200 pt-3">
+                              <label className="block text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-1"><CalendarClock size={12}/> Programe Alternative / Secundare</label>
+                              <div className="flex flex-wrap gap-2">
+                                  {workSchedules.map(sch => {
+                                      const isMain = editingUser.mainScheduleId === sch.id;
+                                      const isSelected = (editingUser.alternativeScheduleIds || []).includes(sch.id);
+                                      return (
+                                          <button
+                                              key={sch.id}
+                                              type="button" 
+                                              disabled={isMain}
+                                              onClick={() => toggleAltSchedule(sch.id)}
+                                              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                                                  isMain ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' :
+                                                  isSelected ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' :
+                                                  'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                              }`}
+                                          >
+                                              {sch.name} {isMain && '(Principal)'}
+                                          </button>
+                                      )
+                                  })}
+                              </div>
+                              <p className="text-[10px] text-gray-400 mt-2 italic">Selectați turele suplimentare pe care acest angajat le poate efectua (ex: Tura de Noapte, Weekend).</p>
+                          </div>
+                      </div>
+
+                      {/* Roles */}
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Roluri & Permisiuni</label>
+                          <div className="flex gap-4 flex-wrap bg-blue-50 p-3 rounded-lg border border-blue-100">
+                              {Object.values(Role).map(role => (
+                                  <label key={role} className="flex items-center gap-2 cursor-pointer">
+                                      <input 
+                                        type="checkbox" 
+                                        checked={editingUser.roles.includes(role)}
+                                        onChange={() => {
+                                            const newRoles = editingUser.roles.includes(role)
+                                                ? editingUser.roles.filter(r => r !== role)
+                                                : [...editingUser.roles, role];
+                                            setEditingUser({...editingUser, roles: newRoles});
+                                        }}
+                                        className="w-4 h-4 text-blue-600 rounded"
+                                      />
+                                      <span className="text-sm font-medium">{role}</span>
+                                  </label>
+                              ))}
+                          </div>
+                      </div>
+
+                  </div>
+
+                  <div className="p-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
+                      <button onClick={() => setEditingUser(null)} className="px-4 py-2 text-gray-600 hover:bg-white rounded border border-transparent hover:border-gray-200 transition">Anulează</button>
+                      <button onClick={() => { onUpdateUser(editingUser); setEditingUser(null); }} className="px-6 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-700 shadow-md">Salvează Modificările</button>
                   </div>
               </div>
           </div>

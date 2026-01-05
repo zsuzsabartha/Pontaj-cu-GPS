@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, Utensils, Cigarette, History, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff, ShieldAlert, LogOut } from 'lucide-react';
+import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, Utensils, Cigarette, History, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff, ShieldAlert, LogOut, CheckSquare } from 'lucide-react';
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
 import { ShiftStatus, Coordinates, Office, User, BreakConfig, Holiday, LeaveRequest, LeaveStatus } from '../types';
 
@@ -369,7 +369,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
 
         {/* Buttons Grid */}
         <div className="grid grid-cols-2 gap-4 w-full">
-            {currentStatus === ShiftStatus.NOT_STARTED || currentStatus === ShiftStatus.COMPLETED ? (
+            {currentStatus === ShiftStatus.NOT_STARTED ? (
                  <button 
                  onClick={handleClockIn}
                  disabled={!user.isValidated || loading || (activeLeaveRequest?.status === LeaveStatus.APPROVED && !activeLeaveRequest?.typeName.includes('Delegatie'))} // Disable if unvalidated OR approved leave
@@ -381,6 +381,14 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
                      <><Play size={24} /> START PONTAJ</>
                  )}
                </button>
+            ) : currentStatus === ShiftStatus.COMPLETED ? (
+                /* --- CHANGED: Hide Start Button, Show Completed Message --- */
+                <div className="col-span-2 bg-blue-50 border border-blue-200 rounded-xl p-4 text-center animate-in fade-in">
+                    <div className="flex justify-center mb-2"><CheckSquare className="text-blue-500" size={32}/></div>
+                    <h3 className="font-bold text-blue-900">Program Încheiat</h3>
+                    <p className="text-xs text-blue-700 mt-1">Ziua de lucru a fost înregistrată.</p>
+                    <p className="text-[10px] text-blue-500 mt-2">Pentru modificări, vă rugăm folosiți secțiunea "Istoric" din panoul principal.</p>
+                </div>
             ) : (
                 <>
                     {/* Break Logic */}
@@ -449,4 +457,4 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
   );
 };
 
-export default ClockWidget; 
+export default ClockWidget;
