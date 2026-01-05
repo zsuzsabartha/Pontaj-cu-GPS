@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { User, Timesheet, LeaveRequest, CorrectionRequest, BreakStatus, LeaveStatus, ShiftStatus, Company, Office, BreakConfig, LeaveConfig, Holiday } from '../types';
+import { User, Timesheet, LeaveRequest, CorrectionRequest, BreakStatus, LeaveStatus, ShiftStatus, Company, Office, BreakConfig, LeaveConfig, Holiday, Role } from '../types';
 import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight, Slash, LogIn, LogOut } from 'lucide-react';
 import TimesheetList from './TimesheetList';
 import LeaveCalendarReport from './LeaveCalendarReport';
@@ -246,7 +245,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                                  </div>
                                                  <div>
                                                      <p className="font-bold text-gray-800 text-sm">{user.name}</p>
-                                                     <p className="text-[10px] text-gray-400">{user.roles.includes('MANAGER') ? 'Manager' : 'Angajat'}</p>
+                                                     <p className="text-[10px] text-gray-400">{user.roles.includes(Role.MANAGER) ? 'Manager' : 'Angajat'}</p>
                                                  </div>
                                              </div>
                                          </td>

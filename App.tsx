@@ -218,6 +218,13 @@ export default function App() {
   const handleUpdateUser = (updatedUser: User) => { setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u)); };
   const openTimesheetModal = (ts: Timesheet | null) => setEditModalData({ isOpen: true, timesheet: ts });
   
+  const handleTimesheetDelete = (id: string) => {
+      if(confirm("Sigur doriți să ștergeți acest pontaj? Acțiunea este ireversibilă.")) {
+          setTimesheets(prev => prev.filter(t => t.id !== id));
+          setEditModalData({isOpen: false, timesheet: null});
+      }
+  };
+
   const handleTimesheetSave = async (data: any) => { 
       if (data.type === 'WORK') {
           // Logic for editing work timesheet (Manager) or creating correction (User)
@@ -237,8 +244,15 @@ export default function App() {
               typeName: leaveConfigs.find(lc => lc.id === data.leaveTypeId)?.name || 'Manual',
               startDate: data.date,
               endDate: data.date,
-              reason: data.reason
+              reason: data.reason,
+              // If manager is creating it, auto-approve
+              status: hasRole(Role.MANAGER) || hasRole(Role.ADMIN) ? LeaveStatus.APPROVED : LeaveStatus.PENDING
           });
+
+          // NEW: If converting existing timesheet to leave, delete the timesheet
+          if (data.tsId) {
+              setTimesheets(prev => prev.filter(t => t.id !== data.tsId));
+          }
       }
       setEditModalData({isOpen: false, timesheet: null});
   };
@@ -310,10 +324,10 @@ export default function App() {
       setLeaves(prev => prev.map(l => l.id === reqId ? { ...l, status: LeaveStatus.APPROVED } : l));
   };
 
-  const handleLeaveSubmit = (req: Omit<LeaveRequest, 'id' | 'status' | 'userId'>) => {
+  const handleLeaveSubmit = (req: Omit<LeaveRequest, 'id' | 'status' | 'userId'> & { status?: LeaveStatus }) => {
       if (!currentUser) return;
       const newLeave: LeaveRequest = {
-          id: `lr-${Date.now()}`, userId: currentUser.id, status: LeaveStatus.PENDING, createdAt: new Date().toISOString(), ...req
+          id: `lr-${Date.now()}`, userId: currentUser.id, status: req.status || LeaveStatus.PENDING, createdAt: new Date().toISOString(), ...req
       };
       setLeaves(prev => [newLeave, ...prev]);
   };
@@ -501,7 +515,7 @@ export default function App() {
       </main>
 
       <LeaveModal isOpen={isLeaveModalOpen} onClose={() => setLeaveModalOpen(false)} leaveConfigs={leaveConfigs} lockedDate={lockedDate} onSubmit={handleLeaveSubmit} />
-      <TimesheetEditModal isOpen={editModalData.isOpen} onClose={() => setEditModalData({isOpen: false, timesheet: null})} timesheet={editModalData.timesheet} isManager={hasRole(Role.MANAGER) || hasRole(Role.ADMIN)} lockedDate={lockedDate} leaveConfigs={leaveConfigs} onSave={handleTimesheetSave} />
+      <TimesheetEditModal isOpen={editModalData.isOpen} onClose={() => setEditModalData({isOpen: false, timesheet: null})} timesheet={editModalData.timesheet} isManager={hasRole(Role.MANAGER) || hasRole(Role.ADMIN)} lockedDate={lockedDate} leaveConfigs={leaveConfigs} onSave={handleTimesheetSave} onDelete={handleTimesheetDelete} />
       <RejectionModal isOpen={rejectionModal.isOpen} onClose={() => setRejectionModal({ ...rejectionModal, isOpen: false })} onSubmit={handleConfirmRejection} title={rejectionModal.type === 'LEAVE_CANCEL' ? 'Motiv Anulare' : 'Motiv Respingere'} />
     </div>
   );

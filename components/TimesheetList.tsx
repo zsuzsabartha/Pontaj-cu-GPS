@@ -1,7 +1,6 @@
-
 import React from 'react';
 import { Timesheet, ShiftStatus, BreakStatus, Office, User, BreakConfig } from '../types';
-import { MapPin, CheckSquare, Edit2, AlertCircle, CloudOff, Info, User as UserIcon, Robot, Clock, UserCog } from 'lucide-react';
+import { MapPin, CheckSquare, Edit2, AlertCircle, CloudOff, Info, User as UserIcon, Bot, Clock, UserCog } from 'lucide-react';
 import SmartTable, { Column } from './SmartTable';
 
 interface TimesheetListProps {

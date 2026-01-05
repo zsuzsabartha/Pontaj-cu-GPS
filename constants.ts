@@ -66,15 +66,7 @@ export const INITIAL_WORK_SCHEDULES: WorkSchedule[] = [
 export const MOCK_SCHEDULES = INITIAL_WORK_SCHEDULES;
 
 // --- INITIAL SCHEDULE PLANS (Calendar) ---
-export const INITIAL_SCHEDULE_PLANS: DailySchedule[] = [
-    // Assign Night Shift to 'u3' for tomorrow
-    { 
-        id: 'ds1', 
-        userId: 'u3', 
-        date: new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0], 
-        scheduleId: 'sch3' 
-    }
-];
+export const INITIAL_SCHEDULE_PLANS: DailySchedule[] = [];
 
 export const INITIAL_NOTIFICATIONS: Notification[] = [];
 
@@ -117,7 +109,7 @@ export const MOCK_USERS: User[] = [
     companyId: 'c1',
     departmentId: 'd1',
     email: 'alex.popescu@techgroup.ro',
-    avatarUrl: 'https://picsum.photos/100/100',
+    avatarUrl: 'https://ui-avatars.com/api/?name=Alexandru+Popescu&background=random',
     authType: 'PIN', 
     pin: '1111',
     isValidated: true,
@@ -139,7 +131,7 @@ export const MOCK_USERS: User[] = [
     companyId: 'c1',
     departmentId: 'd1',
     email: 'elena.ionescu@techgroup.ro',
-    avatarUrl: 'https://picsum.photos/101/101',
+    avatarUrl: 'https://ui-avatars.com/api/?name=Elena+Ionescu&background=random',
     authType: 'PIN',
     pin: '1234',
     isValidated: true,
@@ -161,7 +153,7 @@ export const MOCK_USERS: User[] = [
     companyId: 'c2',
     departmentId: 'd3',
     email: 'mihai.radu@logistics.ro',
-    avatarUrl: 'https://picsum.photos/102/102',
+    avatarUrl: 'https://ui-avatars.com/api/?name=Mihai+Radu&background=random',
     authType: 'PIN',
     pin: '0000',
     isValidated: true,
@@ -183,7 +175,7 @@ export const MOCK_USERS: User[] = [
     companyId: 'c1',
     departmentId: 'd2',
     email: 'ioana.hr@techgroup.ro',
-    avatarUrl: 'https://picsum.photos/103/103',
+    avatarUrl: 'https://ui-avatars.com/api/?name=Ioana+HR&background=random',
     authType: 'PIN', 
     pin: '4444',
     isValidated: true,
@@ -204,7 +196,7 @@ export const MOCK_USERS: User[] = [
     roles: [Role.ADMIN, Role.MANAGER],
     companyId: 'c1',
     email: 'admin@techgroup.ro',
-    avatarUrl: 'https://picsum.photos/104/104',
+    avatarUrl: 'https://ui-avatars.com/api/?name=Admin+General&background=random',
     authType: 'PIN', 
     pin: '9999',
     isValidated: true,
@@ -219,44 +211,10 @@ export const MOCK_USERS: User[] = [
   }
 ];
 
-// Initial State Mock
-export const INITIAL_TIMESHEETS: Timesheet[] = [
-  {
-    id: 'ts1',
-    userId: 'u2',
-    startTime: new Date(new Date().setDate(new Date().getDate() - 1)).toISOString(), // Yesterday
-    endTime: new Date(new Date().setDate(new Date().getDate() - 1)).toISOString(),
-    breaks: [],
-    date: new Date(new Date().setDate(new Date().getDate() - 1)).toISOString().split('T')[0],
-    status: ShiftStatus.COMPLETED,
-    matchedOfficeId: 'off1',
-    distanceToOffice: 20,
-    detectedScheduleId: 'sch1',
-    detectedScheduleName: 'Standard (09:00 - 17:00)',
-    logs: [
-      {
-        id: 'log1',
-        changedByUserId: 'u2',
-        changeDate: new Date().toISOString(),
-        details: 'Pontaj inițial creat automat.'
-      }
-    ]
-  }
-];
+// Initial State Mock - CLEARED FOR PRODUCTION/GIT
+export const INITIAL_TIMESHEETS: Timesheet[] = [];
 
-export const INITIAL_LEAVE_REQUESTS: LeaveRequest[] = [
-  {
-    id: 'lr1',
-    userId: 'u2',
-    typeId: 'lc1',
-    typeName: 'Concediu Odihnă',
-    startDate: '2024-06-10',
-    endDate: '2024-06-15',
-    reason: 'Concediu de vară planificat.',
-    status: LeaveStatus.PENDING,
-    createdAt: '2024-05-20T10:00:00.000Z'
-  }
-];
+export const INITIAL_LEAVE_REQUESTS: LeaveRequest[] = [];
 
 export const INITIAL_CORRECTION_REQUESTS: CorrectionRequest[] = [];
 

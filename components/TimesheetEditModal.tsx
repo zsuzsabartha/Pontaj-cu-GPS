@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Timesheet, LeaveConfig } from '../types';
 import { MOCK_SCHEDULES, isDateInLockedPeriod } from '../constants';
-import { X, Clock, AlertCircle, CalendarClock, PlusCircle, Lock, Briefcase, Palmtree } from 'lucide-react';
+import { X, Clock, AlertCircle, CalendarClock, PlusCircle, Lock, Briefcase, Palmtree, Trash2 } from 'lucide-react';
 
 interface TimesheetEditModalProps {
   isOpen: boolean;
@@ -21,6 +21,7 @@ interface TimesheetEditModalProps {
       reason: string, 
       scheduleId?: string 
   }) => void;
+  onDelete?: (id: string) => void; // NEW: Delete callback
 }
 
 // Generate 30-minute intervals (00:00, 00:30, ... 23:30)
@@ -49,7 +50,7 @@ const snapToNearestSlot = (isoString?: string): string => {
     return `${h.toString().padStart(2, '0')}:${roundedM}`;
 };
 
-const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose, timesheet, isManager, lockedDate, leaveConfigs = [], onSave }) => {
+const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose, timesheet, isManager, lockedDate, leaveConfigs = [], onSave, onDelete }) => {
   const [activeTab, setActiveTab] = useState<'WORK' | 'LEAVE'>('WORK');
   const [date, setDate] = useState('');
   
@@ -131,6 +132,12 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
     }
     
     onClose();
+  };
+
+  const handleDelete = () => {
+      if (timesheet && onDelete) {
+          onDelete(timesheet.id);
+      }
   };
 
   const isCreation = !timesheet;
@@ -299,11 +306,21 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
              </div>
           )}
 
-          <div className="pt-2">
+          <div className="pt-2 flex gap-3">
+            {isManager && timesheet && !isLocked && (
+                <button
+                    type="button"
+                    onClick={handleDelete}
+                    className="px-4 py-3 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 font-semibold transition-colors shadow-sm"
+                    title="Șterge Pontaj"
+                >
+                    <Trash2 size={20} />
+                </button>
+            )}
             <button 
               type="submit" 
               disabled={isLocked}
-              className={`w-full text-white font-semibold py-3 rounded-xl transition-all shadow-lg disabled:opacity-50 disabled:grayscale ${isManager ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-orange-500 hover:bg-orange-600 shadow-orange-200'}`}
+              className={`flex-1 text-white font-semibold py-3 rounded-xl transition-all shadow-lg disabled:opacity-50 disabled:grayscale ${isManager ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-orange-500 hover:bg-orange-600 shadow-orange-200'}`}
             >
               {isLocked ? 'Perioadă Închisă' : (isManager ? 'Salvează Modificări' : 'Trimite Solicitarea')}
             </button>
