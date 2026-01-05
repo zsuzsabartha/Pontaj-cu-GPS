@@ -2,47 +2,21 @@
 USE PontajSmart;
 GO
 
--- 1. FIX 'BREAKS' TABLE (Crucial for saving breaks)
-IF EXISTS(SELECT * FROM sys.tables WHERE name = 'breaks')
-BEGIN
-    -- Add type_name if missing (stores the snapshot name of the break)
-    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'breaks') AND name = 'type_name')
-    BEGIN
-        ALTER TABLE breaks ADD type_name NVARCHAR(100);
-        PRINT 'Added column type_name to table breaks.';
-    END
-
-    -- Add manager_note if missing (stores approval/rejection notes)
-    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'breaks') AND name = 'manager_note')
-    BEGIN
-        ALTER TABLE breaks ADD manager_note NVARCHAR(255);
-        PRINT 'Added column manager_note to table breaks.';
-    END
-END
-GO
-
--- 2. FIX 'CORRECTION_REQUESTS' TABLE
-IF EXISTS(SELECT * FROM sys.tables WHERE name = 'correction_requests')
-BEGIN
-    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'correction_requests') AND name = 'requested_end_time')
-    BEGIN
-        ALTER TABLE correction_requests ADD requested_end_time DATETIME2;
-    END
-END
-GO
-
--- 3. FIX 'USERS' TABLE
+-- 7. USERS (birth_date, share_birthday)
 IF EXISTS(SELECT * FROM sys.tables WHERE name = 'users')
 BEGIN
-    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'users') AND name = 'alternative_schedule_ids')
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'users') AND name = 'birth_date')
     BEGIN
-        ALTER TABLE users ADD alternative_schedule_ids NVARCHAR(MAX);
+        ALTER TABLE users ADD birth_date DATE;
+        PRINT 'Added column birth_date to table users.';
     END
-    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'users') AND name = 'main_schedule_id')
+    
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'users') AND name = 'share_birthday')
     BEGIN
-        ALTER TABLE users ADD main_schedule_id NVARCHAR(50);
+        ALTER TABLE users ADD share_birthday BIT DEFAULT 0;
+        PRINT 'Added column share_birthday to table users.';
     END
 END
 GO
 
-PRINT 'Database structure verified.';
+PRINT 'Database structure updated.';
