@@ -26,7 +26,11 @@ const post = async (endpoint: string, body: any) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            console.error(`[SQL Error] POST ${endpoint}:`, errData);
+            throw new Error(`HTTP ${response.status}: ${errData.error || JSON.stringify(errData)}`);
+        }
         return await response.json();
     } catch (error) {
         throw error;
@@ -40,7 +44,11 @@ const put = async (endpoint: string, body: any) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            console.error(`[SQL Error] PUT ${endpoint}:`, errData);
+            throw new Error(`HTTP ${response.status}: ${errData.error || JSON.stringify(errData)}`);
+        }
         return await response.json();
     } catch (error) {
         throw error;

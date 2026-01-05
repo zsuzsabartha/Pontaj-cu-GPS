@@ -291,7 +291,6 @@ const handleConfigSync = async (table, data, mapFn) => {
         for (const item of data) {
             const { query, params } = mapFn(item);
             
-            // 1. Clean existing record to ensure full update (simplistic approach for sync)
             const checkReq = transaction.request();
             checkReq.input('id', params.id);
             const check = await checkReq.query(\`SELECT 1 FROM \${table} WHERE id = @id\`);
@@ -302,9 +301,8 @@ const handleConfigSync = async (table, data, mapFn) => {
                await delReq.query(\`DELETE FROM \${table} WHERE id = @id\`);
             }
 
-            // 2. Insert new record
             const req = transaction.request();
-            Object.entries(params).forEach(([k, v]) => req.input(k, v));
+            Object.entries(params).forEach(([k, v]) => req.input(k, v !== undefined ? v : null)); // SAFE NULL HANDLING
             await req.query(query);
         }
         await transaction.commit();
@@ -341,7 +339,7 @@ app.get('/api/v1/config/departments', asyncHandler(async (req, res) => {
 app.post('/api/v1/config/departments', asyncHandler(async (req, res) => {
     await handleConfigSync('departments', req.body, (d) => ({
         query: 'INSERT INTO departments (id, name, company_id, manager_id, email_notifications) VALUES (@id, @name, @cid, @mid, @en)',
-        params: { id: d.id, name: d.name, cid: d.companyId, mid: d.managerId || null, en: d.emailNotifications ? 1 : 0 }
+        params: { id: d.id, name: d.name, cid: d.companyId, mid: d.managerId, en: d.emailNotifications ? 1 : 0 }
     }));
     res.json({ success: true });
 }));
@@ -381,7 +379,7 @@ app.post('/api/v1/config/users', asyncHandler(async (req, res) => {
         query: \`INSERT INTO users (id, erp_id, company_id, department_id, assigned_office_id, main_schedule_id, name, email, auth_type, roles, contract_hours, is_validated, requires_gps, employment_status) 
                 VALUES (@id, @erpId, @cid, @did, @oid, @sid, @name, @email, @auth, @roles, @hours, @val, @gps, @status)\`,
         params: {
-            id: u.id, erpId: u.erpId || null, cid: u.companyId, did: u.departmentId || null, oid: u.assignedOfficeId || null, sid: u.mainScheduleId || null,
+            id: u.id, erpId: u.erpId, cid: u.companyId, did: u.departmentId, oid: u.assignedOfficeId, sid: u.mainScheduleId,
             name: u.name, email: u.email, auth: u.authType, roles: JSON.stringify(u.roles), hours: u.contractHours, val: u.isValidated?1:0, gps: u.requiresGPS?1:0, status: u.employmentStatus
         }
     }));
@@ -470,13 +468,17 @@ app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
             await transaction.request().input('id', t.id).query('DELETE FROM timesheets WHERE id = @id');
             await transaction.request().input('id', t.id).query('DELETE FROM breaks WHERE timesheet_id = @id');
 
+            const sLat = t.startLocation ? t.startLocation.latitude : null;
+            const sLong = t.startLocation ? t.startLocation.longitude : null;
+
             await transaction.request()
                .input('id', t.id).input('uid', t.userId).input('date', t.date)
                .input('start', t.startTime).input('end', t.endTime || null)
                .input('status', t.status).input('oid', t.matchedOfficeId || null)
                .input('sid', t.detectedScheduleId || null)
-               .query(\`INSERT INTO timesheets (id, user_id, date, start_time, end_time, status, matched_office_id, detected_schedule_id) 
-                       VALUES (@id, @uid, @date, @start, @end, @status, @oid, @sid)\`);
+               .input('slat', sLat).input('slong', sLong)
+               .query(\`INSERT INTO timesheets (id, user_id, date, start_time, end_time, status, matched_office_id, detected_schedule_id, start_lat, start_long) 
+                       VALUES (@id, @uid, @date, @start, @end, @status, @oid, @sid, @slat, @slong)\`);
             
             if (t.breaks) {
                 for (const b of t.breaks) {
@@ -514,7 +516,7 @@ app.get('/api/v1/seed/leaves', asyncHandler(async (req, res) => {
 app.post('/api/v1/seed/leaves', asyncHandler(async (req, res) => {
     await handleConfigSync('leave_requests', req.body, (l) => ({
         query: 'INSERT INTO leave_requests (id, user_id, type_id, start_date, end_date, reason, status, manager_comment) VALUES (@id, @uid, @tid, @start, @end, @reason, @status, @comm)',
-        params: { id: l.id, uid: l.userId, tid: l.typeId, start: l.startDate, end: l.endDate, reason: l.reason, status: l.status, comm: l.managerComment || null }
+        params: { id: l.id, uid: l.userId, tid: l.typeId, start: l.startDate, end: l.endDate, reason: l.reason, status: l.status, comm: l.managerComment }
     }));
     res.json({ success: true });
 }));
@@ -533,10 +535,20 @@ app.get('/api/v1/seed/corrections', asyncHandler(async (req, res) => {
 app.post('/api/v1/seed/corrections', asyncHandler(async (req, res) => {
     await handleConfigSync('correction_requests', req.body, (c) => ({
         query: 'INSERT INTO correction_requests (id, user_id, timesheet_id, requested_date, requested_start_time, requested_end_time, reason, status, manager_note) VALUES (@id, @uid, @tid, @date, @start, @end, @reason, @status, @note)',
-        params: { id: c.id, uid: c.userId, tid: c.timesheetId || null, date: c.requestedDate, start: c.requestedStartTime, end: c.requestedEndTime || null, reason: c.reason, status: c.status, note: c.managerNote || null }
+        params: { id: c.id, uid: c.userId, tid: c.timesheetId, date: c.requestedDate, start: c.requestedStartTime, end: c.requestedEndTime, reason: c.reason, status: c.status, note: c.managerNote }
     }));
     res.json({ success: true });
 }));
+
+/* -------------------- ERROR HANDLER -------------------- */
+
+app.use((err, req, res, _) => {
+  if (err instanceof z.ZodError) {
+    return res.status(400).json({ error: 'Validation Error', details: err.errors });
+  }
+  console.error(err);
+  res.status(500).json({ error: err.message, stack: err.stack });
+});
 
 /* -------------------- SERVER START -------------------- */
 
