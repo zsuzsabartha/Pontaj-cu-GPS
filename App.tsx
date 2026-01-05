@@ -1,19 +1,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  MOCK_USERS, 
-  INITIAL_TIMESHEETS, 
-  INITIAL_LEAVE_REQUESTS, 
-  INITIAL_CORRECTION_REQUESTS,
   INITIAL_BREAK_CONFIGS, 
   INITIAL_LEAVE_CONFIGS,
   INITIAL_WORK_SCHEDULES,
   HOLIDAYS_RO,
-  MOCK_OFFICES,
-  MOCK_COMPANIES,
-  MOCK_DEPARTMENTS,
-  INITIAL_SCHEDULE_PLANS,
-  INITIAL_NOTIFICATIONS,
   getDefaultLockedDate
 } from './constants';
 import { 
@@ -81,17 +72,19 @@ function usePersistedState<T>(key: string, defaultValue: T) {
 
 export default function App() {
   // --- Auth State ---
-  const [users, setUsers] = usePersistedState<User[]>('pontaj_users', MOCK_USERS); 
+  // Default to empty array to prevent auto-injection of mock users
+  const [users, setUsers] = usePersistedState<User[]>('pontaj_users', []); 
   const [currentUser, setCurrentUser] = useState<User | null>(null); 
 
   // --- App Data State (Persisted) ---
-  const [timesheets, setTimesheets] = usePersistedState<Timesheet[]>('pontaj_timesheets', INITIAL_TIMESHEETS);
-  const [leaves, setLeaves] = usePersistedState<LeaveRequest[]>('pontaj_leaves', INITIAL_LEAVE_REQUESTS);
-  const [correctionRequests, setCorrectionRequests] = usePersistedState<CorrectionRequest[]>('pontaj_corrections', INITIAL_CORRECTION_REQUESTS);
-  const [schedulePlans, setSchedulePlans] = usePersistedState<DailySchedule[]>('pontaj_schedules', INITIAL_SCHEDULE_PLANS);
-  const [notifications, setNotifications] = usePersistedState<Notification[]>('pontaj_notifications', INITIAL_NOTIFICATIONS);
+  const [timesheets, setTimesheets] = usePersistedState<Timesheet[]>('pontaj_timesheets', []);
+  const [leaves, setLeaves] = usePersistedState<LeaveRequest[]>('pontaj_leaves', []);
+  const [correctionRequests, setCorrectionRequests] = usePersistedState<CorrectionRequest[]>('pontaj_corrections', []);
+  const [schedulePlans, setSchedulePlans] = usePersistedState<DailySchedule[]>('pontaj_schedules', []);
+  const [notifications, setNotifications] = usePersistedState<Notification[]>('pontaj_notifications', []);
   
   // --- Configuration State (Persisted) ---
+  // Keep config defaults as they are structural, not transactional
   const [breakConfigs, setBreakConfigs] = usePersistedState<BreakConfig[]>('pontaj_break_configs', INITIAL_BREAK_CONFIGS);
   const [leaveConfigs, setLeaveConfigs] = usePersistedState<LeaveConfig[]>('pontaj_leave_configs', INITIAL_LEAVE_CONFIGS);
   const [workSchedules, setWorkSchedules] = usePersistedState<WorkSchedule[]>('pontaj_work_schedules', INITIAL_WORK_SCHEDULES);
@@ -101,9 +94,9 @@ export default function App() {
   const [lockedDate, setLockedDate] = usePersistedState<string>('pontaj_locked_date', getDefaultLockedDate());
 
   // Office & Department Management State (Persisted)
-  const [companies, setCompanies] = usePersistedState<Company[]>('pontaj_companies', MOCK_COMPANIES);
-  const [departments, setDepartments] = usePersistedState<Department[]>('pontaj_departments', MOCK_DEPARTMENTS);
-  const [offices, setOffices] = usePersistedState<Office[]>('pontaj_offices', MOCK_OFFICES);
+  const [companies, setCompanies] = usePersistedState<Company[]>('pontaj_companies', []);
+  const [departments, setDepartments] = usePersistedState<Department[]>('pontaj_departments', []);
+  const [offices, setOffices] = usePersistedState<Office[]>('pontaj_offices', []);
   
   // UI State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'team' | 'leaves' | 'offices' | 'users' | 'nomenclator' | 'backend' | 'calendar' | 'notifications' | 'companies'>('dashboard');
@@ -147,17 +140,17 @@ export default function App() {
                   SQLService.getLeaveRequests()
               ]);
 
-              // Update State
-              if (dbUsers.length > 0) setUsers(dbUsers);
-              if (dbCompanies.length > 0) setCompanies(dbCompanies);
-              if (dbDepts.length > 0) setDepartments(dbDepts);
-              if (dbOffices.length > 0) setOffices(dbOffices);
-              if (dbBreaks.length > 0) setBreakConfigs(dbBreaks);
-              if (dbLeaves.length > 0) setLeaveConfigs(dbLeaves);
-              if (dbHolidays.length > 0) setHolidays(dbHolidays);
-              // Merge Logic for Timesheets? For now, replace if DB has data
-              if (dbTimesheets.length > 0) setTimesheets(dbTimesheets);
-              if (dbLeaveReqs.length > 0) setLeaves(dbLeaveReqs);
+              // Update State - Only overwrite if DB returns data, 
+              // otherwise we might overwrite local work with empty DB if connection is flaky but checkHealth passed
+              if (dbUsers) setUsers(dbUsers);
+              if (dbCompanies) setCompanies(dbCompanies);
+              if (dbDepts) setDepartments(dbDepts);
+              if (dbOffices) setOffices(dbOffices);
+              if (dbBreaks) setBreakConfigs(dbBreaks);
+              if (dbLeaves) setLeaveConfigs(dbLeaves);
+              if (dbHolidays) setHolidays(dbHolidays);
+              if (dbTimesheets) setTimesheets(dbTimesheets);
+              if (dbLeaveReqs) setLeaves(dbLeaveReqs);
 
           } catch (e) {
               console.warn("Working Offline: Could not connect to SQL Bridge.", e);

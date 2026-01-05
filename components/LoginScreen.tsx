@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { User, Role, Company } from '../types';
 import { KeyRound, Lock, User as UserIcon, ArrowLeft, Loader2, Sparkles, MailQuestion, Shield, Users, Briefcase } from 'lucide-react';
@@ -24,21 +25,23 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
     setIsLoading(true);
     // Simulate OAuth Delay
     setTimeout(() => {
-        if (simulateNew) {
-             // Create a random new user
+        if (simulateNew || users.length === 0) {
+             // Create a random new user. If system is empty, create an ADMIN.
+             const isFirstUser = users.length === 0;
              const randomId = Math.floor(Math.random() * 1000);
              const newUser: User = {
                  id: `ms-${Date.now()}`,
-                 name: `New User ${randomId}`,
-                 email: `new.user${randomId}@example.com`,
-                 roles: [Role.EMPLOYEE],
-                 companyId: 'c1', // Default
-                 avatarUrl: `https://ui-avatars.com/api/?name=New+User`,
+                 name: isFirstUser ? 'System Admin' : `New User ${randomId}`,
+                 email: isFirstUser ? 'admin@system.local' : `new.user${randomId}@example.com`,
+                 roles: isFirstUser ? [Role.ADMIN, Role.MANAGER] : [Role.EMPLOYEE],
+                 companyId: companies && companies.length > 0 ? companies[0].id : 'c1', 
+                 avatarUrl: `https://ui-avatars.com/api/?name=${isFirstUser ? 'Sys+Admin' : 'New+User'}`,
                  authType: 'MICROSOFT',
-                 isValidated: false,
+                 isValidated: isFirstUser, // Auto-validate first admin
                  requiresGPS: true,
                  alternativeScheduleIds: ['sch1'], // Default schedule
-                 shareBirthday: false
+                 shareBirthday: false,
+                 employmentStatus: 'ACTIVE'
              };
              onLogin(newUser, true);
         } else {
@@ -89,15 +92,21 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
       setTimeout(() => {
           // Find the best fit user for the requested role
           let targetUser = users.find(u => u.roles.includes(role) && u.isValidated);
-          // Special case for specific mock users to ensure consistent demo experience
-          if (role === Role.ADMIN) targetUser = users.find(u => u.email === 'admin@techgroup.ro');
-          if (role === Role.HR) targetUser = users.find(u => u.email === 'ioana.hr@techgroup.ro');
+          // Special case for specific mock users to ensure consistent demo experience (if they exist)
+          if (role === Role.ADMIN) {
+              const specific = users.find(u => u.email === 'admin@techgroup.ro');
+              if(specific) targetUser = specific;
+          }
+          if (role === Role.HR) {
+              const specific = users.find(u => u.email === 'ioana.hr@techgroup.ro');
+              if(specific) targetUser = specific;
+          }
           
           if (targetUser) {
               onLogin(targetUser);
           } else {
               setIsLoading(false);
-              alert(`Nu s-a găsit un utilizator cu rolul ${role}`);
+              alert(`Nu s-a găsit un utilizator cu rolul ${role}. Dacă baza de date este goală, folosiți butonul de "User Nou (SSO)" pentru a inițializa sistemul.`);
           }
       }, 800);
   }
@@ -135,7 +144,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                                 <path fill="#05a6f0" d="M1 12h10v10H1z"/>
                                 <path fill="#ffba08" d="M12 12h10v10H12z"/>
                             </svg>
-                            Sign in with Microsoft
+                            {users.length === 0 ? 'Initialize System (Admin SSO)' : 'Sign in with Microsoft'}
                         </button>
 
                         <div className="relative flex py-2 items-center">
@@ -146,36 +155,45 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
 
                         <button 
                             onClick={() => setView('pin')}
-                            className="w-full bg-white border border-gray-300 text-gray-700 p-3 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-gray-50 transition-all shadow-sm"
+                            disabled={users.length === 0}
+                            className="w-full bg-white border border-gray-300 text-gray-700 p-3 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-gray-50 transition-all shadow-sm disabled:opacity-50"
                         >
                             <KeyRound size={20} className="text-gray-400"/>
                             Autentificare cu PIN
                         </button>
                         
-                        {/* DEMO SECTION */}
-                        <div className="mt-8 pt-6 border-t border-dashed border-gray-200">
-                             <p className="text-xs font-bold text-gray-400 uppercase text-center mb-3">Acces Rapid (Demo)</p>
-                             <div className="grid grid-cols-2 gap-3">
-                                 <button onClick={() => handleDemoLogin(Role.ADMIN)} className="flex items-center gap-2 p-2 bg-slate-800 text-white rounded-lg text-xs hover:bg-slate-900 transition">
-                                     <Shield size={14} className="text-yellow-400"/> Admin General
-                                 </button>
-                                 <button onClick={() => handleDemoLogin(Role.MANAGER)} className="flex items-center gap-2 p-2 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition">
-                                     <Briefcase size={14}/> Manager
-                                 </button>
-                                 <button onClick={() => handleDemoLogin(Role.HR)} className="flex items-center gap-2 p-2 bg-purple-600 text-white rounded-lg text-xs hover:bg-purple-700 transition">
-                                     <Users size={14}/> HR
-                                 </button>
-                                 <button onClick={() => handleDemoLogin(Role.EMPLOYEE)} className="flex items-center gap-2 p-2 bg-green-600 text-white rounded-lg text-xs hover:bg-green-700 transition">
-                                     <UserIcon size={14}/> Angajat
-                                 </button>
-                             </div>
-                             <button 
-                                onClick={() => handleMicrosoftLogin(true)}
-                                className="w-full mt-3 text-purple-600 text-xs font-medium hover:underline flex items-center justify-center gap-1"
-                             >
-                                <Sparkles size={12}/> Simulează User Nou (SSO)
-                             </button>
-                        </div>
+                        {/* DEMO SECTION - Only show if users exist */}
+                        {users.length > 0 && (
+                            <div className="mt-8 pt-6 border-t border-dashed border-gray-200">
+                                <p className="text-xs font-bold text-gray-400 uppercase text-center mb-3">Acces Rapid (Demo)</p>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button onClick={() => handleDemoLogin(Role.ADMIN)} className="flex items-center gap-2 p-2 bg-slate-800 text-white rounded-lg text-xs hover:bg-slate-900 transition">
+                                        <Shield size={14} className="text-yellow-400"/> Admin General
+                                    </button>
+                                    <button onClick={() => handleDemoLogin(Role.MANAGER)} className="flex items-center gap-2 p-2 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition">
+                                        <Briefcase size={14}/> Manager
+                                    </button>
+                                    <button onClick={() => handleDemoLogin(Role.HR)} className="flex items-center gap-2 p-2 bg-purple-600 text-white rounded-lg text-xs hover:bg-purple-700 transition">
+                                        <Users size={14}/> HR
+                                    </button>
+                                    <button onClick={() => handleDemoLogin(Role.EMPLOYEE)} className="flex items-center gap-2 p-2 bg-green-600 text-white rounded-lg text-xs hover:bg-green-700 transition">
+                                        <UserIcon size={14}/> Angajat
+                                    </button>
+                                </div>
+                                <button 
+                                    onClick={() => handleMicrosoftLogin(true)}
+                                    className="w-full mt-3 text-purple-600 text-xs font-medium hover:underline flex items-center justify-center gap-1"
+                                >
+                                    <Sparkles size={12}/> Simulează User Nou (SSO)
+                                </button>
+                            </div>
+                        )}
+                        
+                        {users.length === 0 && (
+                            <div className="mt-4 text-center">
+                                <p className="text-xs text-orange-500 font-bold bg-orange-50 p-2 rounded">Sistemul nu are utilizatori. Folosiți butonul "Microsoft" de mai sus pentru a crea primul cont de Administrator.</p>
+                            </div>
+                        )}
                     </>
                 )}
             </div>
@@ -242,9 +260,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                     {isLoading ? <Loader2 className="animate-spin"/> : 'Accesează Contul'}
                 </button>
                 
-                <div className="text-center mt-4">
-                     <p className="text-xs text-gray-400">Pentru demo, PIN-urile sunt: Elena (1234), Mihai (0000)</p>
-                </div>
+                {users.length > 0 && (
+                    <div className="text-center mt-4">
+                        <p className="text-xs text-gray-400">Pentru demo, PIN-urile sunt: Elena (1234), Mihai (0000)</p>
+                    </div>
+                )}
             </form>
         )}
 
