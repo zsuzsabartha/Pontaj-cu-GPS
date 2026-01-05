@@ -40,7 +40,8 @@ const LeaveCalendarReport: React.FC<LeaveCalendarReportProps> = ({ users, leaves
 
       return leaves.filter(l => {
           // Check if dateStr is within range [startDate, endDate]
-          return dateStr >= l.startDate && dateStr <= l.endDate && l.status !== LeaveStatus.REJECTED;
+          // Filter out Rejected AND Cancelled
+          return dateStr >= l.startDate && dateStr <= l.endDate && l.status !== LeaveStatus.REJECTED && l.status !== LeaveStatus.CANCELLED;
       }).map(l => {
           const user = users.find(u => u.id === l.userId);
           const config = leaveConfigs.find(c => c.id === l.typeId);

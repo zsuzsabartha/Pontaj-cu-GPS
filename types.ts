@@ -23,7 +23,8 @@ export enum BreakStatus {
 export enum LeaveStatus {
   PENDING = 'Pending',
   APPROVED = 'Approved',
-  REJECTED = 'Rejected'
+  REJECTED = 'Rejected',
+  CANCELLED = 'Cancelled'
 }
 
 // --- NEW DYNAMIC CONFIGURATIONS ---
@@ -172,6 +173,7 @@ export interface LeaveRequest {
   reason: string;
   status: LeaveStatus;
   managerComment?: string;
+  cancellationReason?: string; // Reason why user cancelled an approved leave
   createdAt?: string; // ISO String - When requested
   approvedAt?: string; // ISO String - When approved
 }

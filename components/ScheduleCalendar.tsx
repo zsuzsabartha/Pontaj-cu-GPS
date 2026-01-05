@@ -91,9 +91,16 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
       const schedule = getScheduleForDay(day);
       const holiday = getHolidayForDay(day);
       const timesheet = getTimesheetForDay(day);
-      const leave = getLeaveForDay(day);
+      const rawLeave = getLeaveForDay(day);
       
-      const isToday = new Date().toDateString() === new Date(year, month, day).toDateString();
+      const dayDate = new Date(year, month, day);
+      const dayOfWeek = dayDate.getDay();
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // 0=Sun, 6=Sat
+      const isToday = new Date().toDateString() === dayDate.toDateString();
+      
+      // LOGIC FIX: Do not visually render Leave block if it is a Weekend or Holiday
+      // This solves the issue where a leave request spanning 08.01-13.01 shows up on Sat/Sun.
+      const leave = (isWeekend || holiday) ? null : rawLeave;
       
       // Calculate total break time
       let totalBreakMinutes = 0;

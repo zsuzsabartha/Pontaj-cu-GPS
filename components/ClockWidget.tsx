@@ -29,7 +29,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showMockOption, setShowMockOption] = useState(false);
   
-  // Timer State - Using simple state update via interval
+  // Timer State
   const [currentTime, setCurrentTime] = useState(Date.now());
   
   const [showBreakSelector, setShowBreakSelector] = useState(false);
@@ -64,18 +64,22 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
 
   // --- Robust Timer Logic (setInterval) ---
   useEffect(() => {
+    let intervalId: number | undefined;
+
     // Only run timer if working or on break
     if (currentStatus === ShiftStatus.WORKING || currentStatus === ShiftStatus.ON_BREAK) {
-        // Immediate update
+        // Immediate update to sync UI
         setCurrentTime(Date.now());
         
-        const intervalId = setInterval(() => {
+        intervalId = window.setInterval(() => {
             setCurrentTime(Date.now());
         }, 1000);
-
-        return () => clearInterval(intervalId);
     }
-  }, [currentStatus]); // Depend only on status to start/stop
+
+    return () => {
+        if (intervalId) clearInterval(intervalId);
+    };
+  }, [currentStatus, shiftStartTime]); // Added shiftStartTime dependency to reset if start changes
 
   // --- Calculation Logic (Derived State) ---
   const calculateTimers = () => {
@@ -86,36 +90,39 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
       const start = new Date(shiftStartTime).getTime();
       if (isNaN(start)) return { elapsed: "00:00:00", breakTimer: "00:00:00" };
 
+      // Ensure accumulatedBreakTime is safe
+      const safeAccumulatedBreak = isNaN(accumulatedBreakTime) ? 0 : accumulatedBreakTime;
+
       // Total duration from Shift Start to Now
-      // Using 'currentTime' ensures we update with state changes
       let grossDuration = Math.max(0, currentTime - start);
 
       let netWorkMs = 0;
       let currentBreakMs = 0;
 
       if (currentStatus === ShiftStatus.ON_BREAK && activeBreakStartTime) {
-          // If on break, work time is frozen at the moment break started
           const breakStart = new Date(activeBreakStartTime).getTime();
           if (!isNaN(breakStart)) {
               // Net Work = (BreakStart - ShiftStart) - PreviousBreaks
-              netWorkMs = (breakStart - start) - accumulatedBreakTime;
+              netWorkMs = (breakStart - start) - safeAccumulatedBreak;
               // Break Timer = Now - BreakStart
               currentBreakMs = Math.max(0, currentTime - breakStart);
           } else {
-              // Fallback
-              netWorkMs = grossDuration - accumulatedBreakTime;
+              // Fallback if break start is invalid
+              netWorkMs = grossDuration - safeAccumulatedBreak;
           }
       } else {
           // If Working or Completed
           // Net Work = (Now - ShiftStart) - TotalBreaks
-          netWorkMs = grossDuration - accumulatedBreakTime;
+          netWorkMs = grossDuration - safeAccumulatedBreak;
           currentBreakMs = 0;
       }
 
       // Safety clamps
       if (netWorkMs < 0) netWorkMs = 0;
+      if (isNaN(netWorkMs)) netWorkMs = 0;
       
       const formatMs = (ms: number) => {
+          if (isNaN(ms)) return "00:00:00";
           const h = Math.floor(ms / 3600000);
           const m = Math.floor((ms % 3600000) / 60000);
           const s = Math.floor((ms % 60000) / 1000);

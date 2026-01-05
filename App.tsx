@@ -56,7 +56,7 @@ import ScheduleCalendar from './components/ScheduleCalendar';
 import CompanyManagement from './components/CompanyManagement';
 import ManagerDashboard from './components/ManagerDashboard'; // IMPORT NEW COMPONENT
 import LeaveCalendarReport from './components/LeaveCalendarReport';
-import { Users, FileText, Settings, LogOut, CheckCircle, XCircle, BarChart3, CloudLightning, Building, Clock, UserCog, Lock, AlertOctagon, Wifi, WifiOff, Database, AlertCircle, Server, CalendarRange, Bell, PlusCircle, ShieldCheck, Filter, Briefcase, Calendar, ChevronRight, RefreshCw, Clock4, Coffee, LayoutList, CheckSquare, Plane, Stethoscope, Palmtree, ChevronLeft, MapPin } from 'lucide-react';
+import { Users, FileText, Settings, LogOut, CheckCircle, XCircle, BarChart3, CloudLightning, Building, Clock, UserCog, Lock, AlertOctagon, Wifi, WifiOff, Database, AlertCircle, Server, CalendarRange, Bell, PlusCircle, ShieldCheck, Filter, Briefcase, Calendar, ChevronRight, RefreshCw, Clock4, Coffee, LayoutList, CheckSquare, Plane, Stethoscope, Palmtree, ChevronLeft, MapPin, Slash } from 'lucide-react';
 import { generateWorkSummary } from './services/geminiService';
 import { saveOfflineAction, getOfflineActions, clearOfflineActions } from './services/offlineService';
 
@@ -124,10 +124,10 @@ export default function App() {
   // Edit Timesheet State
   const [editModalData, setEditModalData] = useState<{isOpen: boolean, timesheet: Timesheet | null}>({isOpen: false, timesheet: null});
   
-  // Rejection Modal State
+  // Rejection/Cancellation Modal State
   const [rejectionModal, setRejectionModal] = useState<{
     isOpen: boolean;
-    type: 'LEAVE' | 'CORRECTION' | 'BREAK' | null;
+    type: 'LEAVE' | 'CORRECTION' | 'BREAK' | 'LEAVE_CANCEL' | null; // Added LEAVE_CANCEL
     itemId: string | null;
     parentId?: string; // For breaks (timesheetId)
   }>({ isOpen: false, type: null, itemId: null });
@@ -150,7 +150,8 @@ export default function App() {
           if (b.endTime && b.startTime) {
               const start = new Date(b.startTime).getTime();
               const end = new Date(b.endTime).getTime();
-              if (!isNaN(start) && !isNaN(end)) {
+              // FIX: Ensure calculation returns a valid number >= 0
+              if (!isNaN(start) && !isNaN(end) && end > start) {
                   accumulatedPauseMs += (end - start);
               }
           } else if (b.startTime && !b.endTime) {
@@ -199,9 +200,33 @@ export default function App() {
 
   const handleLogout = () => { setCurrentUser(null); };
 
-  // ... (Action handlers kept same) ...
-  const initiateRejection = (type: 'LEAVE' | 'CORRECTION' | 'BREAK', itemId: string, parentId?: string) => { setRejectionModal({ isOpen: true, type, itemId, parentId }); };
-  const handleConfirmRejection = async (reason: string) => { /* ... */ setRejectionModal({ isOpen: false, type: null, itemId: null }); };
+  // ... (Action handlers) ...
+  const initiateRejection = (type: 'LEAVE' | 'CORRECTION' | 'BREAK' | 'LEAVE_CANCEL', itemId: string, parentId?: string) => { setRejectionModal({ isOpen: true, type, itemId, parentId }); };
+  
+  const handleConfirmRejection = async (reason: string) => {
+      if (rejectionModal.type === 'LEAVE_CANCEL' && rejectionModal.itemId) {
+          // Handle User Cancellation
+          setLeaves(prev => prev.map(l => l.id === rejectionModal.itemId ? { 
+              ...l, 
+              status: LeaveStatus.CANCELLED, 
+              cancellationReason: reason 
+          } : l));
+      } else if (rejectionModal.type === 'LEAVE' && rejectionModal.itemId) {
+          // Handle Manager Rejection
+          setLeaves(prev => prev.map(l => l.id === rejectionModal.itemId ? { ...l, status: LeaveStatus.REJECTED, managerComment: reason } : l));
+      } else if (rejectionModal.type === 'CORRECTION' && rejectionModal.itemId) {
+          // Handle Correction Rejection
+          setCorrectionRequests(prev => prev.map(c => c.id === rejectionModal.itemId ? { ...c, status: 'REJECTED', managerNote: reason } : c));
+      } else if (rejectionModal.type === 'BREAK' && rejectionModal.itemId && rejectionModal.parentId) {
+          // Handle Break Rejection
+          setTimesheets(prev => prev.map(ts => ts.id !== rejectionModal.parentId ? ts : { 
+              ...ts, breaks: ts.breaks.map(b => b.id === rejectionModal.itemId ? { ...b, status: BreakStatus.REJECTED, managerNote: reason } : b) 
+          }));
+      }
+      
+      setRejectionModal({ isOpen: false, type: null, itemId: null }); 
+  };
+
   const handleValidateUser = (userId: string) => { /* ... */ };
   const handleCreateUser = (newUser: User) => { setUsers(prev => [...prev, { ...newUser, employmentStatus: 'ACTIVE' }]); };
   const handleUpdateUser = (updatedUser: User) => { /* ... */ };
@@ -290,7 +315,7 @@ export default function App() {
   const myLeaves = leaves.filter(l => l.userId === currentUser.id).sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
   const myTimesheets = timesheets.filter(t => t.userId === currentUser.id);
   const myNotifications = notifications.filter(n => n.userId === currentUser.id && !n.isRead);
-  const activeLeaveRequest = leaves.find(l => l.userId === currentUser.id && l.startDate <= new Date().toISOString().split('T')[0] && l.endDate >= new Date().toISOString().split('T')[0]);
+  const activeLeaveRequest = leaves.find(l => l.userId === currentUser.id && l.startDate <= new Date().toISOString().split('T')[0] && l.endDate >= new Date().toISOString().split('T')[0] && l.status !== LeaveStatus.CANCELLED && l.status !== LeaveStatus.REJECTED);
   
   const getTabClass = (tabName: string) => {
     return activeTab === tabName 
@@ -476,50 +501,77 @@ export default function App() {
                             <p>Nu ai nicio cerere de concediu înregistrată.</p>
                         </div>
                     ) : (
-                        myLeaves.map(leave => (
-                            <div key={leave.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between md:items-center gap-4 hover:shadow-md transition">
-                                <div className="flex items-start gap-4">
-                                    <div className={`p-3 rounded-full shrink-0 ${
-                                        leave.status === LeaveStatus.APPROVED ? 'bg-green-100 text-green-600' :
-                                        leave.status === LeaveStatus.REJECTED ? 'bg-red-100 text-red-600' :
-                                        'bg-yellow-100 text-yellow-600'
-                                    }`}>
-                                        {leave.status === LeaveStatus.APPROVED ? <CheckCircle size={24}/> :
-                                         leave.status === LeaveStatus.REJECTED ? <XCircle size={24}/> :
-                                         <Clock size={24}/>}
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-gray-800 text-lg leading-tight">{leave.typeName}</h3>
-                                        <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
-                                            <CalendarRange size={16}/>
-                                            <span>
-                                                {new Date(leave.startDate).toLocaleDateString('ro-RO')} - {new Date(leave.endDate).toLocaleDateString('ro-RO')}
-                                            </span>
+                        myLeaves.map(leave => {
+                            const isApproved = leave.status === LeaveStatus.APPROVED;
+                            const isCancelled = leave.status === LeaveStatus.CANCELLED;
+                            // Check if endDate is in future or today
+                            const isFuture = new Date(leave.endDate) >= new Date(new Date().setHours(0,0,0,0));
+                            
+                            return (
+                                <div key={leave.id} className={`bg-white p-4 rounded-xl shadow-sm border flex flex-col md:flex-row justify-between md:items-center gap-4 hover:shadow-md transition ${isCancelled ? 'border-gray-200 opacity-75' : 'border-gray-200'}`}>
+                                    <div className="flex items-start gap-4">
+                                        <div className={`p-3 rounded-full shrink-0 ${
+                                            isApproved ? 'bg-green-100 text-green-600' :
+                                            leave.status === LeaveStatus.REJECTED ? 'bg-red-100 text-red-600' :
+                                            isCancelled ? 'bg-gray-200 text-gray-600' :
+                                            'bg-yellow-100 text-yellow-600'
+                                        }`}>
+                                            {isApproved ? <CheckCircle size={24}/> :
+                                             leave.status === LeaveStatus.REJECTED ? <XCircle size={24}/> :
+                                             isCancelled ? <Slash size={24}/> :
+                                             <Clock size={24}/>}
                                         </div>
-                                        {leave.reason && (
-                                            <p className="text-xs text-gray-500 mt-2 bg-gray-50 p-2 rounded italic">
-                                                "{leave.reason}"
-                                            </p>
-                                        )}
-                                        {leave.managerComment && (
-                                            <p className="text-xs text-red-600 mt-2 bg-red-50 p-2 rounded font-medium border border-red-100">
-                                                <span className="font-bold">Notă Manager:</span> {leave.managerComment}
-                                            </p>
+                                        <div>
+                                            <h3 className={`font-bold text-lg leading-tight ${isCancelled ? 'text-gray-500 line-through' : 'text-gray-800'}`}>{leave.typeName}</h3>
+                                            <div className="flex items-center gap-2 text-sm text-gray-500 mt-1">
+                                                <CalendarRange size={16}/>
+                                                <span>
+                                                    {new Date(leave.startDate).toLocaleDateString('ro-RO')} - {new Date(leave.endDate).toLocaleDateString('ro-RO')}
+                                                </span>
+                                            </div>
+                                            {leave.reason && !isCancelled && (
+                                                <p className="text-xs text-gray-500 mt-2 bg-gray-50 p-2 rounded italic">
+                                                    "{leave.reason}"
+                                                </p>
+                                            )}
+                                            {isCancelled && leave.cancellationReason && (
+                                                <p className="text-xs text-gray-600 mt-2 bg-gray-100 p-2 rounded border border-gray-200">
+                                                    <span className="font-bold">Motiv Anulare:</span> "{leave.cancellationReason}"
+                                                </p>
+                                            )}
+                                            {leave.managerComment && (
+                                                <p className="text-xs text-red-600 mt-2 bg-red-50 p-2 rounded font-medium border border-red-100">
+                                                    <span className="font-bold">Notă Manager:</span> {leave.managerComment}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-2 md:self-center self-start">
+                                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${
+                                            isApproved ? 'bg-green-50 text-green-700 border-green-200' :
+                                            leave.status === LeaveStatus.REJECTED ? 'bg-red-50 text-red-700 border-red-200' :
+                                            isCancelled ? 'bg-gray-100 text-gray-600 border-gray-300' :
+                                            'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                        }`}>
+                                            {leave.status === LeaveStatus.PENDING ? 'În Așteptare' : 
+                                             isApproved ? 'Aprobat' : 
+                                             isCancelled ? 'Anulat' : 'Respins'}
+                                        </span>
+                                        
+                                        {/* "Give Up" Button */}
+                                        {isApproved && isFuture && (
+                                            <button 
+                                                onClick={() => initiateRejection('LEAVE_CANCEL', leave.id)}
+                                                className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition border border-transparent hover:border-red-100 flex items-center gap-1"
+                                                title="Renunță la acest concediu"
+                                            >
+                                                <XCircle size={12}/> Anulează
+                                            </button>
                                         )}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2 md:self-center self-start">
-                                    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border ${
-                                        leave.status === LeaveStatus.APPROVED ? 'bg-green-50 text-green-700 border-green-200' :
-                                        leave.status === LeaveStatus.REJECTED ? 'bg-red-50 text-red-700 border-red-200' :
-                                        'bg-yellow-50 text-yellow-700 border-yellow-200'
-                                    }`}>
-                                        {leave.status === LeaveStatus.PENDING ? 'În Așteptare' : 
-                                         leave.status === LeaveStatus.APPROVED ? 'Aprobat' : 'Respins'}
-                                    </span>
-                                </div>
-                            </div>
-                        ))
+                            );
+                        })
                     )}
                 </div>
             </div>
@@ -543,7 +595,12 @@ export default function App() {
         leaveConfigs={leaveConfigs}
         onSave={handleTimesheetSave} 
       />
-      <RejectionModal isOpen={rejectionModal.isOpen} onClose={() => setRejectionModal({ ...rejectionModal, isOpen: false })} onSubmit={handleConfirmRejection} />
+      <RejectionModal 
+        isOpen={rejectionModal.isOpen} 
+        onClose={() => setRejectionModal({ ...rejectionModal, isOpen: false })} 
+        onSubmit={handleConfirmRejection} 
+        title={rejectionModal.type === 'LEAVE_CANCEL' ? 'Motiv Anulare Concediu' : 'Motiv Respingere'}
+      />
     </div>
   );
 }
