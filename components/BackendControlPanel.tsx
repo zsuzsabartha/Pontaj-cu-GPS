@@ -138,7 +138,7 @@ const BackendControlPanel: React.FC = () => {
   };
 
   const handleFactoryReset = () => {
-      if(confirm("FACTORY RESET: Această acțiune va șterge TOATE datele locale.")) {
+      if(confirm("FACTORY RESET: Această acțiune va șterge TOATE datele locale din browser. Dacă nu aveți o copie pe SQL Server, datele se vor pierde.")) {
           localStorage.clear();
           window.location.reload();
       }
@@ -394,6 +394,14 @@ app.listen(PORT, () => console.log('Server running on 3001'));
                             </button>
                         </div>
                         {testResult && <p className={`text-xs mt-2 ${testResult.type === 'error' ? 'text-red-400' : 'text-green-400'}`}>{testResult.message}</p>}
+                    </div>
+
+                    <div className="bg-red-900/20 p-4 rounded border border-red-900/50">
+                        <h3 className="text-red-400 font-bold mb-2 flex items-center gap-2"><AlertTriangle size={16}/> Danger Zone</h3>
+                         <button onClick={handleFactoryReset} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded text-xs flex items-center gap-2 font-bold transition shadow-lg shadow-red-900/50">
+                            <Trash2 size={14}/> Factory Reset (Clear LocalStorage)
+                        </button>
+                        <p className="text-[10px] text-red-300 mt-2">Șterge toate datele din browser. Util dacă datele locale sunt corupte.</p>
                     </div>
                  </div>
              </div>
