@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Timesheet, ShiftStatus, BreakStatus, Office, User, BreakConfig } from '../types';
-import { MapPin, CheckSquare, Edit2, AlertCircle, CloudOff, Info, User as UserIcon, Robot, Clock } from 'lucide-react';
+import { MapPin, CheckSquare, Edit2, AlertCircle, CloudOff, Info, User as UserIcon, Robot, Clock, UserCog } from 'lucide-react';
 import SmartTable, { Column } from './SmartTable';
 
 interface TimesheetListProps {
@@ -165,6 +165,8 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
         filterable: true,
         render: (ts: Timesheet) => {
             const isSyncing = ts.syncStatus === 'PENDING_SYNC';
+            const isManagerModified = ts.logs?.some(l => l.changedByUserId !== ts.userId && l.changedByUserId !== 'system');
+
             return (
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
@@ -182,6 +184,11 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
                         </span>
                     )}
                     {ts.isHoliday && <span className="text-[9px] bg-purple-100 text-purple-700 px-1 rounded w-fit">Sărbătoare</span>}
+                    {isManagerModified && (
+                        <span className="text-[9px] bg-orange-100 text-orange-800 px-1 rounded flex items-center gap-1 w-fit border border-orange-200" title="Modificat de un superior">
+                            <UserCog size={10}/> MODIFICAT
+                        </span>
+                    )}
                 </div>
             )
         }

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, User as UserIcon, Utensils, Cigarette, Home, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff, History } from 'lucide-react';
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
 import { ShiftStatus, Coordinates, Office, User, BreakConfig, Holiday, LeaveRequest, LeaveStatus } from '../types';
@@ -29,9 +29,8 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showMockOption, setShowMockOption] = useState(false);
   
-  // Timer State
+  // Timer State - Initialize with current time
   const [now, setNow] = useState<number>(Date.now());
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const [showBreakSelector, setShowBreakSelector] = useState(false);
   const [confirmData, setConfirmData] = useState<{ coords: Coordinates, office: Office, distance: number } | null>(null);
@@ -64,29 +63,18 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
     : null;
 
   // --- Robust Timer Logic ---
+  // Run interval ALWAYS when mounted. This prevents issues where status changes might not trigger restart correctly,
+  // or where the timer stops if props are refreshed.
   useEffect(() => {
-    // Clear any existing timer
-    if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-    }
-
-    if (currentStatus === ShiftStatus.WORKING || currentStatus === ShiftStatus.ON_BREAK) {
-      // Sync immediately
+    // Update 'now' immediately on mount to sync
+    setNow(Date.now());
+    
+    const intervalId = setInterval(() => {
       setNow(Date.now());
-      // Start interval
-      timerRef.current = setInterval(() => {
-        setNow(Date.now());
-      }, 1000);
-    }
+    }, 1000);
 
-    return () => {
-      if (timerRef.current) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
-      }
-    };
-  }, [currentStatus]);
+    return () => clearInterval(intervalId);
+  }, []);
 
   // --- Calculation Logic (Derived State) ---
   const calculateTimers = () => {

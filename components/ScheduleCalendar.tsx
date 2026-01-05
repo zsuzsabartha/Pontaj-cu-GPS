@@ -1,20 +1,22 @@
 
 import React, { useState } from 'react';
-import { DailySchedule, WorkSchedule, User, Role, Holiday } from '../types';
+import { DailySchedule, WorkSchedule, User, Role, Holiday, Timesheet, LeaveRequest, LeaveStatus } from '../types';
 import { isDateInLockedPeriod } from '../constants';
-import { ChevronLeft, ChevronRight, CalendarClock, Moon, Sun, Clock, PartyPopper, X, Check, Trash2, Edit, ShieldCheck, Lock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CalendarClock, Moon, Sun, Clock, PartyPopper, X, Check, Trash2, Edit, ShieldCheck, Lock, Briefcase, Palmtree, Coffee } from 'lucide-react';
 
 interface ScheduleCalendarProps {
   currentUser: User;
   users: User[]; // All users (for Manager to select)
   schedules: DailySchedule[];
   holidays: Holiday[];
+  timesheets: Timesheet[]; // History data
+  leaves: LeaveRequest[]; // Leave data
   lockedDate: string; // Passed from App state
   workSchedules: WorkSchedule[]; // New Prop
   onAssignSchedule: (userId: string, date: string, scheduleId: string) => void;
 }
 
-const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users, schedules, holidays, lockedDate, workSchedules, onAssignSchedule }) => {
+const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users, schedules, holidays, timesheets, leaves, lockedDate, workSchedules, onAssignSchedule }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedUser, setSelectedUser] = useState<string>(currentUser.id);
   const [selectionModal, setSelectionModal] = useState<{ isOpen: boolean, dateStr: string, day: number } | null>(null);
@@ -65,6 +67,16 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
       return null;
   };
 
+  const getTimesheetForDay = (day: number) => {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      return timesheets.find(t => t.userId === selectedUser && t.date === dateStr);
+  };
+
+  const getLeaveForDay = (day: number) => {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      return leaves.find(l => l.userId === selectedUser && l.startDate <= dateStr && l.endDate >= dateStr && l.status === LeaveStatus.APPROVED);
+  };
+
   const teamUsers = isManager ? users.filter(u => u.companyId === currentUser.companyId) : [currentUser];
   const targetUserObj = users.find(u => u.id === selectedUser);
 
@@ -72,19 +84,33 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
   const days = [];
   // Empty slots for days before 1st
   for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="h-28 bg-gray-50/50 border border-gray-100"></div>);
+      days.push(<div key={`empty-${i}`} className="h-32 bg-gray-50/50 border border-gray-100"></div>);
   }
   // Days
   for (let day = 1; day <= daysInMonth; day++) {
       const schedule = getScheduleForDay(day);
       const holiday = getHolidayForDay(day);
+      const timesheet = getTimesheetForDay(day);
+      const leave = getLeaveForDay(day);
+      
       const isToday = new Date().toDateString() === new Date(year, month, day).toDateString();
       
+      // Calculate total break time
+      let totalBreakMinutes = 0;
+      if (timesheet) {
+          timesheet.breaks.forEach(b => {
+              if (b.endTime && b.startTime) {
+                  const diff = new Date(b.endTime).getTime() - new Date(b.startTime).getTime();
+                  totalBreakMinutes += diff / 60000;
+              }
+          });
+      }
+
       days.push(
           <div 
             key={day} 
             onClick={() => handleDayClick(day)}
-            className={`h-28 border p-2 relative transition group flex flex-col ${
+            className={`h-32 border p-1.5 relative transition group flex flex-col justify-between ${
                 isManager ? 'hover:bg-blue-50 cursor-pointer' : 'cursor-default'
             } ${
                 holiday 
@@ -92,30 +118,58 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
                   : (isToday ? 'bg-blue-50/30 border-blue-200' : 'bg-white border-gray-100')
             }`}
           >
+              {/* Header: Day & Holiday Icon */}
               <div className="flex justify-between items-start mb-1">
-                  <span className={`text-sm font-semibold ${isToday ? 'text-blue-600' : (holiday ? 'text-red-600' : 'text-gray-700')}`}>{day}</span>
+                  <span className={`text-sm font-bold ${isToday ? 'text-blue-600' : (holiday ? 'text-red-600' : 'text-gray-700')}`}>{day}</span>
                   {holiday && <PartyPopper size={14} className="text-red-500 animate-pulse" />}
+                  {isManager && (
+                      <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Edit size={14} className="text-gray-400 hover:text-blue-600"/>
+                      </div>
+                  )}
               </div>
 
-              {holiday && (
-                  <div className="text-[10px] text-red-800 font-bold leading-tight bg-white/80 p-1.5 rounded border border-red-100 mb-1 shadow-sm text-center">
-                      {holiday.name}
-                  </div>
-              )}
+              {/* SECTION 1: Events (Holiday / Leave) */}
+              <div className="flex flex-col gap-1 mb-1">
+                  {holiday && (
+                      <div className="text-[9px] text-red-800 font-bold bg-white/80 px-1 py-0.5 rounded border border-red-100 shadow-sm truncate text-center" title={holiday.name}>
+                          {holiday.name}
+                      </div>
+                  )}
+                  {leave && (
+                      <div className="text-[9px] bg-purple-100 text-purple-800 font-bold px-1 py-0.5 rounded border border-purple-200 flex items-center justify-center gap-1" title={leave.typeName}>
+                          <Palmtree size={8}/> {leave.typeName}
+                      </div>
+                  )}
+              </div>
 
-              {schedule ? (
-                  <div className={`p-1 rounded text-[10px] border flex flex-col gap-0.5 items-center mt-1 w-full ${schedule.crossesMidnight ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-green-100 text-green-800 border-green-200'}`}>
-                      {schedule.crossesMidnight ? <Moon size={10}/> : <Sun size={10}/>}
-                      <span className="font-bold truncate w-full text-center">{schedule.name.split(' ')[0]}</span>
-                      <span>{schedule.startTime}-{schedule.endTime}</span>
-                  </div>
-              ) : (
-                  !holiday && <div className="mt-2 text-[10px] text-gray-300 text-center italic">Standard</div>
-              )}
+              {/* SECTION 2: Planned Schedule */}
+              <div className="flex-1">
+                  {schedule ? (
+                      <div className={`p-0.5 rounded text-[9px] border flex items-center justify-center gap-1 mb-1 ${schedule.crossesMidnight ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                          {schedule.crossesMidnight ? <Moon size={8}/> : <Sun size={8}/>}
+                          <span className="font-mono">{schedule.startTime}-{schedule.endTime}</span>
+                      </div>
+                  ) : (
+                      !holiday && !leave && <div className="text-[9px] text-gray-300 text-center italic mt-1">-</div>
+                  )}
+              </div>
 
-              {isManager && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white/80 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[1px]">
-                      <Edit size={20} className="text-blue-600"/>
+              {/* SECTION 3: Actual History (Timesheet) */}
+              {timesheet && (
+                  <div className="mt-auto pt-1 border-t border-gray-100">
+                      <div className="flex justify-between items-center bg-green-50 px-1 py-0.5 rounded border border-green-100 mb-0.5">
+                          <span className="text-[9px] text-green-800 font-mono font-bold">
+                              {new Date(timesheet.startTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 
+                              - 
+                              {timesheet.endTime ? new Date(timesheet.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '...'}
+                          </span>
+                      </div>
+                      {totalBreakMinutes > 0 && (
+                          <div className="flex items-center gap-1 text-[9px] text-orange-600 pl-1">
+                              <Coffee size={8}/> <span>{Math.round(totalBreakMinutes)}m</span>
+                          </div>
+                      )}
                   </div>
               )}
           </div>
@@ -136,34 +190,38 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
                 </h2>
             </div>
 
-            {isManager && (
-                <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">Planificare pentru:</span>
-                    <select 
-                        value={selectedUser} 
-                        onChange={(e) => setSelectedUser(e.target.value)}
-                        className="border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                    >
-                        {teamUsers.map(u => (
-                            <option key={u.id} value={u.id}>{u.name}</option>
-                        ))}
-                    </select>
-                </div>
-            )}
+            <div className="flex items-center gap-2">
+                {isManager && (
+                    <>
+                        <span className="text-sm text-gray-500">Planificare pentru:</span>
+                        <select 
+                            value={selectedUser} 
+                            onChange={(e) => setSelectedUser(e.target.value)}
+                            className="border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                        >
+                            {teamUsers.map(u => (
+                                <option key={u.id} value={u.id}>{u.name}</option>
+                            ))}
+                        </select>
+                    </>
+                )}
+            </div>
         </div>
 
         {/* Legend */}
-        <div className="bg-gray-50 px-4 py-2 text-xs flex gap-4 text-gray-500 flex-wrap">
+        <div className="bg-gray-50 px-4 py-2 text-xs flex gap-4 text-gray-500 flex-wrap border-b border-gray-200">
              <div className="flex items-center gap-1">
-                 <span className="w-2 h-2 rounded-full bg-red-500"></span> Sărbătoare Legală
+                 <span className="w-2 h-2 rounded-full bg-red-500"></span> Sărbătoare
              </div>
              <div className="flex items-center gap-1">
-                 <span className="w-2 h-2 rounded-full bg-indigo-500"></span> Tură Noapte
+                 <span className="w-2 h-2 rounded-full bg-purple-500"></span> Concediu
              </div>
              <div className="flex items-center gap-1">
-                 <span className="w-2 h-2 rounded-full bg-green-500"></span> Tură Standard
+                 <span className="w-2 h-2 rounded-full bg-green-500"></span> Prezență (Pontaj)
              </div>
-             {isManager && <span className="ml-auto text-blue-600 font-medium">Administrator Mode Activ</span>}
+             <div className="flex items-center gap-1">
+                 <span className="w-2 h-2 rounded-full bg-gray-400"></span> Program Planificat
+             </div>
         </div>
 
         {/* Calendar Grid */}

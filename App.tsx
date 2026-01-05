@@ -117,6 +117,7 @@ export default function App() {
   
   // Navigation State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'team' | 'leaves' | 'offices' | 'users' | 'nomenclator' | 'backend' | 'calendar' | 'notifications' | 'companies'>('dashboard');
+  const [dashboardView, setDashboardView] = useState<'clock' | 'history'>('clock'); // NEW: Split dashboard view
   const [isLeaveModalOpen, setLeaveModalOpen] = useState(false);
   
   // Edit Timesheet State
@@ -497,6 +498,12 @@ export default function App() {
                       detectedScheduleId: data.scheduleId || t.detectedScheduleId, 
                       detectedScheduleName: scheduleName 
                   } : t));
+
+                  // NOTIFY EMPLOYEE IF MODIFIED BY MANAGER
+                  if (targetTs.userId !== currentUser.id) {
+                      addNotification(targetTs.userId, "Actualizare Pontaj", `Pontajul tău pentru data ${data.date} a fost modificat de ${currentUser.name}. Motiv: ${data.reason}`, "INFO");
+                  }
+
               } else {
                   // Create New
                   const newTs: Timesheet = { 
@@ -684,15 +691,69 @@ export default function App() {
 
       <main className="flex-1 p-4 md:p-8 overflow-y-auto">
         {activeTab === 'dashboard' && (
-            <div className="max-w-4xl mx-auto space-y-8">
-                <ClockWidget user={currentUser} companyName={userCompany?.name} offices={offices} breakConfigs={breakConfigs} holidays={holidays} activeLeaveRequest={activeLeaveRequest} shiftStartTime={currentShift?.startTime} accumulatedBreakTime={shiftStats.accumulatedPauseMs} activeBreakStartTime={shiftStats.activeBreakStart} currentStatus={currentShift?.status || ShiftStatus.NOT_STARTED} onClockIn={handleClockIn} onClockOut={handleClockOut} onToggleBreak={handleToggleBreak} />
-                <div className="flex justify-between items-end"><h2 className="text-lg font-bold text-gray-800">Istoric & Acțiuni</h2><button onClick={() => openTimesheetModal(null)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm"><PlusCircle size={16} className="inline mr-2"/>Solicită Pontaj</button></div>
-                <TimesheetList timesheets={myTimesheets} offices={offices} users={users} breakConfigs={breakConfigs} onEditTimesheet={openTimesheetModal} isManagerView={false} />
+            <div className="max-w-4xl mx-auto space-y-6">
+                {/* Mobile-friendly Tab Switcher for Dashboard */}
+                <div className="bg-white p-1 rounded-xl shadow-sm border border-gray-200 flex mb-4">
+                    <button
+                        onClick={() => setDashboardView('clock')}
+                        className={`flex-1 py-2.5 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${
+                            dashboardView === 'clock'
+                                ? 'bg-blue-600 text-white shadow-md'
+                                : 'text-gray-500 hover:bg-gray-50'
+                        }`}
+                    >
+                        <Clock size={18} />
+                        <span className="hidden sm:inline">Pontaj</span>
+                        <span className="sm:hidden">Ceas</span>
+                    </button>
+                    <button
+                        onClick={() => setDashboardView('history')}
+                        className={`flex-1 py-2.5 text-sm font-bold rounded-lg flex items-center justify-center gap-2 transition-all ${
+                            dashboardView === 'history'
+                                ? 'bg-blue-600 text-white shadow-md'
+                                : 'text-gray-500 hover:bg-gray-50'
+                        }`}
+                    >
+                        <LayoutList size={18} />
+                        Istoric <span className="hidden sm:inline">& Acțiuni</span>
+                    </button>
+                </div>
+
+                {dashboardView === 'clock' && (
+                     <ClockWidget user={currentUser} companyName={userCompany?.name} offices={offices} breakConfigs={breakConfigs} holidays={holidays} activeLeaveRequest={activeLeaveRequest} shiftStartTime={currentShift?.startTime} accumulatedBreakTime={shiftStats.accumulatedPauseMs} activeBreakStartTime={shiftStats.activeBreakStart} currentStatus={currentShift?.status || ShiftStatus.NOT_STARTED} onClockIn={handleClockIn} onClockOut={handleClockOut} onToggleBreak={handleToggleBreak} />
+                )}
+
+                {dashboardView === 'history' && (
+                     <div className="animate-in fade-in slide-in-from-right-4 space-y-4">
+                        <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                            <div>
+                                <h2 className="text-lg font-bold text-gray-800">Activitate Recentă</h2>
+                                <p className="text-xs text-gray-500">Vizualizare și gestionare pontaje</p>
+                            </div>
+                            <button onClick={() => openTimesheetModal(null)} className="bg-blue-600 text-white p-2 sm:px-4 sm:py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-blue-700 transition shadow-blue-100 shadow-lg">
+                                <PlusCircle size={18}/> <span className="hidden sm:inline">Solicită Pontaj</span>
+                            </button>
+                        </div>
+                        <TimesheetList timesheets={myTimesheets} offices={offices} users={users} breakConfigs={breakConfigs} onEditTimesheet={openTimesheetModal} isManagerView={false} />
+                    </div>
+                )}
             </div>
         )}
 
         {/* ... Calendar & Leaves Tabs Identical to previous ... */}
-        {activeTab === 'calendar' && <ScheduleCalendar currentUser={currentUser} users={users} schedules={schedulePlans} holidays={holidays} lockedDate={lockedDate} workSchedules={workSchedules} onAssignSchedule={handleAssignSchedule}/>}
+        {activeTab === 'calendar' && 
+            <ScheduleCalendar 
+                currentUser={currentUser} 
+                users={users} 
+                schedules={schedulePlans} 
+                holidays={holidays}
+                timesheets={timesheets} // PASS TIMESHEETS
+                leaves={leaves} // PASS LEAVES
+                lockedDate={lockedDate} 
+                workSchedules={workSchedules} 
+                onAssignSchedule={handleAssignSchedule}
+            />
+        }
         {activeTab === 'leaves' && <div className="max-w-4xl mx-auto">Concedii placeholder... (Use existing code)</div>}
 
         {/* MANAGER DASHBOARD */}
