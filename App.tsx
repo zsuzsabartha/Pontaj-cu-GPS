@@ -137,39 +137,52 @@ export default function App() {
   const syncData = async () => {
       setIsSyncing(true);
       try {
+          // 1. Check Health - If this fails, we are definitely offline
           await SQLService.checkHealth();
           setIsOnline(true);
           console.log("SQL Bridge Connected. Fetching data...");
 
+          // 2. Safe Fetch Wrapper
+          // If a specific endpoint fails (e.g. 404 because server.js isn't updated), 
+          // we catch it here so the whole app doesn't go offline.
+          const safeFetch = async <T,>(promise: Promise<T>, fallback: T, label: string): Promise<T> => {
+              try {
+                  return await promise;
+              } catch (e: any) {
+                  console.warn(`Fetch failed for ${label}:`, e.message);
+                  return fallback;
+              }
+          };
+
           const [
               dbUsers, dbCompanies, dbDepts, dbOffices, dbBreaks, dbLeaves, dbHolidays, dbSchedules, dbTimesheets, dbLeaveReqs, dbCorrections
           ] = await Promise.all([
-              SQLService.getUsers(),
-              SQLService.getCompanies(),
-              SQLService.getDepartments(),
-              SQLService.getOffices(),
-              SQLService.getBreaks(),
-              SQLService.getLeaves(),
-              SQLService.getHolidays(),
-              SQLService.getWorkSchedules(),
-              SQLService.getTimesheets(),
-              SQLService.getLeaveRequests(),
-              SQLService.getCorrectionRequests()
+              safeFetch(SQLService.getUsers(), [], 'Users'),
+              safeFetch(SQLService.getCompanies(), [], 'Companies'),
+              safeFetch(SQLService.getDepartments(), [], 'Departments'),
+              safeFetch(SQLService.getOffices(), [], 'Offices'),
+              safeFetch(SQLService.getBreaks(), [], 'Breaks'),
+              safeFetch(SQLService.getLeaves(), [], 'LeaveConfigs'),
+              safeFetch(SQLService.getHolidays(), [], 'Holidays'),
+              safeFetch(SQLService.getWorkSchedules(), [], 'Schedules'),
+              safeFetch(SQLService.getTimesheets(), [], 'Timesheets'),
+              safeFetch(SQLService.getLeaveRequests(), [], 'LeaveRequests'),
+              safeFetch(SQLService.getCorrectionRequests(), [], 'CorrectionRequests')
           ]);
 
-          if (dbUsers && dbUsers.length > 0) setUsers(dbUsers);
-          if (dbCompanies && dbCompanies.length > 0) setCompanies(dbCompanies);
-          if (dbDepts && dbDepts.length > 0) setDepartments(dbDepts);
-          if (dbOffices && dbOffices.length > 0) setOffices(dbOffices);
+          if (dbUsers.length > 0) setUsers(dbUsers);
+          if (dbCompanies.length > 0) setCompanies(dbCompanies);
+          if (dbDepts.length > 0) setDepartments(dbDepts);
+          if (dbOffices.length > 0) setOffices(dbOffices);
 
-          if (Array.isArray(dbBreaks) && dbBreaks.length > 0) setBreakConfigs(dbBreaks);
-          if (Array.isArray(dbLeaves) && dbLeaves.length > 0) setLeaveConfigs(dbLeaves);
-          if (Array.isArray(dbHolidays) && dbHolidays.length > 0) setHolidays(dbHolidays);
-          if (Array.isArray(dbSchedules) && dbSchedules.length > 0) setWorkSchedules(dbSchedules);
+          if (dbBreaks.length > 0) setBreakConfigs(dbBreaks);
+          if (dbLeaves.length > 0) setLeaveConfigs(dbLeaves);
+          if (dbHolidays.length > 0) setHolidays(dbHolidays);
+          if (dbSchedules.length > 0) setWorkSchedules(dbSchedules);
           
-          if (Array.isArray(dbTimesheets) && dbTimesheets.length > 0) setTimesheets(dbTimesheets);
-          if (Array.isArray(dbLeaveReqs) && dbLeaveReqs.length > 0) setLeaves(dbLeaveReqs);
-          if (Array.isArray(dbCorrections) && dbCorrections.length > 0) setCorrectionRequests(dbCorrections);
+          if (dbTimesheets.length > 0) setTimesheets(dbTimesheets);
+          if (dbLeaveReqs.length > 0) setLeaves(dbLeaveReqs);
+          if (dbCorrections.length > 0) setCorrectionRequests(dbCorrections);
 
       } catch (e) {
           console.warn("Working Offline: Could not connect to SQL Bridge.", e);
@@ -191,7 +204,7 @@ export default function App() {
         try {
             await SQLService.checkHealth();
             console.log("Auto-reconnect success!");
-            setIsOnline(true);
+            // setIsOnline(true) is handled inside syncData
             syncData();
         } catch (e) {}
     }, 5000);
