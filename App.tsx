@@ -142,7 +142,7 @@ export default function App() {
           console.log("SQL Bridge Connected. Fetching data...");
 
           const [
-              dbUsers, dbCompanies, dbDepts, dbOffices, dbBreaks, dbLeaves, dbHolidays, dbTimesheets, dbLeaveReqs, dbCorrections
+              dbUsers, dbCompanies, dbDepts, dbOffices, dbBreaks, dbLeaves, dbHolidays, dbSchedules, dbTimesheets, dbLeaveReqs, dbCorrections
           ] = await Promise.all([
               SQLService.getUsers(),
               SQLService.getCompanies(),
@@ -151,6 +151,7 @@ export default function App() {
               SQLService.getBreaks(),
               SQLService.getLeaves(),
               SQLService.getHolidays(),
+              SQLService.getWorkSchedules(),
               SQLService.getTimesheets(),
               SQLService.getLeaveRequests(),
               SQLService.getCorrectionRequests()
@@ -164,6 +165,7 @@ export default function App() {
           if (Array.isArray(dbBreaks) && dbBreaks.length > 0) setBreakConfigs(dbBreaks);
           if (Array.isArray(dbLeaves) && dbLeaves.length > 0) setLeaveConfigs(dbLeaves);
           if (Array.isArray(dbHolidays) && dbHolidays.length > 0) setHolidays(dbHolidays);
+          if (Array.isArray(dbSchedules) && dbSchedules.length > 0) setWorkSchedules(dbSchedules);
           
           if (Array.isArray(dbTimesheets) && dbTimesheets.length > 0) setTimesheets(dbTimesheets);
           if (Array.isArray(dbLeaveReqs) && dbLeaveReqs.length > 0) setLeaves(dbLeaveReqs);

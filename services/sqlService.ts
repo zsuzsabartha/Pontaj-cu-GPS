@@ -64,6 +64,7 @@ export const SQLService = {
     getBreaks: () => get('/config/breaks'),
     getLeaves: () => get('/config/leaves'),
     getHolidays: () => get('/config/holidays'),
+    getWorkSchedules: () => get('/config/schedules'),
     getTimesheets: () => get('/seed/timesheets'), 
     getLeaveRequests: () => get('/seed/leaves'),
     getCorrectionRequests: () => get('/seed/corrections'),

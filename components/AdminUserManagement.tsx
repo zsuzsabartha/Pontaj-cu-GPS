@@ -133,51 +133,64 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
       document.body.removeChild(a);
   };
 
-  const generateMockData2025 = () => {
+  const generateMockData2025 = async () => {
       if (!onBulkImport) return;
       if (!confirm("Generare date 2025? (Această acțiune va popula interfața și va pregăti scriptul SQL)")) return;
 
       setIsGenerating(true);
-      setTimeout(async () => {
-          const generatedTimesheets: Timesheet[] = [];
-          const generatedLeaves: LeaveRequest[] = [];
-          const generatedCorrections: CorrectionRequest[] = [];
+      
+      // Wait a moment to allow UI to update to "Loading" state
+      await new Promise(resolve => setTimeout(resolve, 100));
 
-          const year = 2025;
-          const startDate = new Date(year, 0, 1);
-          const endDate = new Date(year, 11, 31);
+      const generatedTimesheets: Timesheet[] = [];
+      const generatedLeaves: LeaveRequest[] = [];
+      const generatedCorrections: CorrectionRequest[] = [];
 
-          const coConfig = INITIAL_LEAVE_CONFIGS.find(lc => lc.code === 'CO');
-          const cmConfig = INITIAL_LEAVE_CONFIGS.find(lc => lc.code === 'CM');
-          const delConfig = INITIAL_LEAVE_CONFIGS.find(lc => lc.code === 'DEL-T');
+      const year = 2025;
+      const coConfig = INITIAL_LEAVE_CONFIGS.find(lc => lc.code === 'CO');
+      const cmConfig = INITIAL_LEAVE_CONFIGS.find(lc => lc.code === 'CM');
+      const delConfig = INITIAL_LEAVE_CONFIGS.find(lc => lc.code === 'DEL-T');
 
-          const userLeavePlans: Record<string, string[]> = {}; 
+      const userLeavePlans: Record<string, string[]> = {}; 
 
-          users.forEach(user => {
-              userLeavePlans[user.id] = [];
-              let daysAllocated = 0;
-              // 1. Summer Block
-              const summerMonth = Math.random() > 0.5 ? 6 : 7; 
-              const summerStartDay = Math.floor(Math.random() * 15) + 1;
-              for (let i = 0; i < 10; i++) {
-                  const d = new Date(year, summerMonth, summerStartDay + i);
-                  if (d.getDay() !== 0 && d.getDay() !== 6) { 
-                      userLeavePlans[user.id].push(d.toISOString().split('T')[0]);
-                      daysAllocated++;
-                  }
+      users.forEach(user => {
+          userLeavePlans[user.id] = [];
+          let daysAllocated = 0;
+          // 1. Summer Block
+          const summerMonth = Math.random() > 0.5 ? 6 : 7; 
+          const summerStartDay = Math.floor(Math.random() * 15) + 1;
+          for (let i = 0; i < 10; i++) {
+              const d = new Date(year, summerMonth, summerStartDay + i);
+              // Safe date string construction
+              const safeDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+              if (d.getDay() !== 0 && d.getDay() !== 6) { 
+                  userLeavePlans[user.id].push(safeDate);
+                  daysAllocated++;
               }
-              // 2. Winter Block
-              const winterStartDay = 20; 
-              for (let i = 0; i < 7; i++) { 
-                  const d = new Date(year, 11, winterStartDay + i);
-                  if (d.getDay() !== 0 && d.getDay() !== 6 && daysAllocated < 21) {
-                      userLeavePlans[user.id].push(d.toISOString().split('T')[0]);
-                  }
+          }
+          // 2. Winter Block
+          const winterStartDay = 20; 
+          for (let i = 0; i < 7; i++) { 
+              const d = new Date(year, 11, winterStartDay + i);
+              const safeDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+              if (d.getDay() !== 0 && d.getDay() !== 6 && daysAllocated < 21) {
+                  userLeavePlans[user.id].push(safeDate);
               }
-          });
+          }
+      });
 
-          for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-              const dateStr = d.toISOString().split('T')[0];
+      // Loop through months instead of one giant loop to prevent UI blocking
+      for (let m = 0; m < 12; m++) {
+          // Yield to event loop to prevent "Violation: Handler took Xms"
+          await new Promise(resolve => setTimeout(resolve, 0));
+
+          const daysInMonth = new Date(year, m + 1, 0).getDate();
+          
+          for (let day = 1; day <= daysInMonth; day++) {
+              const d = new Date(year, m, day);
+              // CRITICAL FIX: Use manual string construction to avoid UTC timezone shifts
+              const dateStr = `${year}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              
               const dayOfWeek = d.getDay();
               const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
               const isHoliday = HOLIDAYS_RO.some(h => h.date === dateStr);
@@ -255,14 +268,14 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                   }
               });
           }
+      }
 
-          // 1. Update Local State
-          onBulkImport(generatedTimesheets, generatedLeaves, generatedCorrections);
-          setGeneratedData({ timesheets: generatedTimesheets, leaves: generatedLeaves, corrections: generatedCorrections });
+      // 1. Update Local State
+      onBulkImport(generatedTimesheets, generatedLeaves, generatedCorrections);
+      setGeneratedData({ timesheets: generatedTimesheets, leaves: generatedLeaves, corrections: generatedCorrections });
 
-          alert(`Generare Completă!\n\nTimesheets: ${generatedTimesheets.length}\nConcedii: ${generatedLeaves.length}\n\nAcum puteți descărca scriptul SQL.`);
-          setIsGenerating(false);
-      }, 1000);
+      alert(`Generare Completă!\n\nTimesheets: ${generatedTimesheets.length}\nConcedii: ${generatedLeaves.length}\n\nAcum puteți descărca scriptul SQL.`);
+      setIsGenerating(false);
   };
 
   const userColumns: Column<User>[] = [
