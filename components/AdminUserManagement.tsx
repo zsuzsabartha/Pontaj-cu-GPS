@@ -100,6 +100,16 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
       setEditingUser({ ...editingUser, alternativeScheduleIds: newAlts });
   };
 
+  // Toggle helper for create form
+  const toggleAltScheduleCreate = (scheduleId: string) => {
+      const currentAlts = newUser.alternativeScheduleIds || [];
+      const exists = currentAlts.includes(scheduleId);
+      const newAlts = exists 
+          ? currentAlts.filter(id => id !== scheduleId)
+          : [...currentAlts, scheduleId];
+      setNewUser({ ...newUser, alternativeScheduleIds: newAlts });
+  };
+
   const generateSQL2025 = () => {
       if (!generatedData) return;
       const { timesheets, leaves } = generatedData;
@@ -490,6 +500,54 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                      </label>
                 </div>
              </div>
+
+             {/* Row 4: Alternative Schedules & Roles (ADDED TO MATCH EDIT FORM) */}
+             <div className="col-span-full mt-4 border-t border-gray-100 pt-3">
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-1"><CalendarClock size={12}/> Programe Alternative / Secundare</label>
+                <div className="flex flex-wrap gap-2">
+                    {workSchedules.map(sch => {
+                        const isMain = newUser.mainScheduleId === sch.id;
+                        const isSelected = (newUser.alternativeScheduleIds || []).includes(sch.id);
+                        return (
+                            <button
+                                key={sch.id}
+                                type="button" 
+                                disabled={isMain}
+                                onClick={() => toggleAltScheduleCreate(sch.id)}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                                    isMain ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' :
+                                    isSelected ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' :
+                                    'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                }`}
+                            >
+                                {sch.name} {isMain && '(Principal)'}
+                            </button>
+                        )
+                    })}
+                </div>
+            </div>
+
+            <div className="mt-4">
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Roluri & Permisiuni</label>
+                <div className="flex gap-4 flex-wrap bg-blue-50 p-3 rounded-lg border border-blue-100">
+                    {Object.values(Role).map(role => (
+                        <label key={role} className="flex items-center gap-2 cursor-pointer">
+                            <input 
+                            type="checkbox" 
+                            checked={newUser.roles.includes(role)}
+                            onChange={() => {
+                                const newRoles = newUser.roles.includes(role)
+                                    ? newUser.roles.filter(r => r !== role)
+                                    : [...newUser.roles, role];
+                                setNewUser({...newUser, roles: newRoles});
+                            }}
+                            className="w-4 h-4 text-blue-600 rounded"
+                            />
+                            <span className="text-sm font-medium">{role}</span>
+                        </label>
+                    ))}
+                </div>
+            </div>
 
              <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-100 flex items-center justify-center gap-2 mt-4">
                  <UserPlus size={20}/> Creează Cont Angajat
