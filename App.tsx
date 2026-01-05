@@ -52,8 +52,9 @@ import ScheduleCalendar from './components/ScheduleCalendar';
 import CompanyManagement from './components/CompanyManagement';
 import ManagerDashboard from './components/ManagerDashboard';
 import LeaveCalendarReport from './components/LeaveCalendarReport';
-import { Users, Settings, LogOut, CheckCircle, XCircle, Building, Clock, UserCog, Database, Server, CalendarRange, Bell, PlusCircle, Briefcase, LayoutList, Palmtree, Slash, Menu, X } from 'lucide-react';
+import { Users, Settings, LogOut, CheckCircle, XCircle, Building, Clock, UserCog, Database, Server, CalendarRange, Bell, PlusCircle, Briefcase, LayoutList, Palmtree, Slash, Menu, X, Wifi, WifiOff } from 'lucide-react';
 import { findNearestOffice } from './services/geoService';
+import { SQLService } from './services/sqlService';
 
 // --- CUSTOM HOOK FOR PERSISTENCE ---
 function usePersistedState<T>(key: string, defaultValue: T) {
@@ -109,6 +110,7 @@ export default function App() {
   const [dashboardView, setDashboardView] = useState<'clock' | 'history'>('clock');
   const [isLeaveModalOpen, setLeaveModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(false);
   
   // Edit Timesheet State
   const [editModalData, setEditModalData] = useState<{isOpen: boolean, timesheet: Timesheet | null}>({isOpen: false, timesheet: null});
@@ -121,6 +123,51 @@ export default function App() {
     parentId?: string;
   }>({ isOpen: false, type: null, itemId: null });
 
+  // --- SQL DATA SYNC ---
+  useEffect(() => {
+      const syncData = async () => {
+          try {
+              // Check connection
+              await SQLService.checkHealth();
+              setIsOnline(true);
+              console.log("SQL Bridge Connected. Fetching data...");
+
+              // Parallel Fetch
+              const [
+                  dbUsers, dbCompanies, dbDepts, dbOffices, dbBreaks, dbLeaves, dbHolidays, dbTimesheets, dbLeaveReqs
+              ] = await Promise.all([
+                  SQLService.getUsers(),
+                  SQLService.getCompanies(),
+                  SQLService.getDepartments(),
+                  SQLService.getOffices(),
+                  SQLService.getBreaks(),
+                  SQLService.getLeaves(),
+                  SQLService.getHolidays(),
+                  SQLService.getTimesheets(),
+                  SQLService.getLeaveRequests()
+              ]);
+
+              // Update State
+              if (dbUsers.length > 0) setUsers(dbUsers);
+              if (dbCompanies.length > 0) setCompanies(dbCompanies);
+              if (dbDepts.length > 0) setDepartments(dbDepts);
+              if (dbOffices.length > 0) setOffices(dbOffices);
+              if (dbBreaks.length > 0) setBreakConfigs(dbBreaks);
+              if (dbLeaves.length > 0) setLeaveConfigs(dbLeaves);
+              if (dbHolidays.length > 0) setHolidays(dbHolidays);
+              // Merge Logic for Timesheets? For now, replace if DB has data
+              if (dbTimesheets.length > 0) setTimesheets(dbTimesheets);
+              if (dbLeaveReqs.length > 0) setLeaves(dbLeaveReqs);
+
+          } catch (e) {
+              console.warn("Working Offline: Could not connect to SQL Bridge.", e);
+              setIsOnline(false);
+          }
+      };
+
+      syncData();
+  }, []);
+
   // --- Derived State for Active Shift ---
   const currentShift = useMemo(() => {
       if (!currentUser) return null;
@@ -129,7 +176,7 @@ export default function App() {
         .filter(t => 
             t.userId === currentUser.id && 
             t.status !== ShiftStatus.COMPLETED &&
-            t.startTime <= now // Fix: Ignore future shifts from generator
+            t.startTime <= now 
         )
         .sort((a,b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())[0] || null;
   }, [currentUser, timesheets]);
@@ -178,7 +225,6 @@ export default function App() {
   
   const handleConfirmRejection = async (reason: string) => {
       if (rejectionModal.type === 'LEAVE_CANCEL' && rejectionModal.itemId) {
-          // --- NOTIFICATION LOGIC FOR MANAGER ---
           const targetLeave = leaves.find(l => l.id === rejectionModal.itemId);
           if (currentUser && targetLeave) {
               const userDept = departments.find(d => d.id === currentUser.departmentId);
@@ -227,29 +273,24 @@ export default function App() {
 
   const handleTimesheetSave = async (data: any) => { 
       if (data.type === 'WORK') {
-          // Logic for editing work timesheet (Manager) or creating correction (User)
           if(data.tsId) {
              setTimesheets(prev => prev.map(ts => ts.id === data.tsId ? { ...ts, date: data.date, startTime: data.start, endTime: data.end, detectedScheduleId: data.scheduleId } : ts));
           } else {
-             // New
              const newTs: Timesheet = {
                  id: `ts-${Date.now()}`, userId: currentUser!.id, date: data.date, startTime: data.start, endTime: data.end, status: ShiftStatus.COMPLETED, breaks: []
              };
              setTimesheets(prev => [...prev, newTs]);
           }
       } else {
-          // Leave creation logic
           handleLeaveSubmit({
               typeId: data.leaveTypeId,
               typeName: leaveConfigs.find(lc => lc.id === data.leaveTypeId)?.name || 'Manual',
               startDate: data.date,
               endDate: data.date,
               reason: data.reason,
-              // If manager is creating it, auto-approve
               status: hasRole(Role.MANAGER) || hasRole(Role.ADMIN) ? LeaveStatus.APPROVED : LeaveStatus.PENDING
           });
 
-          // NEW: If converting existing timesheet to leave, delete the timesheet
           if (data.tsId) {
               setTimesheets(prev => prev.filter(t => t.id !== data.tsId));
           }
@@ -269,14 +310,12 @@ export default function App() {
       }
   };
 
-  // --- BULK IMPORT HANDLER (For Generator) ---
   const handleBulkDataImport = (newTimesheets: Timesheet[], newLeaves: LeaveRequest[], newCorrections: CorrectionRequest[]) => {
       setTimesheets(prev => [...prev, ...newTimesheets]);
       setLeaves(prev => [...prev, ...newLeaves]);
       setCorrectionRequests(prev => [...prev, ...newCorrections]);
   };
 
-  // --- CLOCK HANDLERS ---
   const handleClockIn = async (loc: Coordinates, off: Office | null, dist: number) => {
       if (!currentUser) return;
       const today = new Date().toISOString().split('T')[0];
@@ -332,7 +371,6 @@ export default function App() {
       setLeaves(prev => [newLeave, ...prev]);
   };
 
-  // --- RENDER ---
   if (!currentUser) return <LoginScreen users={users} companies={companies} onLogin={handleLogin} />;
   
   const hasRole = (r: Role) => currentUser.roles.includes(r);
@@ -352,7 +390,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-gray-50 text-gray-800 font-sans">
-      {/* SIDEBAR */}
       <aside className={`fixed inset-y-0 left-0 bg-white border-r border-gray-200 z-30 transform transition-transform md:translate-x-0 w-64 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -382,6 +419,12 @@ export default function App() {
                     <p className="text-sm font-bold text-gray-900 truncate">{currentUser.name}</p>
                     <p className="text-xs text-gray-500 truncate capitalize">{currentUser.roles.map(r => r.toLowerCase()).join(', ')}</p>
                 </div>
+            </div>
+            <div className="flex justify-between items-center text-xs text-gray-400 mb-2">
+                <span className="flex items-center gap-1">
+                    {isOnline ? <Wifi size={10} className="text-green-500"/> : <WifiOff size={10} className="text-red-500"/>}
+                    {isOnline ? 'Connected' : 'Offline Mode'}
+                </span>
             </div>
             <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 py-2 rounded-lg transition">
                 <LogOut size={16}/> Deconectare
@@ -482,7 +525,6 @@ export default function App() {
                     {myLeaves.map(leave => {
                         const isApproved = leave.status === LeaveStatus.APPROVED;
                         const isCancelled = leave.status === LeaveStatus.CANCELLED;
-                        // RESTORED: Rule for cancellation (only if not started/consumed)
                         const notConsumed = new Date(leave.startDate) >= new Date(new Date().setHours(0,0,0,0));
                         
                         return (
