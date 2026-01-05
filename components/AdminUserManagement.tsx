@@ -112,6 +112,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
       // 4. Timesheets
       sql += `-- 4. PONTAJE 2025 (${timesheets.length} înregistrări)\n`;
       timesheets.forEach(t => {
+          // SQL Server prefers YYYY-MM-DD HH:MM:SS for strings implicitly cast to datetime2
           const start = t.startTime.replace('T', ' ').substring(0, 19);
           const end = t.endTime ? `'${t.endTime.replace('T', ' ').substring(0, 19)}'` : 'NULL';
           const schedId = t.detectedScheduleId ? `'${t.detectedScheduleId}'` : 'NULL';

@@ -329,23 +329,31 @@ app.post('/api/v1/seed/timesheets', async (req, res) => {
         await truncateTable(pool, 'breaks');
         await truncateTable(pool, 'timesheets');
         
-        // This is a simplified loop. In production use Bulk Insert.
         for (const ts of timesheets) {
             await pool.request()
-                .input('id', ts.id).input('uid', ts.userId).input('st', ts.startTime).input('et', ts.endTime).input('d', ts.date)
-                .input('stat', ts.status).input('off', ts.matchedOfficeId)
-                .query(\`INSERT INTO timesheets (id, user_id, start_time, end_time, date, status, matched_office_id) VALUES (@id, @uid, @st, @et, @d, @stat, @off)\`);
+                .input('id', ts.id)
+                .input('uid', ts.userId)
+                .input('st', ts.startTime)
+                .input('et', ts.endTime || null)
+                .input('d', ts.date)
+                .input('stat', ts.status)
+                .input('off', ts.matchedOfficeId || null)
+                .input('dsid', ts.detectedScheduleId || null)
+                .input('lat', ts.startLocation ? ts.startLocation.latitude : null)
+                .input('long', ts.startLocation ? ts.startLocation.longitude : null)
+                .query(\`INSERT INTO timesheets (id, user_id, start_time, end_time, date, status, matched_office_id, detected_schedule_id, start_lat, start_long) 
+                        VALUES (@id, @uid, @st, @et, @d, @stat, @off, @dsid, @lat, @long)\`);
             
             if (ts.breaks) {
                 for (const b of ts.breaks) {
                     await pool.request()
-                        .input('id', b.id).input('tid', ts.id).input('ty', b.typeId).input('st', b.startTime).input('et', b.endTime).input('stat', b.status)
+                        .input('id', b.id).input('tid', ts.id).input('ty', b.typeId).input('st', b.startTime).input('et', b.endTime || null).input('stat', b.status)
                         .query(\`INSERT INTO breaks (id, timesheet_id, type_id, start_time, end_time, status) VALUES (@id, @tid, @ty, @st, @et, @stat)\`);
                 }
             }
         }
         res.json({success: true});
-    } catch(e) { res.status(500).json({error: e.message}); }
+    } catch(e) { console.error(e); res.status(500).json({error: e.message}); }
 });
 
 // Specific Seed for Leaves
