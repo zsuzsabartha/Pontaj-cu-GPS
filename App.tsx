@@ -329,8 +329,14 @@ export default function App() {
       try {
           await SQLService.upsertUser(newUser);
           await fetchAllData(); 
-      } catch (e) {
-          alert("Eroare la crearea utilizatorului.");
+      } catch (e: any) {
+          console.error("Create User Error:", e);
+          if (e.message && (e.message.includes('FOREIGN KEY') || e.message.includes('constraint'))) {
+              alert("Eroare de consistență date (Foreign Key Constraint). Datele din aplicație par învechite. Se reîncarcă datele de pe server...");
+              await fetchAllData();
+          } else {
+              alert(`Eroare la crearea utilizatorului: ${e.message}`);
+          }
       } finally {
           setIsGlobalLoading(false);
       }

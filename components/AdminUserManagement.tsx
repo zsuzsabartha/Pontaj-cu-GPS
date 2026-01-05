@@ -64,30 +64,58 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Manual Validation for select fields
-    if (!newUser.departmentId) {
-        alert("Vă rugăm să selectați un departament.");
-        return;
-    }
-    if (!newUser.mainScheduleId) {
-        alert("Vă rugăm să selectați un program de lucru principal.");
+    // Auto-assign defaults for hidden fields
+    const defaultCompanyId = newUser.companyId || companies[0]?.id;
+    
+    // Validate Company Existence to prevent FK error
+    if (!companies.find(c => c.id === defaultCompanyId)) {
+        alert("Eroare: Nu există companii definite în sistem. Vă rugăm să creați o companie înainte de a adăuga utilizatori.");
         return;
     }
 
+    const defaultDept = departments.find(d => d.companyId === defaultCompanyId);
+    const defaultSchedule = workSchedules[0];
+
+    // Explicitly set undefined if dept is missing so SQL receives NULL (valid if nullable)
+    // rather than a potentially stale ID or empty string
+    const safeDeptId = defaultDept ? defaultDept.id : undefined;
+
     const user: User = {
       id: `u-${Date.now()}`,
-      erpId: newUser.erpId, name: newUser.name, email: newUser.email, companyId: newUser.companyId, departmentId: newUser.departmentId,
-      assignedOfficeId: newUser.assignedOfficeId || undefined, contractHours: newUser.contractHours, roles: newUser.roles,
-      authType: 'PIN', pin: Math.floor(1000 + Math.random() * 9000).toString(), isValidated: true, requiresGPS: newUser.requiresGPS,
-      avatarUrl: `https://ui-avatars.com/api/?name=${newUser.name}&background=random`, mainScheduleId: newUser.mainScheduleId,
-      alternativeScheduleIds: newUser.alternativeScheduleIds, birthDate: newUser.birthDate || undefined, shareBirthday: newUser.shareBirthday, 
-      employmentStatus: newUser.employmentStatus
+      erpId: newUser.erpId || `EMP-${Math.floor(1000 + Math.random() * 9000)}`, // Auto-gen ERP
+      name: newUser.name, 
+      email: newUser.email, 
+      companyId: defaultCompanyId, 
+      departmentId: safeDeptId,
+      assignedOfficeId: newUser.assignedOfficeId || offices[0]?.id, 
+      contractHours: newUser.contractHours, 
+      roles: newUser.roles.length > 0 ? newUser.roles : [Role.EMPLOYEE],
+      authType: 'PIN', 
+      pin: Math.floor(1000 + Math.random() * 9000).toString(), 
+      isValidated: true, 
+      requiresGPS: true, // Default to true
+      avatarUrl: `https://ui-avatars.com/api/?name=${newUser.name}&background=random`, 
+      mainScheduleId: newUser.mainScheduleId || defaultSchedule?.id,
+      alternativeScheduleIds: newUser.alternativeScheduleIds, 
+      birthDate: newUser.birthDate || undefined, 
+      shareBirthday: newUser.shareBirthday, 
+      employmentStatus: 'ACTIVE'
     };
     onCreateUser(user);
-    alert(`User creat! PIN Generat: ${user.pin}`);
     
-    // Reset form partially
-    setNewUser(prev => ({ ...prev, name: '', email: '', erpId: '' }));
+    // Use timeout to allow UI update before alerting
+    setTimeout(() => {
+        alert(`User creat! PIN Generat: ${user.pin}\n(Companie: ${companies.find(c=>c.id===user.companyId)?.name}, Dept: ${defaultDept?.name || 'Niciunul'})`);
+    }, 100);
+    
+    // FULL Reset of form state to prevent stale IDs on next create
+    setNewUser({
+        name: '', email: '', erpId: '', 
+        companyId: companies[0]?.id || '', // Reset to current valid first company
+        departmentId: '', assignedOfficeId: '',
+        contractHours: 8, roles: [Role.EMPLOYEE], requiresGPS: true, birthDate: '', shareBirthday: false,
+        mainScheduleId: '', alternativeScheduleIds: [], employmentStatus: 'ACTIVE'
+    });
   };
 
   // Toggle helper for edit modal
@@ -120,17 +148,220 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
       // Wait a moment to allow UI to update to "Loading" state
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // ... (Mock data generation logic unchanged for brevity, but retained in functional component)
       const generatedTimesheets: Timesheet[] = [];
       const generatedLeaves: LeaveRequest[] = [];
       const generatedCorrections: CorrectionRequest[] = [];
-      // (Implementation kept as is from previous correct version)
-      
-      alert(`Generare Completă! Datele exclud automat Sărbătorile Legale 2025.`);
+
+      const year = 2025;
+      const coConfig = INITIAL_LEAVE_CONFIGS.find(lc => lc.code === 'CO');
+      const cmConfig = INITIAL_LEAVE_CONFIGS.find(lc => lc.code === 'CM');
+      const delConfig = INITIAL_LEAVE_CONFIGS.find(lc => lc.code === 'DEL-T');
+
+      const userLeavePlans: Record<string, string[]> = {}; 
+
+      // 1. Pre-calculate Leave Plans (Summer/Winter), strictly avoiding Holidays
+      users.forEach(user => {
+          userLeavePlans[user.id] = [];
+          let daysAllocated = 0;
+          
+          // Summer Block
+          const summerMonth = Math.random() > 0.5 ? 6 : 7; 
+          const summerStartDay = Math.floor(Math.random() * 15) + 1;
+          for (let i = 0; i < 10; i++) {
+              const d = new Date(year, summerMonth, summerStartDay + i);
+              const safeDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+              
+              const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+              const isHoliday = HOLIDAYS_RO.some(h => h.date === safeDate);
+
+              if (!isWeekend && !isHoliday) { 
+                  userLeavePlans[user.id].push(safeDate);
+                  daysAllocated++;
+              }
+          }
+          
+          // Winter Block
+          const winterStartDay = 15; 
+          for (let i = 0; i < 7; i++) { 
+              const d = new Date(year, 11, winterStartDay + i);
+              const safeDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+              
+              const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+              const isHoliday = HOLIDAYS_RO.some(h => h.date === safeDate);
+
+              if (!isWeekend && !isHoliday && daysAllocated < 21) {
+                  userLeavePlans[user.id].push(safeDate);
+              }
+          }
+      });
+
+      // Loop through months instead of one giant loop to prevent UI blocking
+      for (let m = 0; m < 12; m++) {
+          // Yield to event loop to prevent "Violation: Handler took Xms"
+          await new Promise(resolve => setTimeout(resolve, 0));
+
+          const daysInMonth = new Date(year, m + 1, 0).getDate();
+          
+          for (let day = 1; day <= daysInMonth; day++) {
+              const d = new Date(year, m, day);
+              // CRITICAL FIX: Use manual string construction to avoid UTC timezone shifts
+              const dateStr = `${year}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              
+              const dayOfWeek = d.getDay();
+              const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+              const isHoliday = HOLIDAYS_RO.some(h => h.date === dateStr);
+
+              users.forEach(user => {
+                  if (!user.isValidated) return;
+
+                  // 2. Generate Planned Leaves (Already filtered for holidays above)
+                  if (userLeavePlans[user.id].includes(dateStr)) {
+                      if (coConfig) {
+                          generatedLeaves.push({
+                              id: `gen-lr-${user.id}-${dateStr}`,
+                              userId: user.id, typeId: coConfig.id, typeName: coConfig.name,
+                              startDate: dateStr, endDate: dateStr, reason: "Concediu de odihnă planificat 2025",
+                              status: LeaveStatus.APPROVED, createdAt: new Date(year, 0, 15).toISOString()
+                          });
+                      }
+                      return;
+                  }
+
+                  // 3. Generate Work Days (Skip Weekend AND Holidays)
+                  if (!isWeekend && !isHoliday) {
+                      const rand = Math.random();
+                      if (rand < 0.001 && cmConfig) {
+                          generatedLeaves.push({
+                              id: `gen-cm-${user.id}-${dateStr}`, userId: user.id, typeId: cmConfig.id, typeName: cmConfig.name,
+                              startDate: dateStr, endDate: dateStr, reason: "Problemă medicală", status: LeaveStatus.APPROVED
+                          });
+                          return;
+                      }
+                      
+                      const isDelegation = Math.random() < 0.02;
+                      if (isDelegation && delConfig) {
+                           generatedLeaves.push({
+                              id: `gen-del-${user.id}-${dateStr}`, userId: user.id, typeId: delConfig.id, typeName: delConfig.name,
+                              startDate: dateStr, endDate: dateStr, reason: "Delegație client", status: LeaveStatus.APPROVED
+                          });
+                      }
+
+                      // Determine shift based on mainScheduleId
+                      const schedule = workSchedules.find(s => s.id === user.mainScheduleId) || workSchedules[0];
+                      const [sh, sm] = schedule.startTime.split(':').map(Number);
+                      const [eh, em] = schedule.endTime.split(':').map(Number);
+
+                      const startHour = sh;
+                      const startMin = sm + Math.floor(Math.random() * 15) - 5; // +/- 5 mins variation
+                      const startTime = new Date(d);
+                      startTime.setHours(startHour, startMin, 0);
+
+                      const endHour = eh;
+                      const endMin = em + Math.floor(Math.random() * 15);
+                      const endTime = new Date(d);
+                      if (schedule.crossesMidnight) endTime.setDate(endTime.getDate() + 1);
+                      endTime.setHours(endHour, endMin, 0);
+
+                      let location = { latitude: 44.4268, longitude: 26.1025 }; 
+                      let officeId = user.assignedOfficeId;
+                      let dist = 50;
+
+                      if (isDelegation) { officeId = undefined; dist = 5000; location = { latitude: 45.0, longitude: 25.0 }; }
+
+                      generatedTimesheets.push({
+                          id: `gen-ts-${user.id}-${dateStr}`, 
+                          userId: user.id, 
+                          date: dateStr, 
+                          startTime: startTime.toISOString(),
+                          endTime: endTime.toISOString(), 
+                          status: ShiftStatus.COMPLETED, 
+                          startLocation: location, 
+                          endLocation: location,
+                          matchedOfficeId: officeId, 
+                          distanceToOffice: dist, 
+                          breaks: [],
+                          detectedScheduleId: schedule.id, // Assign the schedule
+                          detectedScheduleName: schedule.name
+                      });
+                  }
+              });
+          }
+      }
+
+      // 1. Update Local State
+      onBulkImport(generatedTimesheets, generatedLeaves, generatedCorrections);
+      setGeneratedData({ timesheets: generatedTimesheets, leaves: generatedLeaves, corrections: generatedCorrections });
+
+      alert(`Generare Completă!\n\nTimesheets: ${generatedTimesheets.length}\nConcedii: ${generatedLeaves.length}\n\nDatele exclud automat Sărbătorile Legale 2025.`);
       setIsGenerating(false);
   };
 
-  const generateSQL2025 = () => { /* ... SQL Generation Logic ... */ };
+  const generateSQL2025 = () => {
+      if (!generatedData) return;
+      const { timesheets, leaves } = generatedData;
+
+      let sql = `-- SCRIPT GENERAT AUTOMAT PENTRU PONTAJ 2025\n`;
+      sql += `-- Conține: Nomenclator Ture, Sărbători Legale 2025, Alocare Ture Utilizatori, Pontaje 2025, Concedii 2025\n\n`;
+      sql += `USE PontajSmart;\nGO\n\n`;
+
+      // 1. Nomenclature (Work Schedules)
+      sql += `-- 1. NOMENCLATOR PROGRAME DE LUCRU (SHIFTS)\n`;
+      workSchedules.forEach(ws => {
+          sql += `IF NOT EXISTS (SELECT * FROM work_schedules WHERE id='${ws.id}') \n`;
+          sql += `  INSERT INTO work_schedules (id, name, start_time, end_time, crosses_midnight) VALUES ('${ws.id}', N'${ws.name}', '${ws.startTime}', '${ws.endTime}', ${ws.crossesMidnight ? 1 : 0});\n`;
+      });
+      sql += `GO\n\n`;
+
+      // 2. Holidays 2025
+      sql += `-- 2. SĂRBĂTORI LEGALE 2025\n`;
+      const holidays2025 = HOLIDAYS_RO.filter(h => h.date.startsWith('2025'));
+      holidays2025.forEach(h => {
+          sql += `IF NOT EXISTS (SELECT * FROM holidays WHERE date = '${h.date}') \n`;
+          sql += `  INSERT INTO holidays (id, date, name) VALUES ('${h.id}', '${h.date}', N'${h.name}');\n`;
+      });
+      sql += `GO\n\n`;
+
+      // 3. User Assignments
+      sql += `-- 3. ALOCARE PROGRAME UTILIZATORI\n`;
+      users.forEach(u => {
+          if (u.mainScheduleId) {
+              sql += `UPDATE users SET main_schedule_id = '${u.mainScheduleId}' WHERE id = '${u.id}';\n`;
+          }
+      });
+      sql += `GO\n\n`;
+
+      // 4. Leaves
+      sql += `-- 4. CONCEDII 2025 (${leaves.length} înregistrări)\n`;
+      // Use chunks or batching if really large, but for demo simpler is fine
+      leaves.forEach(l => {
+          const reasonClean = l.reason.replace(/'/g, "''");
+          sql += `INSERT INTO leave_requests (id, user_id, type_id, start_date, end_date, reason, status) VALUES ('${l.id}', '${l.userId}', '${l.typeId}', '${l.startDate}', '${l.endDate}', N'${reasonClean}', '${l.status}');\n`;
+      });
+      sql += `GO\n\n`;
+
+      // 5. Timesheets
+      sql += `-- 5. PONTAJE 2025 (${timesheets.length} înregistrări)\n`;
+      timesheets.forEach(t => {
+          // SQL Server prefers YYYY-MM-DD HH:MM:SS for strings implicitly cast to datetime2
+          const start = t.startTime.replace('T', ' ').substring(0, 19);
+          const end = t.endTime ? `'${t.endTime.replace('T', ' ').substring(0, 19)}'` : 'NULL';
+          const schedId = t.detectedScheduleId ? `'${t.detectedScheduleId}'` : 'NULL';
+          const officeId = t.matchedOfficeId ? `'${t.matchedOfficeId}'` : 'NULL';
+          
+          sql += `INSERT INTO timesheets (id, user_id, start_time, end_time, date, status, matched_office_id, detected_schedule_id) VALUES ('${t.id}', '${t.userId}', '${start}', ${end}, '${t.date}', '${t.status}', ${officeId}, ${schedId});\n`;
+      });
+      sql += `GO\n`;
+
+      // Download Trigger
+      const blob = new Blob([sql], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pontaj_data_2025_${new Date().getTime()}.sql`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+  };
 
   const userColumns: Column<User>[] = [
       { header: 'Angajat', accessor: 'name', sortable: true, filterable: true, render: (u) => <div className="flex items-center gap-3"><img src={u.avatarUrl} className="w-8 h-8 rounded-full"/><div><p className="font-bold text-sm">{u.name}</p><p className="text-xs text-gray-500">{u.email}</p></div></div> },
@@ -154,191 +385,29 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
       </div>
 
       {activeSubTab === 'create' && (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 max-w-4xl">
-          <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2"><UserPlus size={20} className="text-blue-600"/> Adaugă Angajat Nou</h3>
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 max-w-lg mx-auto">
+          <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2"><UserPlus size={20} className="text-blue-600"/> Adaugă Angajat Rapid</h3>
           <form onSubmit={handleCreateSubmit} className="space-y-6">
              
-             {/* Row 1: Identity & Status */}
-             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nume Complet <span className="text-red-500">*</span></label>
-                    <input required type="text" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email <span className="text-red-500">*</span></label>
-                    <input required type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Fingerprint size={12}/> ID ERP</label>
-                    <input type="text" value={newUser.erpId} onChange={e => setNewUser({...newUser, erpId: e.target.value})} className="w-full p-2.5 border rounded-lg outline-none font-mono" placeholder="Ex: EMP-001"/>
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Status</label>
-                    <select 
-                        value={newUser.employmentStatus} 
-                        onChange={e => setNewUser({...newUser, employmentStatus: e.target.value as any})}
-                        className="w-full p-2.5 border rounded-lg outline-none font-medium bg-gray-50"
-                    >
-                        <option value="ACTIVE">Activ</option>
-                        <option value="SUSPENDED">Suspendat</option>
-                        <option value="TERMINATED">Încetat</option>
-                    </select>
-                </div>
+             {/* SIMPLIFIED FORM: Only Name and Email */}
+             <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Nume Complet <span className="text-red-500">*</span></label>
+                <input required type="text" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 focus:bg-white transition" placeholder="Ex: Popescu Ion"/>
+             </div>
+             
+             <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Email <span className="text-red-500">*</span></label>
+                <input required type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="w-full p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 focus:bg-white transition" placeholder="ion.popescu@companie.ro"/>
              </div>
 
-             {/* Row 2: Personal Info (Birthday) */}
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-pink-50 rounded-lg border border-pink-100">
-                 <div>
-                    <label className="block text-xs font-bold text-pink-700 uppercase mb-1 flex items-center gap-1"><Cake size={12}/> Data Nașterii</label>
-                    <input 
-                        type="date" 
-                        value={newUser.birthDate} 
-                        onChange={e => setNewUser({...newUser, birthDate: e.target.value})} 
-                        className="w-full p-2.5 border border-pink-200 rounded-lg outline-none bg-white"
-                    />
-                 </div>
-                 <div className="flex items-end pb-2">
-                     <label className="flex items-center gap-2 cursor-pointer">
-                        <input 
-                            type="checkbox" 
-                            checked={newUser.shareBirthday} 
-                            onChange={e => setNewUser({...newUser, shareBirthday: e.target.checked})}
-                            className="w-4 h-4 text-pink-600 rounded focus:ring-pink-500"
-                        />
-                        <span className="text-sm font-medium text-pink-800 flex items-center gap-1"><Sparkles size={14}/> Aniversare Publică (Vizibilă în Widget)</span>
-                     </label>
-                 </div>
+             <div className="text-xs text-gray-500 bg-blue-50 p-3 rounded-lg border border-blue-100">
+                 <p className="flex items-start gap-2"><Briefcase size={14} className="mt-0.5 text-blue-600"/> Contul va fi creat automat în prima companie disponibilă: <strong>{companies[0]?.name || 'N/A'}</strong></p>
+                 <p className="flex items-start gap-2 mt-1"><Clock size={14} className="mt-0.5 text-blue-600"/> Programul de lucru va fi cel standard ({workSchedules[0]?.name || 'Standard'}).</p>
+                 {!companies.length && <p className="text-red-600 font-bold mt-2 flex items-center gap-1"><AlertTriangle size={12}/> Atenție: Nu există companii definite!</p>}
              </div>
-
-             {/* Row 3: Organization */}
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Briefcase size={12}/> Companie <span className="text-red-500">*</span></label>
-                    <select 
-                        required
-                        value={newUser.companyId} 
-                        onChange={e => setNewUser({...newUser, companyId: e.target.value, departmentId: ''})} 
-                        className="w-full p-2.5 border rounded-lg outline-none bg-white"
-                    >
-                        {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Departament <span className="text-red-500">*</span></label>
-                    <select 
-                        required
-                        value={newUser.departmentId} 
-                        onChange={e => setNewUser({...newUser, departmentId: e.target.value})} 
-                        className="w-full p-2.5 border rounded-lg outline-none bg-white"
-                    >
-                        <option value="">-- Selectează --</option>
-                        {departments.filter(d => d.companyId === newUser.companyId).map(d => (
-                            <option key={d.id} value={d.id}>{d.name}</option>
-                        ))}
-                    </select>
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Building size={12}/> Sediu Alocat</label>
-                    <select 
-                        value={newUser.assignedOfficeId} 
-                        onChange={e => setNewUser({...newUser, assignedOfficeId: e.target.value})} 
-                        className="w-full p-2.5 border rounded-lg outline-none bg-white"
-                    >
-                        <option value="">Remote / Mobil</option>
-                        {offices.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                    </select>
-                </div>
-             </div>
-
-             {/* Row 4: Schedule & Contract */}
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                 <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Clock size={12}/> Normă (Ore) <span className="text-red-500">*</span></label>
-                    <input 
-                        required 
-                        type="number" 
-                        min={1} max={12} 
-                        value={newUser.contractHours} 
-                        onChange={e => setNewUser({...newUser, contractHours: parseInt(e.target.value) || 8})} 
-                        className="w-full p-2.5 border rounded-lg outline-none"
-                    />
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><CalendarClock size={12}/> Program Principal <span className="text-red-500">*</span></label>
-                    <select 
-                        required
-                        value={newUser.mainScheduleId} 
-                        onChange={e => setNewUser({...newUser, mainScheduleId: e.target.value})} 
-                        className="w-full p-2.5 border rounded-lg outline-none bg-white"
-                    >
-                        <option value="">-- Selectează --</option>
-                        {workSchedules.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                </div>
-                <div className="flex items-center pt-6">
-                     <label className="flex items-center gap-2 cursor-pointer bg-blue-50 p-2 rounded-lg border border-blue-100 w-full hover:bg-blue-100 transition">
-                        <input 
-                            type="checkbox" 
-                            checked={newUser.requiresGPS} 
-                            onChange={e => setNewUser({...newUser, requiresGPS: e.target.checked})}
-                            className="w-4 h-4 text-blue-600 rounded"
-                        />
-                        <span className="text-sm font-medium text-blue-800"><MapPin size={14} className="inline mr-1"/> Validare GPS Obligatorie</span>
-                     </label>
-                </div>
-             </div>
-
-             {/* Row 5: Alternative Schedules */}
-             <div className="col-span-full mt-4 border-t border-gray-100 pt-3">
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-1"><CalendarClock size={12}/> Programe Alternative / Secundare</label>
-                <div className="flex flex-wrap gap-2">
-                    {workSchedules.map(sch => {
-                        const isMain = newUser.mainScheduleId === sch.id;
-                        const isSelected = (newUser.alternativeScheduleIds || []).includes(sch.id);
-                        return (
-                            <button
-                                key={sch.id}
-                                type="button" 
-                                disabled={isMain}
-                                onClick={() => toggleAltScheduleCreate(sch.id)}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-                                    isMain ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' :
-                                    isSelected ? 'bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-200' :
-                                    'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                                }`}
-                            >
-                                {sch.name} {isMain && '(Principal)'}
-                            </button>
-                        )
-                    })}
-                </div>
-            </div>
-
-            {/* Row 6: Roles */}
-            <div className="mt-4">
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Roluri & Permisiuni</label>
-                <div className="flex gap-4 flex-wrap bg-blue-50 p-3 rounded-lg border border-blue-100">
-                    {Object.values(Role).map(role => (
-                        <label key={role} className="flex items-center gap-2 cursor-pointer">
-                            <input 
-                            type="checkbox" 
-                            checked={newUser.roles.includes(role)}
-                            onChange={() => {
-                                const newRoles = newUser.roles.includes(role)
-                                    ? newUser.roles.filter(r => r !== role)
-                                    : [...newUser.roles, role];
-                                setNewUser({...newUser, roles: newRoles});
-                            }}
-                            className="w-4 h-4 text-blue-600 rounded"
-                            />
-                            <span className="text-sm font-medium">{role}</span>
-                        </label>
-                    ))}
-                </div>
-            </div>
 
              <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-100 flex items-center justify-center gap-2 mt-4">
-                 <UserPlus size={20}/> Creează Cont Angajat
+                 <UserPlus size={20}/> Creează Cont
              </button>
           </form>
         </div>
