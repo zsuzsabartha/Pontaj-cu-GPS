@@ -173,9 +173,13 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                       const forgotClockOut = Math.random() < 0.01;
                       
                       if (forgotClockOut) {
+                          // CHANGE: Set status to COMPLETED (system closed) to avoid leaving open shifts
                           generatedTimesheets.push({
                               id: `gen-ts-${user.id}-${dateStr}`, userId: user.id, date: dateStr, startTime: startTime.toISOString(),
-                              status: ShiftStatus.WORKING, startLocation: location, matchedOfficeId: officeId, distanceToOffice: dist, breaks: []
+                              status: ShiftStatus.COMPLETED, // WAS: WORKING
+                              endTime: new Date(d.setHours(23, 59, 59)).toISOString(), // Auto-closed at midnight
+                              startLocation: location, matchedOfficeId: officeId, distanceToOffice: dist, breaks: [],
+                              isSystemAutoCheckout: true
                           });
                           generatedCorrections.push({
                               id: `gen-cor-${user.id}-${dateStr}`, userId: user.id, requestedDate: dateStr,

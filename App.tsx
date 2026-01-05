@@ -124,8 +124,13 @@ export default function App() {
   // --- Derived State for Active Shift ---
   const currentShift = useMemo(() => {
       if (!currentUser) return null;
+      const now = new Date().toISOString();
       return timesheets
-        .filter(t => t.userId === currentUser.id && t.status !== ShiftStatus.COMPLETED)
+        .filter(t => 
+            t.userId === currentUser.id && 
+            t.status !== ShiftStatus.COMPLETED &&
+            t.startTime <= now // Fix: Ignore future shifts from generator
+        )
         .sort((a,b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())[0] || null;
   }, [currentUser, timesheets]);
 
@@ -216,7 +221,6 @@ export default function App() {
   const handleTimesheetSave = async (data: any) => { 
       if (data.type === 'WORK') {
           // Logic for editing work timesheet (Manager) or creating correction (User)
-          // Simplified for brevity - assumes logic in TimesheetEditModal passes correct data structure
           if(data.tsId) {
              setTimesheets(prev => prev.map(ts => ts.id === data.tsId ? { ...ts, date: data.date, startTime: data.start, endTime: data.end, detectedScheduleId: data.scheduleId } : ts));
           } else {
@@ -338,7 +342,9 @@ export default function App() {
       <aside className={`fixed inset-y-0 left-0 bg-white border-r border-gray-200 z-30 transform transition-transform md:translate-x-0 w-64 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">P</div>
+                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-blue-200">
+                    <Clock size={20} className="animate-pulse-slow" />
+                </div>
                 <span className="font-bold text-xl tracking-tight text-gray-900">PontajGroup</span>
             </div>
             <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-gray-500"><X size={20}/></button>
