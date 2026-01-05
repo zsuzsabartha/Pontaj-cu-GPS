@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, Utensils, Cigarette, History, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff } from 'lucide-react';
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
 import { ShiftStatus, Coordinates, Office, User, BreakConfig, Holiday, LeaveRequest, LeaveStatus } from '../types';
@@ -31,6 +31,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
   
   // Timer State
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const timerRef = useRef<number | null>(null);
   
   const [showBreakSelector, setShowBreakSelector] = useState(false);
   const [confirmData, setConfirmData] = useState<{ coords: Coordinates, office: Office, distance: number } | null>(null);
@@ -64,22 +65,33 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
 
   // --- Robust Timer Logic (setInterval) ---
   useEffect(() => {
-    let intervalId: number | undefined;
+    const shouldRun = currentStatus === ShiftStatus.WORKING || currentStatus === ShiftStatus.ON_BREAK;
 
-    // Only run timer if working or on break
-    if (currentStatus === ShiftStatus.WORKING || currentStatus === ShiftStatus.ON_BREAK) {
-        // Immediate update to sync UI
+    if (shouldRun) {
+        // Sync immediately
         setCurrentTime(Date.now());
-        
-        intervalId = window.setInterval(() => {
+
+        // Clear existing to avoid duplicates (react strict mode safe)
+        if (timerRef.current) clearInterval(timerRef.current);
+
+        timerRef.current = window.setInterval(() => {
             setCurrentTime(Date.now());
         }, 1000);
+    } else {
+        // Stop timer if not working
+        if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+        }
     }
 
     return () => {
-        if (intervalId) clearInterval(intervalId);
+        if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+        }
     };
-  }, [currentStatus, shiftStartTime]); // Added shiftStartTime dependency to reset if start changes
+  }, [currentStatus, shiftStartTime]); // Dependencies control when timer starts/restarts
 
   // --- Calculation Logic (Derived State) ---
   const calculateTimers = () => {
@@ -94,6 +106,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
       const safeAccumulatedBreak = isNaN(accumulatedBreakTime) ? 0 : accumulatedBreakTime;
 
       // Total duration from Shift Start to Now
+      // Clamp to 0 to avoid negative numbers if local clock is slightly off vs stored time
       let grossDuration = Math.max(0, currentTime - start);
 
       let netWorkMs = 0;
@@ -103,26 +116,22 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
           const breakStart = new Date(activeBreakStartTime).getTime();
           if (!isNaN(breakStart)) {
               // Net Work = (BreakStart - ShiftStart) - PreviousBreaks
-              netWorkMs = (breakStart - start) - safeAccumulatedBreak;
+              netWorkMs = Math.max(0, (breakStart - start) - safeAccumulatedBreak);
               // Break Timer = Now - BreakStart
               currentBreakMs = Math.max(0, currentTime - breakStart);
           } else {
               // Fallback if break start is invalid
-              netWorkMs = grossDuration - safeAccumulatedBreak;
+              netWorkMs = Math.max(0, grossDuration - safeAccumulatedBreak);
           }
       } else {
           // If Working or Completed
           // Net Work = (Now - ShiftStart) - TotalBreaks
-          netWorkMs = grossDuration - safeAccumulatedBreak;
+          netWorkMs = Math.max(0, grossDuration - safeAccumulatedBreak);
           currentBreakMs = 0;
       }
-
-      // Safety clamps
-      if (netWorkMs < 0) netWorkMs = 0;
-      if (isNaN(netWorkMs)) netWorkMs = 0;
       
       const formatMs = (ms: number) => {
-          if (isNaN(ms)) return "00:00:00";
+          if (isNaN(ms) || ms < 0) return "00:00:00";
           const h = Math.floor(ms / 3600000);
           const m = Math.floor((ms % 3600000) / 60000);
           const s = Math.floor((ms % 60000) / 1000);
@@ -336,7 +345,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
                  <button 
                  onClick={handleClockIn}
                  disabled={loading || (activeLeaveRequest?.status === LeaveStatus.APPROVED && !activeLeaveRequest?.typeName.includes('Delegatie'))} // Disable if approved leave (unless business trip)
-                 className="col-span-2 flex items-center justify-center gap-2 text-white py-4 rounded-xl font-semibold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:grayscale bg-blue-600 hover:bg-blue-700 shadow-blue-200"
+                 className="col-span-2 flex items-center justify-center gap-2 text-white py-4 rounded-xl font-semibold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:grayscale bg-blue-600 hover:bg-blue-100 hover:text-blue-600 border border-transparent hover:border-blue-600 shadow-blue-200"
                >
                  {loading ? (
                      <><RefreshCw className="animate-spin" size={24}/> SE LOCALIZEAZĂ...</>
