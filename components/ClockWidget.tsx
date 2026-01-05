@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, Utensils, Cigarette, History, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff, ShieldAlert } from 'lucide-react';
+import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, Utensils, Cigarette, History, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff, ShieldAlert, LogOut } from 'lucide-react';
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
 import { ShiftStatus, Coordinates, Office, User, BreakConfig, Holiday, LeaveRequest, LeaveStatus } from '../types';
 
@@ -12,7 +12,8 @@ interface ClockWidgetProps {
   breakConfigs: BreakConfig[];
   holidays: Holiday[]; 
   activeLeaveRequest?: LeaveRequest;
-  shiftStartTime?: string; 
+  shiftStartTime?: string;
+  shiftEndTime?: string; // NEW: For completed shifts
   accumulatedBreakTime?: number; // Total ms of completed breaks
   activeBreakStartTime?: string; // If currently on break
   onClockIn: (location: Coordinates, office: Office | null, dist: number) => void;
@@ -22,7 +23,7 @@ interface ClockWidgetProps {
 
 const ClockWidget: React.FC<ClockWidgetProps> = ({ 
     user, companyName, offices, currentStatus, breakConfigs, holidays, activeLeaveRequest, 
-    shiftStartTime, accumulatedBreakTime = 0, activeBreakStartTime, 
+    shiftStartTime, shiftEndTime, accumulatedBreakTime = 0, activeBreakStartTime, 
     onClockIn, onClockOut, onToggleBreak 
 }) => {
   const [loading, setLoading] = useState(false);
@@ -61,6 +62,10 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
   // Format Start Time for Display
   const startTimeDisplay = shiftStartTime 
     ? new Date(shiftStartTime).toLocaleTimeString('ro-RO', {hour: '2-digit', minute:'2-digit'})
+    : null;
+    
+  const endTimeDisplay = shiftEndTime 
+    ? new Date(shiftEndTime).toLocaleTimeString('ro-RO', {hour: '2-digit', minute:'2-digit'})
     : null;
 
   // --- Robust Timer Logic (setInterval via useRef) ---
@@ -103,8 +108,11 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
       // Ensure accumulatedBreakTime is safe
       const safeAccumulatedBreak = isNaN(accumulatedBreakTime) ? 0 : accumulatedBreakTime;
 
-      // Total duration from Shift Start to Now (clamped to 0)
-      let grossDuration = Math.max(0, currentTime - start);
+      // Determine the 'Current Point' in time. If shift is completed, use EndTime, else use Live Time
+      const endPoint = shiftEndTime ? new Date(shiftEndTime).getTime() : currentTime;
+
+      // Total duration from Shift Start to Endpoint
+      let grossDuration = Math.max(0, endPoint - start);
 
       let netWorkMs = 0;
       let currentBreakMs = 0;
@@ -122,7 +130,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
           }
       } else {
           // If Working or Completed
-          // Net Work = (Now - ShiftStart) - TotalBreaks
+          // Net Work = (EndPoint - ShiftStart) - TotalBreaks
           netWorkMs = Math.max(0, grossDuration - safeAccumulatedBreak);
           currentBreakMs = 0;
       }
@@ -319,11 +327,19 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
           {elapsed}
         </div>
         
-        {/* Start Time Indicator */}
-        {(currentStatus === ShiftStatus.WORKING || currentStatus === ShiftStatus.ON_BREAK) && startTimeDisplay && (
-            <div className="mb-4 text-xs font-medium text-blue-600 bg-blue-50 px-3 py-1 rounded-full flex items-center gap-1">
-                <History size={12}/>
-                Ora Start: <span className="font-mono font-bold">{startTimeDisplay}</span>
+        {/* Start/End Time Indicator */}
+        {(currentStatus !== ShiftStatus.NOT_STARTED) && startTimeDisplay && (
+            <div className="mb-4 flex flex-col gap-1 items-center animate-in fade-in">
+                <div className="text-xs font-medium text-blue-600 bg-blue-50 px-3 py-1 rounded-full flex items-center gap-1">
+                    <History size={12}/>
+                    Ora Start: <span className="font-mono font-bold">{startTimeDisplay}</span>
+                </div>
+                {endTimeDisplay && (
+                     <div className="text-xs font-medium text-gray-600 bg-gray-100 px-3 py-1 rounded-full flex items-center gap-1">
+                        <LogOut size={12}/>
+                        Ora Stop: <span className="font-mono font-bold">{endTimeDisplay}</span>
+                    </div>
+                )}
             </div>
         )}
         

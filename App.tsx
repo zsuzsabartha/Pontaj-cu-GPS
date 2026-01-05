@@ -211,23 +211,36 @@ export default function App() {
     return () => clearInterval(intervalId);
   }, [isOnline]);
 
-  // --- Derived State for Active Shift ---
-  const currentShift = useMemo(() => {
+  // --- Derived State for Active or Today's Shift ---
+  const activeOrTodayTimesheet = useMemo(() => {
       if (!currentUser) return null;
+      
+      // 1. Priority: Active Shift (Working or On Break)
       const active = timesheets.find(t => 
           t.userId === currentUser.id && 
           (t.status === ShiftStatus.WORKING || t.status === ShiftStatus.ON_BREAK)
       );
-      return active || null;
+      if (active) return active;
+
+      // 2. Fallback: Latest Completed Shift for Today
+      const today = new Date().toISOString().split('T')[0];
+      // Filter for today and sort by start time desc to get the latest one
+      const todayShifts = timesheets.filter(t => 
+          t.userId === currentUser.id && 
+          t.date === today &&
+          t.status === ShiftStatus.COMPLETED
+      ).sort((a,b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+      
+      return todayShifts[0] || null;
   }, [currentUser, timesheets]);
 
   // --- Derived Shift Statistics ---
   const shiftStats = useMemo(() => {
-      if (!currentShift) return { accumulatedPauseMs: 0, activeBreakStart: undefined };
+      if (!activeOrTodayTimesheet) return { accumulatedPauseMs: 0, activeBreakStart: undefined };
       let accumulatedPauseMs = 0;
       let activeBreakStart: string | undefined = undefined;
       
-      currentShift.breaks.forEach(b => {
+      activeOrTodayTimesheet.breaks.forEach(b => {
           if (b.endTime && b.startTime) {
               const start = new Date(b.startTime).getTime();
               const end = new Date(b.endTime).getTime();
@@ -239,7 +252,7 @@ export default function App() {
           }
       });
       return { accumulatedPauseMs, activeBreakStart };
-  }, [currentShift]);
+  }, [activeOrTodayTimesheet]);
 
   // --- HANDLERS ---
 
@@ -326,15 +339,28 @@ export default function App() {
       if (data.type === 'WORK') {
           if(data.tsId) {
              setTimesheets(prev => {
-                 const updated = prev.map(ts => ts.id === data.tsId ? { ...ts, date: data.date, startTime: data.start, endTime: data.end, detectedScheduleId: data.scheduleId } : ts);
+                 const updated = prev.map(ts => ts.id === data.tsId ? { 
+                     ...ts, 
+                     date: data.date, 
+                     startTime: data.start, 
+                     endTime: data.end, 
+                     status: data.end ? ShiftStatus.COMPLETED : ShiftStatus.WORKING, // Dynamically set status based on End Time presence
+                     detectedScheduleId: data.scheduleId 
+                 } : ts);
                  newItem = updated.find(ts => ts.id === data.tsId);
                  return updated;
              });
           } else {
              const newTs: Timesheet = {
-                 id: `ts-${Date.now()}`, userId: currentUser!.id, date: data.date, startTime: data.start, endTime: data.end, status: ShiftStatus.COMPLETED, breaks: []
+                 id: `ts-${Date.now()}`, 
+                 userId: currentUser!.id, 
+                 date: data.date, 
+                 startTime: data.start, 
+                 endTime: data.end, 
+                 status: data.end ? ShiftStatus.COMPLETED : ShiftStatus.WORKING, // Dynamically set status
+                 breaks: []
              };
-             setTimesheets(prev => [...prev, newTs]);
+             setTimesheets(prev => [newTs, ...prev]);
              newItem = newTs;
           }
           syncType = 'TIMESHEET';
@@ -415,35 +441,35 @@ export default function App() {
   };
 
   const handleClockOut = async (loc: Coordinates) => {
-      if (!currentUser || !currentShift) return;
+      if (!currentUser || !activeOrTodayTimesheet) return;
       const { distance: endDist } = findNearestOffice(loc, offices);
       const updatedTs: Timesheet = { 
-          ...currentShift, endTime: new Date().toISOString(), status: ShiftStatus.COMPLETED, endLocation: loc, endDistanceToOffice: endDist, syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC' 
+          ...activeOrTodayTimesheet, endTime: new Date().toISOString(), status: ShiftStatus.COMPLETED, endLocation: loc, endDistanceToOffice: endDist, syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC' 
       };
-      setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedTs : t));
+      setTimesheets(prev => prev.map(t => t.id === activeOrTodayTimesheet.id ? updatedTs : t));
       syncItem('TIMESHEET', updatedTs);
   };
 
   const handleToggleBreak = async (config?: BreakConfig, loc?: Coordinates) => {
-      if (!currentUser || !currentShift) return;
+      if (!currentUser || !activeOrTodayTimesheet) return;
       let updatedTs: Timesheet | null = null;
 
-      if (currentShift.status === ShiftStatus.ON_BREAK) {
-          const idx = currentShift.breaks.findIndex(b => !b.endTime);
+      if (activeOrTodayTimesheet.status === ShiftStatus.ON_BREAK) {
+          const idx = activeOrTodayTimesheet.breaks.findIndex(b => !b.endTime);
           if (idx === -1) return;
-          const updatedBreak = { ...currentShift.breaks[idx], endTime: new Date().toISOString(), endLocation: loc, status: BreakStatus.PENDING };
-          const updatedBreaks = [...currentShift.breaks]; updatedBreaks[idx] = updatedBreak;
-          updatedTs = { ...currentShift, status: ShiftStatus.WORKING, breaks: updatedBreaks };
+          const updatedBreak = { ...activeOrTodayTimesheet.breaks[idx], endTime: new Date().toISOString(), endLocation: loc, status: BreakStatus.PENDING };
+          const updatedBreaks = [...activeOrTodayTimesheet.breaks]; updatedBreaks[idx] = updatedBreak;
+          updatedTs = { ...activeOrTodayTimesheet, status: ShiftStatus.WORKING, breaks: updatedBreaks };
       } else {
           if (!config) return;
           const newBreak: Break = { 
               id: `br-${Date.now()}`, typeId: config.id, typeName: config.name, startTime: new Date().toISOString(), status: BreakStatus.PENDING, startLocation: loc 
           };
-          updatedTs = { ...currentShift, status: ShiftStatus.ON_BREAK, breaks: [...currentShift.breaks, newBreak] };
+          updatedTs = { ...activeOrTodayTimesheet, status: ShiftStatus.ON_BREAK, breaks: [...activeOrTodayTimesheet.breaks, newBreak] };
       }
 
       if (updatedTs) {
-          setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedTs! : t));
+          setTimesheets(prev => prev.map(t => t.id === activeOrTodayTimesheet.id ? updatedTs! : t));
           syncItem('TIMESHEET', updatedTs);
       }
   };
@@ -578,10 +604,11 @@ export default function App() {
                         breakConfigs={breakConfigs} 
                         holidays={holidays} 
                         activeLeaveRequest={activeLeaveRequest} 
-                        shiftStartTime={currentShift?.startTime} 
+                        shiftStartTime={activeOrTodayTimesheet?.startTime} 
+                        shiftEndTime={activeOrTodayTimesheet?.endTime}
                         accumulatedBreakTime={shiftStats.accumulatedPauseMs} 
                         activeBreakStartTime={shiftStats.activeBreakStart} 
-                        currentStatus={currentShift?.status || ShiftStatus.NOT_STARTED} 
+                        currentStatus={activeOrTodayTimesheet?.status || ShiftStatus.NOT_STARTED} 
                         onClockIn={handleClockIn} 
                         onClockOut={handleClockOut} 
                         onToggleBreak={handleToggleBreak} 
