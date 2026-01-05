@@ -541,10 +541,12 @@ app.get('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
             });
         }
         if (r.bid) {
+            // Priority: Snapshot name > Config name > Fallback
+            const name = r.type_name || r.config_name || 'Unknown Break';
+            
             map.get(r.id).breaks.push({
                 id: r.bid, typeId: r.type_id, 
-                // Fallback to config name if available, else use saved snapshot, else default
-                typeName: r.config_name || r.type_name || 'Unknown Break',
+                typeName: name,
                 startTime: r.bstart, endTime: r.bend, status: r.bstatus, managerNote: r.manager_note
             });
         }
