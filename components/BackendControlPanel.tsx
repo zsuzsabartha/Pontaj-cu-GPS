@@ -240,6 +240,15 @@ IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='correction_requests' AND xty
 CREATE TABLE correction_requests (
     id NVARCHAR(50) PRIMARY KEY, user_id NVARCHAR(50), timesheet_id NVARCHAR(50), requested_date DATE, requested_start_time DATETIME2, requested_end_time DATETIME2, reason NVARCHAR(MAX), status NVARCHAR(20), manager_note NVARCHAR(MAX)
 );
+
+-- SCHEMA MIGRATIONS (Auto-Fix for existing tables) --
+IF EXISTS(SELECT * FROM sys.tables WHERE name = 'correction_requests')
+BEGIN
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'correction_requests') AND name = 'requested_end_time')
+    BEGIN
+        ALTER TABLE correction_requests ADD requested_end_time DATETIME2;
+    END
+END
 `;
     setGeneratedSQL(script);
   };

@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { User, Timesheet, LeaveRequest, CorrectionRequest, BreakStatus, LeaveStatus, ShiftStatus, Company, Office, BreakConfig, LeaveConfig, Holiday, Role } from '../types';
 import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight, Slash, LogIn, LogOut, PartyPopper, Moon, Sun, XCircle, History, Download, BarChart3 } from 'lucide-react';
 import TimesheetList from './TimesheetList';
@@ -40,6 +40,13 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
   const [leaveFilter, setLeaveFilter] = useState<'PENDING' | 'HISTORY'>('PENDING');
   const [breakFilter, setBreakFilter] = useState<'PENDING' | 'HISTORY'>('PENDING');
   const [correctionFilter, setCorrectionFilter] = useState<'PENDING' | 'HISTORY'>('PENDING');
+
+  // Live Timer for Break Calculation
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+      const interval = setInterval(() => setNow(Date.now()), 60000); // Update every minute
+      return () => clearInterval(interval);
+  }, []);
 
   const changeDashboardDate = (offset: number) => {
       const current = new Date(dashboardDate);
@@ -216,6 +223,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
       // Determine Status
       let status = 'ABSENT'; 
       let statusColor = 'bg-red-50 text-red-600 border-red-100';
+      let breakDurationLabel = '';
 
       // Check context for absent status (Weekend/Holiday)
       const dateObj = new Date(dashboardDate);
@@ -236,6 +244,23 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
               locColor: 'text-purple-600' 
           });
       } else if (dailyTs) {
+          
+          // --- Break Time Calculation ---
+          const totalBreakMs = dailyTs.breaks.reduce((acc, b) => {
+              if (b.endTime) return acc + (new Date(b.endTime).getTime() - new Date(b.startTime).getTime());
+              if (!b.endTime && dailyTs.status === ShiftStatus.ON_BREAK) {
+                 return acc + (now - new Date(b.startTime).getTime());
+              }
+              return acc;
+          }, 0);
+          
+          if (totalBreakMs > 0) {
+              const mins = Math.floor(totalBreakMs / 60000);
+              const hrs = Math.floor(mins / 60);
+              breakDurationLabel = hrs > 0 ? `${hrs}h ${mins%60}m` : `${mins}m`;
+          }
+          // -----------------------------
+
           if (dailyTs.status === ShiftStatus.WORKING) {
               status = 'WORKING';
               statusColor = 'bg-green-100 text-green-700 border-green-200';
@@ -304,7 +329,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
           }
       }
 
-      return { user, status, statusColor, events, holiday };
+      return { user, status, statusColor, events, holiday, breakDurationLabel };
   }).sort((a,b) => (a.status === 'WORKING' ? 0 : 1) - (b.status === 'WORKING' ? 0 : 1));
 
   const activeTeamMembersCount = teamMemberStatuses.filter(s => s.status === 'WORKING').length;
@@ -408,7 +433,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                  </tr>
                              </thead>
                              <tbody className="divide-y divide-gray-100">
-                                 {teamMemberStatuses.map(({ user, status, statusColor, events, holiday }) => (
+                                 {teamMemberStatuses.map(({ user, status, statusColor, events, holiday, breakDurationLabel }) => (
                                      <tr key={user.id} className="hover:bg-slate-50 transition">
                                          <td className="px-4 py-3 align-top">
                                              <div className="flex items-center gap-3">
@@ -423,11 +448,22 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                              </div>
                                          </td>
                                          <td className="px-4 py-3 align-top">
-                                             <span className={`px-2 py-1 rounded-full text-xs font-bold border ${statusColor}`}>
+                                             <span className={`px-2 py-1 rounded-full text-xs font-bold border flex items-center justify-center gap-1 ${statusColor}`}>
                                                  {status === 'WORKING' ? 'ACTIV' : 
                                                   status === 'HOLIDAY' ? 'SĂRBĂTOARE' : 
-                                                  status === 'WEEKEND' ? 'WEEKEND' : status}
+                                                  status === 'WEEKEND' ? 'WEEKEND' : 
+                                                  status === 'BREAK' ? 'PAUZĂ' :
+                                                  status === 'COMPLETED' ? 'FINALIZAT' : status}
+                                                  
+                                                  {/* Show Duration only for Active Break */}
+                                                  {status === 'BREAK' && breakDurationLabel && <span className="font-mono text-[9px] opacity-80">({breakDurationLabel})</span>}
                                              </span>
+                                             {/* Show Total Break Duration for Completed Shift */}
+                                             {status === 'COMPLETED' && breakDurationLabel && (
+                                                 <div className="text-[9px] text-orange-600 text-center mt-1 font-bold">
+                                                     Pauză: {breakDurationLabel}
+                                                 </div>
+                                             )}
                                          </td>
                                          <td className="px-4 py-3">
                                              {/* Render Event Stream */}

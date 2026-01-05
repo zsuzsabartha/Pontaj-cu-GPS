@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { DailySchedule, WorkSchedule, User, Role, Holiday, Timesheet, LeaveRequest, LeaveStatus } from '../types';
 import { isDateInLockedPeriod } from '../constants';
-import { ChevronLeft, ChevronRight, CalendarClock, Moon, Sun, Clock, PartyPopper, X, Check, Trash2, Edit, ShieldCheck, Lock, Briefcase, Palmtree, Coffee } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CalendarClock, Moon, Sun, Clock, PartyPopper, X, Check, Trash2, Edit, ShieldCheck, Lock, Briefcase, Palmtree, Coffee, Info, Hourglass } from 'lucide-react';
 
 interface ScheduleCalendarProps {
   currentUser: User;
@@ -29,6 +29,14 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
   const getFirstDayOfMonth = (year: number, month: number) => {
       const day = new Date(year, month, 1).getDay();
       return day === 0 ? 6 : day - 1; // Adjust for Monday start (0=Mon...6=Sun)
+  };
+
+  const formatDuration = (minutes: number) => {
+      if (minutes <= 0) return '';
+      if (minutes < 60) return `${Math.round(minutes)}m`;
+      const h = Math.floor(minutes / 60);
+      const m = Math.round(minutes % 60);
+      return `${h}h ${m}m`;
   };
 
   const year = currentDate.getFullYear();
@@ -103,12 +111,12 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6; // 0=Sun, 6=Sat
       const isToday = new Date().toDateString() === dayDate.toDateString();
       
-      // LOGIC FIX: Do not visually render Leave block if it is a Weekend or Holiday
-      // This solves the issue where a leave request spanning 08.01-13.01 shows up on Sat/Sun.
       const leave = (isWeekend || holiday) ? null : rawLeave;
       
-      // Calculate total break time
+      // Calculate total break time & work time
       let totalBreakMinutes = 0;
+      let totalWorkHours = 0;
+
       if (timesheet) {
           timesheet.breaks.forEach(b => {
               if (b.endTime && b.startTime) {
@@ -116,7 +124,15 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
                   totalBreakMinutes += diff / 60000;
               }
           });
+          
+          if (timesheet.endTime) {
+              const gross = new Date(timesheet.endTime).getTime() - new Date(timesheet.startTime).getTime();
+              // Assuming unpaid breaks logic matches app config (simplified here)
+              totalWorkHours = (gross / 3600000);
+          }
       }
+
+      const breakLabel = formatDuration(totalBreakMinutes);
 
       days.push(
           <div 
@@ -126,7 +142,7 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
                 isManager ? 'hover:bg-blue-50 cursor-pointer' : 'cursor-default'
             } ${
                 holiday 
-                  ? 'bg-red-50 border-red-200 shadow-inner' // Stronger Holiday Style
+                  ? 'bg-red-50 border-red-200 shadow-inner' 
                   : (isToday ? 'bg-blue-50/30 border-blue-200' : 'bg-white border-gray-100')
             }`}
           >
@@ -177,13 +193,71 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
                               {timesheet.endTime ? new Date(timesheet.endTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '...'}
                           </span>
                       </div>
+                      {/* ADDED: Explicit Break Duration Display */}
                       {totalBreakMinutes > 0 && (
-                          <div className="flex items-center gap-1 text-[9px] text-orange-600 pl-1">
-                              <Coffee size={8}/> <span>{Math.round(totalBreakMinutes)}m</span>
+                          <div className="flex items-center justify-center gap-1 text-[9px] text-orange-600 font-medium bg-orange-50 rounded px-1 border border-orange-100 mt-0.5">
+                              <Coffee size={8}/> <span>Pauză: {breakLabel}</span>
                           </div>
                       )}
                   </div>
               )}
+
+              {/* --- HOVER DETAILS CARD (Replaces overflowing content) --- */}
+              <div className="absolute left-0 bottom-full mb-1 w-[150%] min-w-[180px] bg-white rounded-lg shadow-xl border border-blue-100 p-3 hidden group-hover:block z-50 pointer-events-none animate-in fade-in zoom-in-95 duration-100">
+                  <div className="text-xs font-bold text-gray-800 border-b pb-1 mb-2 flex justify-between">
+                      <span>{day} {monthName}</span>
+                      {isToday && <span className="text-blue-600">Azi</span>}
+                  </div>
+                  
+                  <div className="space-y-2 text-xs">
+                      {holiday && (
+                          <div className="flex items-start gap-2 text-red-600 bg-red-50 p-1.5 rounded">
+                              <PartyPopper size={12} className="mt-0.5"/>
+                              <span>{holiday.name}</span>
+                          </div>
+                      )}
+                      
+                      {leave && (
+                          <div className="flex items-start gap-2 text-purple-700 bg-purple-50 p-1.5 rounded">
+                              <Palmtree size={12} className="mt-0.5"/>
+                              <div>
+                                  <p className="font-bold">{leave.typeName}</p>
+                                  <p className="opacity-75 text-[10px]">{leave.reason}</p>
+                              </div>
+                          </div>
+                      )}
+
+                      <div className="bg-gray-50 p-1.5 rounded border border-gray-100">
+                          <p className="text-gray-500 uppercase text-[9px] font-bold mb-1">Planificat</p>
+                          {schedule ? (
+                              <div className="flex items-center gap-2">
+                                  <Clock size={12} className="text-blue-500"/>
+                                  <span className="font-mono text-gray-700">{schedule.startTime} - {schedule.endTime}</span>
+                                  <span className="text-[9px] text-gray-400">({schedule.name})</span>
+                              </div>
+                          ) : (
+                              <span className="text-gray-400 italic">Liber / Standard</span>
+                          )}
+                      </div>
+
+                      {timesheet && (
+                          <div className="bg-green-50 p-1.5 rounded border border-green-100">
+                              <p className="text-green-700 uppercase text-[9px] font-bold mb-1">Realizat</p>
+                              <div className="flex items-center gap-2 mb-1">
+                                  <Check size={12} className="text-green-600"/>
+                                  <span className="font-mono text-green-900">
+                                      {new Date(timesheet.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} - 
+                                      {timesheet.endTime ? new Date(timesheet.endTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '...'}
+                                  </span>
+                              </div>
+                              <div className="flex items-center justify-between text-[10px] text-green-700 pt-1 border-t border-green-100">
+                                  <span>Brut: {totalWorkHours.toFixed(1)}h</span>
+                                  {totalBreakMinutes > 0 && <span className="text-orange-600 font-bold">Pauză: {breakLabel}</span>}
+                              </div>
+                          </div>
+                      )}
+                  </div>
+              </div>
           </div>
       );
   }
