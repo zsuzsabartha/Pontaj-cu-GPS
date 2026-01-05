@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, Utensils, Cigarette, History, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff } from 'lucide-react';
+import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, Utensils, Cigarette, History, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff, ShieldAlert } from 'lucide-react';
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
 import { ShiftStatus, Coordinates, Office, User, BreakConfig, Holiday, LeaveRequest, LeaveStatus } from '../types';
 
@@ -29,7 +29,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showMockOption, setShowMockOption] = useState(false);
   
-  // Timer State
+  // Timer State - Refactored to useRef for absolute stability
   const [currentTime, setCurrentTime] = useState(Date.now());
   const timerRef = useRef<number | null>(null);
   
@@ -63,22 +63,20 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
     ? new Date(shiftStartTime).toLocaleTimeString('ro-RO', {hour: '2-digit', minute:'2-digit'})
     : null;
 
-  // --- Robust Timer Logic (setInterval) ---
+  // --- Robust Timer Logic (setInterval via useRef) ---
   useEffect(() => {
     const shouldRun = currentStatus === ShiftStatus.WORKING || currentStatus === ShiftStatus.ON_BREAK;
 
     if (shouldRun) {
-        // Sync immediately
+        // Update immediately to avoid 1s delay
         setCurrentTime(Date.now());
 
-        // Clear existing to avoid duplicates (react strict mode safe)
         if (timerRef.current) clearInterval(timerRef.current);
-
+        
         timerRef.current = window.setInterval(() => {
             setCurrentTime(Date.now());
         }, 1000);
     } else {
-        // Stop timer if not working
         if (timerRef.current) {
             clearInterval(timerRef.current);
             timerRef.current = null;
@@ -91,7 +89,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
             timerRef.current = null;
         }
     };
-  }, [currentStatus, shiftStartTime]); // Dependencies control when timer starts/restarts
+  }, [currentStatus, shiftStartTime]); 
 
   // --- Calculation Logic (Derived State) ---
   const calculateTimers = () => {
@@ -105,8 +103,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
       // Ensure accumulatedBreakTime is safe
       const safeAccumulatedBreak = isNaN(accumulatedBreakTime) ? 0 : accumulatedBreakTime;
 
-      // Total duration from Shift Start to Now
-      // Clamp to 0 to avoid negative numbers if local clock is slightly off vs stored time
+      // Total duration from Shift Start to Now (clamped to 0)
       let grossDuration = Math.max(0, currentTime - start);
 
       let netWorkMs = 0;
@@ -147,6 +144,8 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
   const { elapsed, breakTimer } = calculateTimers();
 
   const handleClockIn = async () => {
+    if (!user.isValidated) return; // double check
+
     setLoading(true);
     setError(null);
     setConfirmData(null);
@@ -339,13 +338,26 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
         {/* Spacer if not on break to keep layout stable */}
         {currentStatus !== ShiftStatus.ON_BREAK && <div className="mb-4"></div>}
         
+        {/* NOT VALIDATED WARNING */}
+        {!user.isValidated && (
+            <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-3 w-full">
+                <ShieldAlert className="text-red-500 shrink-0" size={20}/>
+                <div className="text-left">
+                    <p className="text-sm font-bold text-red-800">Cont Nevalidat</p>
+                    <p className="text-xs text-red-600 mt-1">
+                        Acest cont așteaptă validarea unui administrator sau manager. Nu puteți începe pontajul până la activare.
+                    </p>
+                </div>
+            </div>
+        )}
+
         {/* Buttons Grid */}
         <div className="grid grid-cols-2 gap-4 w-full">
             {currentStatus === ShiftStatus.NOT_STARTED || currentStatus === ShiftStatus.COMPLETED ? (
                  <button 
                  onClick={handleClockIn}
-                 disabled={loading || (activeLeaveRequest?.status === LeaveStatus.APPROVED && !activeLeaveRequest?.typeName.includes('Delegatie'))} // Disable if approved leave (unless business trip)
-                 className="col-span-2 flex items-center justify-center gap-2 text-white py-4 rounded-xl font-semibold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:grayscale bg-blue-600 hover:bg-blue-100 hover:text-blue-600 border border-transparent hover:border-blue-600 shadow-blue-200"
+                 disabled={!user.isValidated || loading || (activeLeaveRequest?.status === LeaveStatus.APPROVED && !activeLeaveRequest?.typeName.includes('Delegatie'))} // Disable if unvalidated OR approved leave
+                 className="col-span-2 flex items-center justify-center gap-2 text-white py-4 rounded-xl font-semibold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:grayscale bg-blue-600 hover:bg-blue-700 shadow-blue-200"
                >
                  {loading ? (
                      <><RefreshCw className="animate-spin" size={24}/> SE LOCALIZEAZĂ...</>

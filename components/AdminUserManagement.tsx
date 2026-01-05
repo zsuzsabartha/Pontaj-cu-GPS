@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, Role, Company, Department, Office, WorkSchedule } from '../types';
-import { UserPlus, CheckCircle, XCircle, Mail, ShieldAlert, MapPinOff, Building, Database, RefreshCw, Server, Cake, Fingerprint, Clock, Briefcase, FileInput, Upload, Users, BellRing, Eye, AlertTriangle, UserMinus, Filter, Edit2, X, Save, Search, MoreHorizontal, CalendarClock } from 'lucide-react';
+import { User, Role, Company, Department, Office, WorkSchedule, Timesheet, LeaveRequest, CorrectionRequest, ShiftStatus, LeaveStatus, BreakStatus } from '../types';
+import { UserPlus, CheckCircle, XCircle, Mail, ShieldAlert, MapPinOff, Building, Database, RefreshCw, Server, Cake, Fingerprint, Clock, Briefcase, FileInput, Upload, Users, BellRing, Eye, AlertTriangle, UserMinus, Filter, Edit2, X, Save, Search, MoreHorizontal, CalendarClock, Wand2 } from 'lucide-react';
 import UserValidationModal from './UserValidationModal';
-import { API_CONFIG } from '../constants';
+import { API_CONFIG, HOLIDAYS_RO, INITIAL_LEAVE_CONFIGS, INITIAL_BREAK_CONFIGS } from '../constants';
 import SmartTable, { Column } from './SmartTable';
 
 interface AdminUserManagementProps {
@@ -11,17 +11,21 @@ interface AdminUserManagementProps {
   companies: Company[];
   departments: Department[];
   offices: Office[];
-  workSchedules: WorkSchedule[]; // NEW PROP
+  workSchedules: WorkSchedule[]; 
   onValidateUser: (userId: string) => void;
   onCreateUser: (user: User) => void;
   onUpdateUser: (user: User) => void; 
+  onBulkImport?: (timesheets: Timesheet[], leaves: LeaveRequest[], corrections: CorrectionRequest[]) => void; // New Prop
 }
 
-const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, companies, departments, offices, workSchedules, onValidateUser, onCreateUser, onUpdateUser }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'pending' | 'create' | 'import' | 'inactive'>('pending');
+const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, companies, departments, offices, workSchedules, onValidateUser, onCreateUser, onUpdateUser, onBulkImport }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'pending' | 'create' | 'import' | 'inactive' | 'generator'>('pending');
   const [isDbSyncing, setIsDbSyncing] = useState(false);
   const [dbStatus, setDbStatus] = useState<'connected' | 'error'>('connected');
   
+  // Generator State
+  const [isGenerating, setIsGenerating] = useState(false);
+
   // Validation Modal State
   const [validationUser, setValidationUser] = useState<User | null>(null);
   
@@ -44,8 +48,8 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
     requiresGPS: true,
     birthDate: '',
     shareBirthday: false,
-    mainScheduleId: '', // NEW
-    alternativeScheduleIds: [] as string[] // NEW
+    mainScheduleId: '', 
+    alternativeScheduleIds: [] as string[]
   });
 
   const pendingUsers = users.filter(u => !u.isValidated);
@@ -66,52 +70,6 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
           case 'TERMINATED': return <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-[10px] font-bold border border-gray-200">ÎNCETAT</span>;
           default: return <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold border border-green-200">ACTIV</span>;
       }
-  };
-
-  const toggleRoleNew = (role: Role) => {
-      setNewUser(prev => {
-          const exists = prev.roles.includes(role);
-          if (exists) {
-              if (prev.roles.length === 1) return prev;
-              return { ...prev, roles: prev.roles.filter(r => r !== role) };
-          } else {
-              return { ...prev, roles: [...prev.roles, role] };
-          }
-      });
-  };
-
-  const toggleRoleEdit = (role: Role) => {
-      if (!editingUser) return;
-      setEditingUser(prev => {
-          if (!prev) return null;
-          const exists = prev.roles.includes(role);
-          const newRoles = exists 
-             ? prev.roles.filter(r => r !== role)
-             : [...prev.roles, role];
-          // Ensure at least one role
-          if (newRoles.length === 0) return prev;
-          return { ...prev, roles: newRoles };
-      });
-  };
-
-  // Schedule Toggles
-  const toggleAltScheduleNew = (scheduleId: string) => {
-      setNewUser(prev => {
-          const exists = prev.alternativeScheduleIds.includes(scheduleId);
-          if (exists) return { ...prev, alternativeScheduleIds: prev.alternativeScheduleIds.filter(id => id !== scheduleId) };
-          return { ...prev, alternativeScheduleIds: [...prev.alternativeScheduleIds, scheduleId] };
-      });
-  };
-
-  const toggleAltScheduleEdit = (scheduleId: string) => {
-      if (!editingUser) return;
-      setEditingUser(prev => {
-          if (!prev) return null;
-          const currentAlts = prev.alternativeScheduleIds || [];
-          const exists = currentAlts.includes(scheduleId);
-          if (exists) return { ...prev, alternativeScheduleIds: currentAlts.filter(id => id !== scheduleId) };
-          return { ...prev, alternativeScheduleIds: [...currentAlts, scheduleId] };
-      });
   };
 
   const handleManualDBSync = async () => {
@@ -135,8 +93,6 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const generatedPin = Math.floor(1000 + Math.random() * 9000).toString();
-    
-    // Default main schedule if not selected
     const mainSched = newUser.mainScheduleId || (workSchedules[0]?.id || '');
 
     const user: User = {
@@ -229,13 +185,217 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
 
   const handleValidateFromModal = (updatedUser: User) => {
      onValidateUser(updatedUser.id);
-     // Update user with main/alt schedules if modal returns them
      onUpdateUser(updatedUser);
      setTimeout(() => handleManualDBSync(), 500);
   };
 
   const handleSendReminder = (user: User) => {
      alert(`Notificare trimisă către ${user.email} (Reminder: Nu te-ai logat niciodată!)`);
+  };
+
+  // --- DATA GENERATOR LOGIC (2025) ---
+  const generateMockData2025 = () => {
+      if (!onBulkImport) return;
+      if (!confirm("Sigur doriți să generați date pentru 2025? Acest lucru va adăuga mii de înregistrări.")) return;
+
+      setIsGenerating(true);
+      setTimeout(() => {
+          const generatedTimesheets: Timesheet[] = [];
+          const generatedLeaves: LeaveRequest[] = [];
+          const generatedCorrections: CorrectionRequest[] = [];
+
+          const year = 2025;
+          const startDate = new Date(year, 0, 1);
+          const endDate = new Date(year, 11, 31);
+
+          // Leave Config Shortcuts
+          const coConfig = INITIAL_LEAVE_CONFIGS.find(lc => lc.code === 'CO');
+          const cmConfig = INITIAL_LEAVE_CONFIGS.find(lc => lc.code === 'CM');
+          const delConfig = INITIAL_LEAVE_CONFIGS.find(lc => lc.code === 'DEL-T');
+          const evConfig = INITIAL_LEAVE_CONFIGS.find(lc => lc.code === 'EV');
+
+          // Pre-calculate randomized annual leave periods for each user to look realistic
+          // Strategy: Each user gets 2 major chunks (Summer + Winter) and some scattered days
+          const userLeavePlans: Record<string, string[]> = {}; 
+
+          users.forEach(user => {
+              userLeavePlans[user.id] = [];
+              let daysAllocated = 0;
+              const maxDays = 21;
+
+              // 1. Summer Block (10 days in July or August)
+              const summerMonth = Math.random() > 0.5 ? 6 : 7; // July or Aug
+              const summerStartDay = Math.floor(Math.random() * 15) + 1;
+              for (let i = 0; i < 10; i++) {
+                  const d = new Date(year, summerMonth, summerStartDay + i);
+                  if (d.getDay() !== 0 && d.getDay() !== 6) { // Skip weekends
+                      userLeavePlans[user.id].push(d.toISOString().split('T')[0]);
+                      daysAllocated++;
+                  }
+              }
+
+              // 2. Winter Block (5 days in Dec)
+              const winterStartDay = 20; 
+              for (let i = 0; i < 7; i++) { // Try for a week around Xmas
+                  const d = new Date(year, 11, winterStartDay + i);
+                  if (d.getDay() !== 0 && d.getDay() !== 6 && daysAllocated < maxDays) {
+                      userLeavePlans[user.id].push(d.toISOString().split('T')[0]);
+                      daysAllocated++;
+                  }
+              }
+          });
+
+          // Iterate every day of 2025
+          for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+              const dateStr = d.toISOString().split('T')[0];
+              const dayOfWeek = d.getDay();
+              const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+              const isHoliday = HOLIDAYS_RO.some(h => h.date === dateStr);
+
+              // Iterate Users
+              users.forEach(user => {
+                  if (!user.isValidated) return;
+
+                  // 1. CHECK LEAVE PLANS
+                  if (userLeavePlans[user.id].includes(dateStr)) {
+                      // Only create request if it doesn't exist yet (group consecutive days ideally, but per day is easier for mock)
+                      // Ideally we check if previous day was same leave type to merge, but simplification: 1 request per day for mock stability
+                      if (coConfig) {
+                          generatedLeaves.push({
+                              id: `gen-lr-${user.id}-${dateStr}`,
+                              userId: user.id,
+                              typeId: coConfig.id,
+                              typeName: coConfig.name,
+                              startDate: dateStr,
+                              endDate: dateStr,
+                              reason: "Concediu de odihnă planificat 2025",
+                              status: LeaveStatus.APPROVED,
+                              createdAt: new Date(year, 0, 15).toISOString() // Planned early
+                          });
+                      }
+                      return; // Skip work gen
+                  }
+
+                  // 2. RANDOM OTHER LEAVES (Sick, Special)
+                  // Very low chance: 0.1% Sick, 0.05% Special
+                  if (!isWeekend && !isHoliday) {
+                      const rand = Math.random();
+                      if (rand < 0.001 && cmConfig) {
+                          generatedLeaves.push({
+                              id: `gen-cm-${user.id}-${dateStr}`,
+                              userId: user.id,
+                              typeId: cmConfig.id,
+                              typeName: cmConfig.name,
+                              startDate: dateStr,
+                              endDate: dateStr,
+                              reason: "Problemă medicală acută",
+                              status: LeaveStatus.APPROVED,
+                              createdAt: dateStr
+                          });
+                          return;
+                      }
+                  }
+
+                  // 3. WORK GENERATION
+                  if (!isWeekend && !isHoliday) {
+                      
+                      // Check for Delegation (2% chance)
+                      const isDelegation = Math.random() < 0.02;
+                      if (isDelegation && delConfig) {
+                           generatedLeaves.push({
+                              id: `gen-del-${user.id}-${dateStr}`,
+                              userId: user.id,
+                              typeId: delConfig.id,
+                              typeName: delConfig.name,
+                              startDate: dateStr,
+                              endDate: dateStr,
+                              reason: "Delegație client",
+                              status: LeaveStatus.APPROVED,
+                              createdAt: dateStr
+                          });
+                          // Delegation counts as work too usually, but for simplicity in app logic, leave 'covers' the day
+                          // OR we can generate a Timesheet with 'Extern' location.
+                          // Let's generate a Timesheet with EXTERN location for delegation.
+                      }
+
+                      // Timesheet Generation
+                      // Randomize Start Time: 08:45 - 09:30
+                      const startHour = 8;
+                      const startMin = 45 + Math.floor(Math.random() * 45); // 45 to 90
+                      const startTime = new Date(d);
+                      startTime.setHours(startHour, startMin, 0);
+
+                      // Randomize End Time: 17:00 - 18:30
+                      const endHour = 17;
+                      const endMin = Math.floor(Math.random() * 90);
+                      const endTime = new Date(d);
+                      endTime.setHours(endHour, endMin, 0);
+
+                      // Location Logic
+                      let location = { latitude: 44.4268, longitude: 26.1025 }; // Default Bucharest
+                      let officeId = user.assignedOfficeId;
+                      let dist = 50;
+
+                      if (isDelegation) {
+                          officeId = undefined; // External
+                          dist = 5000; // Far
+                          location = { latitude: 45.0, longitude: 25.0 }; // Somewhere else
+                      }
+
+                      // Correction Scenario (Forgot to clock out - 1% chance)
+                      const forgotClockOut = Math.random() < 0.01;
+                      
+                      if (forgotClockOut) {
+                          // Incomplete timesheet
+                          generatedTimesheets.push({
+                              id: `gen-ts-${user.id}-${dateStr}`,
+                              userId: user.id,
+                              date: dateStr,
+                              startTime: startTime.toISOString(),
+                              status: ShiftStatus.WORKING, // Stuck in working
+                              startLocation: location,
+                              matchedOfficeId: officeId,
+                              distanceToOffice: dist,
+                              breaks: []
+                          });
+
+                          // Generate Correction Request
+                          generatedCorrections.push({
+                              id: `gen-cor-${user.id}-${dateStr}`,
+                              userId: user.id,
+                              requestedDate: dateStr,
+                              requestedStartTime: startTime.toISOString(),
+                              requestedEndTime: endTime.toISOString(),
+                              reason: "Am uitat să scanez la plecare.",
+                              status: Math.random() > 0.2 ? 'APPROVED' : 'PENDING'
+                          });
+
+                      } else {
+                          // Normal Complete Day
+                          generatedTimesheets.push({
+                              id: `gen-ts-${user.id}-${dateStr}`,
+                              userId: user.id,
+                              date: dateStr,
+                              startTime: startTime.toISOString(),
+                              endTime: endTime.toISOString(),
+                              status: ShiftStatus.COMPLETED,
+                              startLocation: location,
+                              endLocation: location,
+                              matchedOfficeId: officeId,
+                              distanceToOffice: dist,
+                              breaks: [] // Simplified: no breaks for bulk gen
+                          });
+                      }
+                  }
+              });
+          }
+
+          if (onBulkImport) {
+              onBulkImport(generatedTimesheets, generatedLeaves, generatedCorrections);
+              alert(`Generare Completă!\n\nTimesheets: ${generatedTimesheets.length}\nConcedii: ${generatedLeaves.length}\nCorecții: ${generatedCorrections.length}`);
+          }
+          setIsGenerating(false);
+      }, 1000); // Simulate processing
   };
 
   // --- TABLE COLUMNS ---
@@ -352,9 +512,51 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
           onClick={() => setActiveSubTab('inactive')}
           className={`whitespace-nowrap pb-2 px-1 text-sm font-medium transition-colors ${activeSubTab === 'inactive' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
         >
-          Monitorizare Activitate <span className="bg-gray-100 text-gray-600 px-1 rounded text-xs ml-1">{inactiveUsers.length}</span>
+          Monitorizare
+        </button>
+        {/* NEW GENERATOR TAB */}
+        <button
+          onClick={() => setActiveSubTab('generator')}
+          className={`whitespace-nowrap pb-2 px-1 text-sm font-medium transition-colors flex items-center gap-1 ${activeSubTab === 'generator' ? 'border-b-2 border-purple-600 text-purple-600' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          <Wand2 size={14}/> Generator Date 2025
         </button>
       </div>
+
+      {/* --- GENERATOR TAB CONTENT --- */}
+      {activeSubTab === 'generator' && (
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 animate-in fade-in">
+              <div className="flex items-start gap-4">
+                  <div className="bg-purple-100 p-3 rounded-xl text-purple-600">
+                      <Wand2 size={32} />
+                  </div>
+                  <div className="flex-1">
+                      <h3 className="text-lg font-bold text-gray-800">Simulator Date Istorice (Anul 2025)</h3>
+                      <p className="text-sm text-gray-500 mt-1">
+                          Acest instrument va genera automat un istoric complet de activitate pentru toți utilizatorii validați, pentru perioada <strong>01 Ianuarie 2025 - 31 Decembrie 2025</strong>.
+                      </p>
+                      <ul className="text-xs text-gray-600 mt-4 space-y-2 list-disc pl-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                          <li>Generează <strong>Pontaje (Start/Stop)</strong> respectând zilele lucrătoare și sărbătorile legale.</li>
+                          <li>Alocă automat <strong>21 zile de Concediu Odihnă (CO)</strong> per angajat, prioritar în Iulie/August și Decembrie.</li>
+                          <li>Simulează evenimente aleatoare: <strong>Concedii Medicale (CM)</strong>, <strong>Delegații</strong> și <strong>Corecții</strong>.</li>
+                          <li>Respectă locațiile alocate și calculează distanțe.</li>
+                      </ul>
+                      
+                      <div className="mt-6 flex items-center gap-4">
+                          <button 
+                              onClick={generateMockData2025}
+                              disabled={isGenerating}
+                              className="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-purple-700 shadow-lg shadow-purple-200 transition flex items-center gap-2 disabled:opacity-50"
+                          >
+                              {isGenerating ? <RefreshCw className="animate-spin" size={18}/> : <Wand2 size={18}/>}
+                              {isGenerating ? 'Generare în curs...' : 'Generează Date 2025'}
+                          </button>
+                          {isGenerating && <span className="text-xs text-purple-600 font-medium">Vă rugăm așteptați, se procesează mii de înregistrări...</span>}
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {activeSubTab === 'pending' && (
         <div className="space-y-4">

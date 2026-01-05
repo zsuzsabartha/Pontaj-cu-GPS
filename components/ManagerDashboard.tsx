@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { User, Timesheet, LeaveRequest, CorrectionRequest, BreakStatus, LeaveStatus, ShiftStatus, Company, Office, BreakConfig, LeaveConfig, Holiday } from '../types';
-import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight, Slash } from 'lucide-react';
+import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight, Slash, LogIn, LogOut } from 'lucide-react';
 import TimesheetList from './TimesheetList';
 import LeaveCalendarReport from './LeaveCalendarReport';
 
@@ -56,23 +56,89 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
   const teamPendingBreaks = teamTimesheets.filter(ts => ts.breaks.some(b => b.status === BreakStatus.PENDING));
   const pendingBreaksCount = teamPendingBreaks.reduce((count, ts) => count + ts.breaks.filter(b => b.status === BreakStatus.PENDING).length, 0);
 
+  // Helper to format location text based on available data
+  const formatLocation = (matchedOfficeId?: string, distance?: number): { text: string, color: string } => {
+      if (matchedOfficeId) {
+          const officeName = offices.find(o => o.id === matchedOfficeId)?.name || 'Sediu';
+          return { text: `${officeName}`, color: 'text-blue-600' };
+      }
+      if (distance !== undefined) {
+          const color = distance > 500 ? 'text-orange-600' : 'text-gray-500';
+          return { text: `Extern (${distance}m)`, color };
+      }
+      return { text: '-', color: 'text-gray-400' };
+  };
+
   // Live Status Logic
   const teamMemberStatuses = teamUsers.map(user => {
       const activeLeave = leaves.find(l => l.userId === user.id && l.startDate <= dashboardDate && l.endDate >= dashboardDate && l.status === LeaveStatus.APPROVED);
       const dailyTs = timesheets.find(t => t.userId === user.id && t.date === dashboardDate);
-      let status = 'ABSENT'; let detail = 'Nepontat'; let time = ''; let locationText = '';
+      
+      let status = 'ABSENT'; 
+      let events: { icon: React.ReactNode, label: string, time: string, loc: string, locColor: string }[] = [];
 
       if (activeLeave) {
-          status = 'LEAVE'; detail = activeLeave.typeName;
+          status = 'LEAVE';
+          events.push({ 
+              icon: <Palmtree size={12}/>, 
+              label: 'Concediu', 
+              time: '-', 
+              loc: activeLeave.typeName,
+              locColor: 'text-purple-600' 
+          });
       } else if (dailyTs) {
-          if (dailyTs.matchedOfficeId) locationText = offices.find(o => o.id === dailyTs.matchedOfficeId)?.name || '';
-          else if (dailyTs.distanceToOffice) locationText = `Extern (${dailyTs.distanceToOffice}m)`;
+          if (dailyTs.status === ShiftStatus.WORKING) status = 'WORKING';
+          else if (dailyTs.status === ShiftStatus.ON_BREAK) status = 'BREAK';
+          else status = 'COMPLETED';
 
-          if (dailyTs.status === ShiftStatus.WORKING) { status = 'WORKING'; detail = 'La Program'; time = new Date(dailyTs.startTime).toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'}); }
-          else if (dailyTs.status === ShiftStatus.ON_BREAK) { status = 'BREAK'; detail = 'În Pauză'; time = new Date(dailyTs.startTime).toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'}); }
-          else { status = 'COMPLETED'; detail = 'Terminat'; time = `${new Date(dailyTs.startTime).toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'})} - ${dailyTs.endTime ? new Date(dailyTs.endTime).toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'}) : '...'}`; }
+          // 1. Clock In Event
+          const startLoc = formatLocation(dailyTs.matchedOfficeId, dailyTs.distanceToOffice);
+          events.push({
+              icon: <LogIn size={12}/>,
+              label: 'Start',
+              time: new Date(dailyTs.startTime).toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'}),
+              loc: startLoc.text,
+              locColor: startLoc.color
+          });
+
+          // 2. Breaks Events (Chronological)
+          dailyTs.breaks.forEach(br => {
+              // Break Start
+              const brStartLoc = formatLocation(undefined, br.startDistanceToOffice);
+              events.push({
+                  icon: <Coffee size={12}/>,
+                  label: `Pauză (${br.typeName})`,
+                  time: new Date(br.startTime).toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'}),
+                  loc: brStartLoc.text,
+                  locColor: brStartLoc.color
+              });
+              
+              // Break End (if exists)
+              if (br.endTime) {
+                  const brEndLoc = formatLocation(undefined, br.endDistanceToOffice);
+                  events.push({
+                      icon: <Clock4 size={12}/>,
+                      label: 'Revenire',
+                      time: new Date(br.endTime).toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'}),
+                      loc: brEndLoc.text,
+                      locColor: brEndLoc.color
+                  });
+              }
+          });
+
+          // 3. Clock Out Event (if exists)
+          if (dailyTs.endTime) {
+              const endLoc = formatLocation(undefined, dailyTs.endDistanceToOffice);
+              events.push({
+                  icon: <LogOut size={12}/>,
+                  label: 'Stop',
+                  time: new Date(dailyTs.endTime).toLocaleTimeString('ro-RO', {hour:'2-digit',minute:'2-digit'}),
+                  loc: endLoc.text,
+                  locColor: endLoc.color
+              });
+          }
       }
-      return { user, status, detail, time, locationText };
+      return { user, status, events };
   }).sort((a,b) => (a.status === 'WORKING' ? 0 : 1) - (b.status === 'WORKING' ? 0 : 1));
 
   const activeTeamMembersCount = teamMemberStatuses.filter(s => s.status === 'WORKING').length;
@@ -163,16 +229,16 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                          <table className="w-full text-left text-sm">
                              <thead>
                                  <tr className="bg-gray-50/50 text-xs text-gray-500 uppercase font-bold border-b border-gray-100">
-                                     <th className="px-4 py-3">Angajat</th>
-                                     <th className="px-4 py-3">Status</th>
-                                     <th className="px-4 py-3">Program / Detalii</th>
+                                     <th className="px-4 py-3 w-1/4">Angajat</th>
+                                     <th className="px-4 py-3 w-32">Status</th>
+                                     <th className="px-4 py-3">Pontaje & Locație</th>
                                      <th className="px-4 py-3 text-right">Acțiuni</th>
                                  </tr>
                              </thead>
                              <tbody className="divide-y divide-gray-100">
-                                 {teamMemberStatuses.map(({ user, status, detail, time, locationText }) => (
+                                 {teamMemberStatuses.map(({ user, status, events }) => (
                                      <tr key={user.id} className="hover:bg-slate-50 transition">
-                                         <td className="px-4 py-3">
+                                         <td className="px-4 py-3 align-top">
                                              <div className="flex items-center gap-3">
                                                  <div className="relative">
                                                      <img src={user.avatarUrl} className="w-9 h-9 rounded-full bg-gray-200 object-cover"/>
@@ -184,7 +250,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                                  </div>
                                              </div>
                                          </td>
-                                         <td className="px-4 py-3">
+                                         <td className="px-4 py-3 align-top">
                                              <span className={`px-2 py-1 rounded-full text-xs font-bold border ${
                                                  status === 'WORKING' ? 'bg-green-100 text-green-700 border-green-200' :
                                                  status === 'BREAK' ? 'bg-orange-100 text-orange-700 border-orange-200' :
@@ -196,14 +262,21 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                              </span>
                                          </td>
                                          <td className="px-4 py-3">
-                                             <div className="flex flex-col">
-                                                 <span className="font-bold text-gray-700 text-xs">{detail}</span>
-                                                 {(status === 'WORKING' || status === 'BREAK') && <span className="text-[10px] text-gray-500 font-mono">Start: {time}</span>}
-                                                 {status === 'COMPLETED' && <span className="text-[10px] text-gray-500 font-mono">{time}</span>}
-                                                 {locationText && <span className="flex items-center gap-1 text-[10px] text-blue-600 mt-0.5"><MapPin size={10}/> {locationText}</span>}
+                                             {/* Render Event Stream */}
+                                             <div className="space-y-1">
+                                                 {events.length === 0 && <span className="text-xs text-gray-400 italic">Nicio activitate înregistrată.</span>}
+                                                 {events.map((evt, idx) => (
+                                                     <div key={idx} className="flex items-center gap-2 text-xs">
+                                                         <span className="text-gray-400 w-4 flex justify-center">{evt.icon}</span>
+                                                         <span className="font-mono font-bold text-gray-700 w-10">{evt.time}</span>
+                                                         <span className="text-gray-500 font-medium">{evt.label}</span>
+                                                         <span className="text-gray-300">|</span>
+                                                         <span className={`font-medium ${evt.locColor}`}>{evt.loc}</span>
+                                                     </div>
+                                                 ))}
                                              </div>
                                          </td>
-                                         <td className="px-4 py-3 text-right">
+                                         <td className="px-4 py-3 text-right align-top">
                                              <button onClick={() => onOpenTimesheetModal(null)} className="text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition"><PlusCircle size={18}/></button>
                                          </td>
                                      </tr>

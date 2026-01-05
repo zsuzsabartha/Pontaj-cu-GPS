@@ -139,7 +139,8 @@ export interface Timesheet {
   date: string; // YYYY-MM-DD for grouping
   startLocation?: Coordinates;
   endLocation?: Coordinates;
-  distanceToOffice?: number; // meters
+  distanceToOffice?: number; // meters (Start)
+  endDistanceToOffice?: number; // meters (End) - NEW
   matchedOfficeId?: string;
   isHoliday?: boolean;
   status: ShiftStatus;
