@@ -965,7 +965,7 @@ app.listen(PORT, async () => {
                             className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
                          >
                             {isSeeding ? <RefreshCw className="animate-spin" size={14}/> : <UploadCloud size={14}/>}
-                            PUSH: Local -> SQL
+                            PUSH: Local &rarr; SQL
                          </button>
                          <button 
                             onClick={handlePullFromSQL}
@@ -973,7 +973,7 @@ app.listen(PORT, async () => {
                             className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
                          >
                             {isPulling ? <RefreshCw className="animate-spin" size={14}/> : <CloudDownload size={14}/>}
-                            PULL: SQL -> Local
+                            PULL: SQL &rarr; Local
                          </button>
                      </div>
                  </div>
