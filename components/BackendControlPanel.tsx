@@ -196,6 +196,7 @@ CREATE TABLE users (
     is_validated BIT DEFAULT 0,
     requires_gps BIT DEFAULT 1,
     employment_status NVARCHAR(20) DEFAULT 'ACTIVE',
+    alternative_schedule_ids NVARCHAR(MAX),
     created_at DATETIME2 DEFAULT GETDATE()
 );
 -- Config Tables
@@ -242,11 +243,61 @@ CREATE TABLE correction_requests (
 );
 
 -- SCHEMA MIGRATIONS (Auto-Fix for existing tables) --
+-- 1. CORRECTION REQUESTS (requested_end_time)
 IF EXISTS(SELECT * FROM sys.tables WHERE name = 'correction_requests')
 BEGIN
     IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'correction_requests') AND name = 'requested_end_time')
     BEGIN
         ALTER TABLE correction_requests ADD requested_end_time DATETIME2;
+    END
+END
+
+-- 2. BREAKS (type_name, manager_note)
+IF EXISTS(SELECT * FROM sys.tables WHERE name = 'breaks')
+BEGIN
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'breaks') AND name = 'type_name')
+    BEGIN
+        ALTER TABLE breaks ADD type_name NVARCHAR(100);
+    END
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'breaks') AND name = 'manager_note')
+    BEGIN
+        ALTER TABLE breaks ADD manager_note NVARCHAR(255);
+    END
+END
+
+-- 3. DEPARTMENTS (email_notifications)
+IF EXISTS(SELECT * FROM sys.tables WHERE name = 'departments')
+BEGIN
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'departments') AND name = 'email_notifications')
+    BEGIN
+        ALTER TABLE departments ADD email_notifications BIT DEFAULT 1;
+    END
+END
+
+-- 4. USERS (employment_status)
+IF EXISTS(SELECT * FROM sys.tables WHERE name = 'users')
+BEGIN
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'users') AND name = 'employment_status')
+    BEGIN
+        ALTER TABLE users ADD employment_status NVARCHAR(20) DEFAULT 'ACTIVE';
+    END
+END
+
+-- 5. USERS (alternative_schedule_ids)
+IF EXISTS(SELECT * FROM sys.tables WHERE name = 'users')
+BEGIN
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'users') AND name = 'alternative_schedule_ids')
+    BEGIN
+        ALTER TABLE users ADD alternative_schedule_ids NVARCHAR(MAX);
+    END
+END
+
+-- 6. USERS (main_schedule_id)
+IF EXISTS(SELECT * FROM sys.tables WHERE name = 'users')
+BEGIN
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'users') AND name = 'main_schedule_id')
+    BEGIN
+        ALTER TABLE users ADD main_schedule_id NVARCHAR(50);
     END
 END
 `;
@@ -399,11 +450,12 @@ app.get('/api/v1/config/users', asyncHandler(async (req, res) => {
 }));
 app.post('/api/v1/config/users', asyncHandler(async (req, res) => {
     await handleConfigSync('users', req.body, (u) => ({
-        query: \`INSERT INTO users (id, erp_id, company_id, department_id, assigned_office_id, main_schedule_id, name, email, auth_type, roles, contract_hours, is_validated, requires_gps, employment_status) 
-                VALUES (@id, @erpId, @cid, @did, @oid, @sid, @name, @email, @auth, @roles, @hours, @val, @gps, @status)\`,
+        query: \`INSERT INTO users (id, erp_id, company_id, department_id, assigned_office_id, main_schedule_id, name, email, auth_type, roles, contract_hours, is_validated, requires_gps, employment_status, alternative_schedule_ids) 
+                VALUES (@id, @erpId, @cid, @did, @oid, @sid, @name, @email, @auth, @roles, @hours, @val, @gps, @status, @altSched)\`,
         params: {
             id: u.id, erpId: u.erpId, cid: u.companyId, did: u.departmentId, oid: u.assignedOfficeId, sid: u.mainScheduleId,
-            name: u.name, email: u.email, auth: u.authType, roles: JSON.stringify(u.roles), hours: u.contractHours, val: u.isValidated?1:0, gps: u.requiresGPS?1:0, status: u.employmentStatus
+            name: u.name, email: u.email, auth: u.authType, roles: JSON.stringify(u.roles), hours: u.contractHours, val: u.isValidated?1:0, gps: u.requiresGPS?1:0, status: u.employmentStatus,
+            altSched: JSON.stringify(u.alternativeScheduleIds || [])
         }
     }));
     res.json({ success: true });
@@ -506,6 +558,18 @@ app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
     await transaction.begin();
     try {
         for (const t of req.body) {
+            
+            // DUPLICATE CHECK: Prevent adding a second timesheet for the same user on the same date (unless updating same ID)
+            const dupCheck = await transaction.request()
+                .input('uid', t.userId)
+                .input('date', t.date)
+                .input('id', t.id)
+                .query(\`SELECT id FROM timesheets WHERE user_id = @uid AND date = @date AND id != @id\`);
+
+            if (dupCheck.recordset.length > 0) {
+                 throw new Error(\`Data Constraint Violation: User \${t.userId} already has a timesheet on \${t.date}\`);
+            }
+
             await transaction.request().input('id', t.id).query('DELETE FROM timesheets WHERE id = @id');
             await transaction.request().input('id', t.id).query('DELETE FROM breaks WHERE timesheet_id = @id');
 
@@ -611,6 +675,11 @@ app.use((err, req, res, _) => {
     return res.status(400).json({ error: 'Validation Error', details: err.errors });
   }
   console.error(err);
+  
+  if (err.message && err.message.includes('Data Constraint Violation')) {
+      return res.status(409).json({ error: 'Duplicate Entry', message: err.message });
+  }
+
   res.status(500).json({ error: err.message, stack: err.stack });
 });
 

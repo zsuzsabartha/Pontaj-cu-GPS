@@ -1,0 +1,79 @@
+
+USE PontajSmart;
+GO
+
+-- 1. Fix 'breaks' table (missing columns causing the specific error you saw)
+IF EXISTS(SELECT * FROM sys.tables WHERE name = 'breaks')
+BEGIN
+    -- Add type_name if missing
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'breaks') AND name = 'type_name')
+    BEGIN
+        ALTER TABLE breaks ADD type_name NVARCHAR(100);
+        PRINT 'Added column type_name to table breaks.';
+    END
+
+    -- Add manager_note if missing
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'breaks') AND name = 'manager_note')
+    BEGIN
+        ALTER TABLE breaks ADD manager_note NVARCHAR(255);
+        PRINT 'Added column manager_note to table breaks.';
+    END
+END
+GO
+
+-- 2. Fix 'correction_requests' table
+IF EXISTS(SELECT * FROM sys.tables WHERE name = 'correction_requests')
+BEGIN
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'correction_requests') AND name = 'requested_end_time')
+    BEGIN
+        ALTER TABLE correction_requests ADD requested_end_time DATETIME2;
+        PRINT 'Added column requested_end_time to table correction_requests.';
+    END
+END
+GO
+
+-- 3. Fix 'departments' table
+IF EXISTS(SELECT * FROM sys.tables WHERE name = 'departments')
+BEGIN
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'departments') AND name = 'email_notifications')
+    BEGIN
+        ALTER TABLE departments ADD email_notifications BIT DEFAULT 1;
+        PRINT 'Added column email_notifications to table departments.';
+    END
+END
+GO
+
+-- 4. Fix 'users' table (employment_status)
+IF EXISTS(SELECT * FROM sys.tables WHERE name = 'users')
+BEGIN
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'users') AND name = 'employment_status')
+    BEGIN
+        ALTER TABLE users ADD employment_status NVARCHAR(20) DEFAULT 'ACTIVE';
+        PRINT 'Added column employment_status to table users.';
+    END
+END
+GO
+
+-- 5. Fix 'users' table (alternative_schedule_ids)
+IF EXISTS(SELECT * FROM sys.tables WHERE name = 'users')
+BEGIN
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'users') AND name = 'alternative_schedule_ids')
+    BEGIN
+        ALTER TABLE users ADD alternative_schedule_ids NVARCHAR(MAX);
+        PRINT 'Added column alternative_schedule_ids to table users.';
+    END
+END
+GO
+
+-- 6. Fix 'users' table (main_schedule_id)
+IF EXISTS(SELECT * FROM sys.tables WHERE name = 'users')
+BEGIN
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'users') AND name = 'main_schedule_id')
+    BEGIN
+        ALTER TABLE users ADD main_schedule_id NVARCHAR(50);
+        PRINT 'Added column main_schedule_id to table users.';
+    END
+END
+GO
+
+PRINT 'Migration completed successfully.';

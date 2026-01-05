@@ -379,13 +379,27 @@ export default function App() {
       const isManager = hasRole(Role.MANAGER) || hasRole(Role.ADMIN);
       
       // Determine the owner of this timesheet
-      // If editing, use existing owner. If creating, use targetUserId stored in state
       const ownerId = editModalData.targetUserId; 
 
       if (!ownerId) {
           alert("Eroare internă: Nu s-a putut identifica utilizatorul țintă.");
           setIsGlobalLoading(false);
           return;
+      }
+
+      // DUPLICATE CHECK: Prevent creating duplicates on the same day for WORK types
+      if (data.type === 'WORK') {
+         // Look for existing timesheet on this date for this user, excluding current one if editing
+         const duplicate = timesheets.find(t => 
+             t.userId === ownerId && 
+             t.date === data.date && 
+             t.id !== (data.tsId || '')
+         );
+         if (duplicate) {
+             alert(`Există deja un pontaj înregistrat pentru utilizator pe data de ${data.date}. O singură înregistrare este permisă pe zi.`);
+             setIsGlobalLoading(false);
+             return;
+         }
       }
 
       try {
@@ -465,8 +479,12 @@ export default function App() {
               }
           }
           setEditModalData({isOpen: false, timesheet: null, targetUserId: null});
-      } catch (e) {
-          alert("Eroare server: Salvarea a eșuat.");
+      } catch (e: any) {
+          if (e.message && e.message.includes('Duplicate')) {
+              alert("Eroare server: Există deja un pontaj pe această dată (Conflict).");
+          } else {
+              alert("Eroare server: Salvarea a eșuat.");
+          }
       } finally {
           setIsGlobalLoading(false);
       }
@@ -524,10 +542,19 @@ export default function App() {
 
   const handleClockIn = async (loc: Coordinates, off: Office | null, dist: number) => {
       if (!currentUser) return;
+      
+      const now = new Date();
+      const today = now.toISOString().split('T')[0];
+      
+      // CHECK DUPLICATE ON FRONTEND BEFORE SENDING
+      const existingToday = timesheets.find(t => t.userId === currentUser.id && t.date === today);
+      if (existingToday) {
+          alert("Aveți deja un pontaj inițiat sau finalizat pentru ziua de astăzi. Nu se pot crea dubluri.");
+          return;
+      }
+
       setIsGlobalLoading(true);
       try {
-          const now = new Date();
-          const today = now.toISOString().split('T')[0];
           const detectedId = schedulePlans.find(s => s.userId === currentUser.id && s.date === today)?.scheduleId || currentUser.mainScheduleId;
           const schedName = workSchedules.find(s => s.id === detectedId)?.name;
           
@@ -547,8 +574,12 @@ export default function App() {
           
           await SQLService.upsertTimesheet(newTs);
           setTimesheets(prev => [newTs, ...prev]);
-      } catch (e) {
-          alert("Nu s-a putut efectua pontajul. Eroare comunicare server.");
+      } catch (e: any) {
+          if (e.message && e.message.includes('Duplicate')) {
+              alert("Eroare: Există deja un pontaj înregistrat pe server pentru astăzi.");
+          } else {
+              alert("Nu s-a putut efectua pontajul. Eroare comunicare server.");
+          }
       } finally {
           setIsGlobalLoading(false);
       }

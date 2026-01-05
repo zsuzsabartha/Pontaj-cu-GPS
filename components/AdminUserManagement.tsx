@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { User, Role, Company, Department, Office, WorkSchedule, Timesheet, LeaveRequest, CorrectionRequest, ShiftStatus, LeaveStatus } from '../types';
-import { UserPlus, ShieldAlert, Database, RefreshCw, Mail, Eye, AlertTriangle, BellRing, Upload, Edit2, X, Save, Wand2, Users, FileText, Download, Briefcase, Building, Clock, MapPin, CalendarClock } from 'lucide-react';
+import { UserPlus, ShieldAlert, Database, RefreshCw, Mail, Eye, AlertTriangle, BellRing, Upload, Edit2, X, Save, Wand2, Users, FileText, Download, Briefcase, Building, Clock, MapPin, CalendarClock, Fingerprint } from 'lucide-react';
 import UserValidationModal from './UserValidationModal';
 import { API_CONFIG, HOLIDAYS_RO, INITIAL_LEAVE_CONFIGS } from '../constants';
 import SmartTable, { Column } from './SmartTable';
@@ -63,16 +63,30 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Manual Validation for select fields
+    if (!newUser.departmentId) {
+        alert("Vă rugăm să selectați un departament.");
+        return;
+    }
+    if (!newUser.mainScheduleId) {
+        alert("Vă rugăm să selectați un program de lucru principal.");
+        return;
+    }
+
     const user: User = {
       id: `u-${Date.now()}`,
       erpId: newUser.erpId, name: newUser.name, email: newUser.email, companyId: newUser.companyId, departmentId: newUser.departmentId,
       assignedOfficeId: newUser.assignedOfficeId || undefined, contractHours: newUser.contractHours, roles: newUser.roles,
       authType: 'PIN', pin: Math.floor(1000 + Math.random() * 9000).toString(), isValidated: true, requiresGPS: newUser.requiresGPS,
-      avatarUrl: `https://ui-avatars.com/api/?name=${newUser.name}&background=random`, mainScheduleId: newUser.mainScheduleId || (workSchedules[0]?.id || ''),
+      avatarUrl: `https://ui-avatars.com/api/?name=${newUser.name}&background=random`, mainScheduleId: newUser.mainScheduleId,
       alternativeScheduleIds: newUser.alternativeScheduleIds, birthDate: newUser.birthDate || undefined, shareBirthday: newUser.shareBirthday, employmentStatus: 'ACTIVE'
     };
     onCreateUser(user);
-    alert(`User creat! PIN: ${user.pin}`);
+    alert(`User creat! PIN Generat: ${user.pin}`);
+    
+    // Reset form partially
+    setNewUser(prev => ({ ...prev, name: '', email: '', erpId: '' }));
   };
 
   // Toggle helper for edit modal
@@ -379,14 +393,107 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
       )}
 
       {activeSubTab === 'create' && (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 max-w-2xl">
-          <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2"><UserPlus size={20} className="text-blue-600"/> Adaugă Angajat Nou</h3>
-          <form onSubmit={handleCreateSubmit} className="space-y-4">
-             <div className="grid grid-cols-2 gap-4">
-                <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nume</label><input required type="text" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} className="w-full p-2 border rounded outline-none"/></div>
-                <div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label><input required type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="w-full p-2 border rounded outline-none"/></div>
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 max-w-4xl">
+          <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2"><UserPlus size={20} className="text-blue-600"/> Adaugă Angajat Nou</h3>
+          <form onSubmit={handleCreateSubmit} className="space-y-6">
+             
+             {/* Row 1: Identity */}
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nume Complet <span className="text-red-500">*</span></label>
+                    <input required type="text" value={newUser.name} onChange={e => setNewUser({...newUser, name: e.target.value})} className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500"/>
+                </div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email <span className="text-red-500">*</span></label>
+                    <input required type="email" value={newUser.email} onChange={e => setNewUser({...newUser, email: e.target.value})} className="w-full p-2.5 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500"/>
+                </div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Fingerprint size={12}/> ID ERP</label>
+                    <input type="text" value={newUser.erpId} onChange={e => setNewUser({...newUser, erpId: e.target.value})} className="w-full p-2.5 border rounded-lg outline-none font-mono" placeholder="Ex: EMP-001"/>
+                </div>
              </div>
-             <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-medium hover:bg-blue-700">Creează Cont</button>
+
+             {/* Row 2: Organization */}
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-50 p-4 rounded-lg border border-slate-100">
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Briefcase size={12}/> Companie <span className="text-red-500">*</span></label>
+                    <select 
+                        required
+                        value={newUser.companyId} 
+                        onChange={e => setNewUser({...newUser, companyId: e.target.value, departmentId: ''})} 
+                        className="w-full p-2.5 border rounded-lg outline-none bg-white"
+                    >
+                        {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Departament <span className="text-red-500">*</span></label>
+                    <select 
+                        required
+                        value={newUser.departmentId} 
+                        onChange={e => setNewUser({...newUser, departmentId: e.target.value})} 
+                        className="w-full p-2.5 border rounded-lg outline-none bg-white"
+                    >
+                        <option value="">-- Selectează --</option>
+                        {departments.filter(d => d.companyId === newUser.companyId).map(d => (
+                            <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Building size={12}/> Sediu Alocat</label>
+                    <select 
+                        value={newUser.assignedOfficeId} 
+                        onChange={e => setNewUser({...newUser, assignedOfficeId: e.target.value})} 
+                        className="w-full p-2.5 border rounded-lg outline-none bg-white"
+                    >
+                        <option value="">Remote / Mobil</option>
+                        {offices.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                    </select>
+                </div>
+             </div>
+
+             {/* Row 3: Schedule & Contract */}
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                 <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Clock size={12}/> Normă (Ore) <span className="text-red-500">*</span></label>
+                    <input 
+                        required 
+                        type="number" 
+                        min={1} max={12} 
+                        value={newUser.contractHours} 
+                        onChange={e => setNewUser({...newUser, contractHours: parseInt(e.target.value) || 8})} 
+                        className="w-full p-2.5 border rounded-lg outline-none"
+                    />
+                </div>
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><CalendarClock size={12}/> Program Principal <span className="text-red-500">*</span></label>
+                    <select 
+                        required
+                        value={newUser.mainScheduleId} 
+                        onChange={e => setNewUser({...newUser, mainScheduleId: e.target.value})} 
+                        className="w-full p-2.5 border rounded-lg outline-none bg-white"
+                    >
+                        <option value="">-- Selectează --</option>
+                        {workSchedules.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                </div>
+                <div className="flex items-center pt-6">
+                     <label className="flex items-center gap-2 cursor-pointer bg-blue-50 p-2 rounded-lg border border-blue-100 w-full hover:bg-blue-100 transition">
+                        <input 
+                            type="checkbox" 
+                            checked={newUser.requiresGPS} 
+                            onChange={e => setNewUser({...newUser, requiresGPS: e.target.checked})}
+                            className="w-4 h-4 text-blue-600 rounded"
+                        />
+                        <span className="text-sm font-medium text-blue-800"><MapPin size={14} className="inline mr-1"/> Validare GPS Obligatorie</span>
+                     </label>
+                </div>
+             </div>
+
+             <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-100 flex items-center justify-center gap-2 mt-4">
+                 <UserPlus size={20}/> Creează Cont Angajat
+             </button>
           </form>
         </div>
       )}
