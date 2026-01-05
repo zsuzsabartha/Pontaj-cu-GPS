@@ -313,14 +313,7 @@ const generateRecentTimesheets = () => {
         breaks: []
     });
 
-    // History for everyone
-    [yStr, twoStr].forEach((d, idx) => {
-        ts.push(createMockTimesheet(`ts-u1-${idx}`, 'u1', d, 9, 17, ShiftStatus.COMPLETED));
-        ts.push(createMockTimesheet(`ts-u2-${idx}`, 'u2', d, 9, 17, ShiftStatus.COMPLETED));
-        ts.push(createMockTimesheet(`ts-u3-${idx}`, 'u3', d, 8, 16, ShiftStatus.COMPLETED));
-        ts.push(createMockTimesheet(`ts-u6-${idx}`, 'u6', d, 10, 19, ShiftStatus.COMPLETED));
-    });
-
+ 
     return ts;
 };
 

@@ -56,7 +56,8 @@ const BackendControlPanel: React.FC = () => {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 3000); 
 
-          const response = await fetch('http://localhost:3001/health', {
+          // UPDATED: Check /api/v1/health to match server config
+          const response = await fetch('http://localhost:3001/api/v1/health', {
               signal: controller.signal
           });
           clearTimeout(timeoutId);
@@ -223,7 +224,8 @@ app.use(cors());
 app.use(express.json());
 
 // GET DATA
-app.get('/health', async (req, res) => {
+// UPDATED: Mounted at /api/v1/health to match frontend expectations
+app.get('/api/v1/health', async (req, res) => {
   try { await connectDB(); res.json({ status: 'ONLINE' }); } 
   catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -374,6 +376,7 @@ app.listen(PORT, () => console.log('Server running on 3001'));
        <div className="flex bg-slate-900 border-b border-slate-800">
           <button onClick={() => setActiveTab('status')} className={`px-4 py-2 hover:bg-slate-800 ${activeTab === 'status' ? 'text-white border-b-2 border-blue-500' : 'text-slate-500'}`}>Status</button>
           <button onClick={() => setActiveTab('bridge')} className={`px-4 py-2 hover:bg-slate-800 ${activeTab === 'bridge' ? 'text-white border-b-2 border-blue-500' : 'text-slate-500'}`}>Bridge Source</button>
+          <button onClick={() => setActiveTab('sql')} className={`px-4 py-2 hover:bg-slate-800 ${activeTab === 'sql' ? 'text-white border-b-2 border-blue-500' : 'text-slate-500'}`}>SQL Script</button>
        </div>
 
        <div className="flex-1 overflow-auto bg-slate-900/50 p-4">
@@ -396,16 +399,32 @@ app.listen(PORT, () => console.log('Server running on 3001'));
              </div>
           )}
 
+          {activeTab === 'sql' && (
+              <div className="h-full flex flex-col">
+                  <div className="flex gap-2 mb-2 justify-end">
+                       <button onClick={() => handleCopy(generatedSQL)} className="bg-slate-700 text-white px-3 py-1 rounded text-xs flex items-center gap-1"><Copy size={12}/> Copy</button>
+                       <button onClick={() => handleDownload('deployment.sql', generatedSQL)} className="bg-blue-600 text-white px-3 py-1 rounded text-xs flex items-center gap-1"><Download size={12}/> Download .sql</button>
+                  </div>
+                  <textarea readOnly value={generatedSQL} className="w-full h-full bg-black p-4 text-xs font-mono text-green-400 resize-none rounded border border-slate-700"/>
+              </div>
+          )}
+
           {activeTab === 'bridge' && (
              <div className="h-full flex flex-col">
-                 <div className="flex gap-2 mb-2">
-                     <button onClick={() => setBridgeFile('server')} className={`px-2 py-1 text-xs rounded ${bridgeFile === 'server' ? 'bg-blue-600 text-white' : 'bg-slate-800'}`}>server.js</button>
-                     <button onClick={() => setBridgeFile('db')} className={`px-2 py-1 text-xs rounded ${bridgeFile === 'db' ? 'bg-blue-600 text-white' : 'bg-slate-800'}`}>db.js</button>
-                     <button onClick={() => setBridgeFile('package')} className={`px-2 py-1 text-xs rounded ${bridgeFile === 'package' ? 'bg-blue-600 text-white' : 'bg-slate-800'}`}>package.json</button>
+                 <div className="flex gap-2 mb-2 justify-between">
+                     <div className="flex gap-2">
+                         <button onClick={() => setBridgeFile('server')} className={`px-2 py-1 text-xs rounded ${bridgeFile === 'server' ? 'bg-blue-600 text-white' : 'bg-slate-800'}`}>server.js</button>
+                         <button onClick={() => setBridgeFile('db')} className={`px-2 py-1 text-xs rounded ${bridgeFile === 'db' ? 'bg-blue-600 text-white' : 'bg-slate-800'}`}>db.js</button>
+                         <button onClick={() => setBridgeFile('package')} className={`px-2 py-1 text-xs rounded ${bridgeFile === 'package' ? 'bg-blue-600 text-white' : 'bg-slate-800'}`}>package.json</button>
+                         <button onClick={() => setBridgeFile('env')} className={`px-2 py-1 text-xs rounded ${bridgeFile === 'env' ? 'bg-blue-600 text-white' : 'bg-slate-800'}`}>.env</button>
+                     </div>
                  </div>
                  <div className="relative flex-1">
                      <textarea readOnly value={bridgeSources[bridgeFile]} className="w-full h-full bg-black p-4 text-xs font-mono text-blue-300 resize-none rounded border border-slate-700"/>
-                     <button onClick={() => handleCopy(bridgeSources[bridgeFile])} className="absolute top-2 right-2 bg-slate-700 text-white px-2 py-1 rounded text-xs">Copy</button>
+                     <div className="absolute top-2 right-2 flex gap-2">
+                        <button onClick={() => handleCopy(bridgeSources[bridgeFile])} className="bg-slate-700 hover:bg-slate-600 text-white px-2 py-1 rounded text-xs flex items-center gap-1"><Copy size={12}/> Copy</button>
+                        <button onClick={() => handleDownload(`${bridgeFile === 'env' ? '' : bridgeFile}.${bridgeFile === 'package' ? 'json' : bridgeFile === 'env' ? 'env' : bridgeFile === 'readme' ? 'md' : 'js'}`, bridgeSources[bridgeFile])} className="bg-slate-700 hover:bg-slate-600 text-white px-2 py-1 rounded text-xs flex items-center gap-1"><Download size={12}/> Download</button>
+                     </div>
                  </div>
              </div>
           )}
