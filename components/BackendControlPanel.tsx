@@ -603,7 +603,7 @@ app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
         await transaction.rollback();
         throw e;
     }
-}));
+})); 
 
 // DELETE TIMESHEET
 app.delete('/api/v1/timesheets/:id', asyncHandler(async (req, res) => {
