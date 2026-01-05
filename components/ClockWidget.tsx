@@ -449,4 +449,4 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
   );
 };
 
-export default ClockWidget;
+export default ClockWidget; 
