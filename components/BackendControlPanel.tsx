@@ -233,7 +233,17 @@ CREATE TABLE correction_requests (
 
   const bridgeSources = {
     readme: `Run: npm install && node server.js`,
-    package: `{ "name": "pontaj-bridge", "type": "module", "dependencies": { "express": "^4.18.2", "mssql": "^10.0.1", "cors": "^2.8.5", "dotenv": "^16.3.1" } }`,
+    package: `{ 
+  "name": "pontaj-bridge", 
+  "type": "module", 
+  "dependencies": { 
+    "express": "^4.18.2", 
+    "mssql": "^10.0.1", 
+    "cors": "^2.8.5", 
+    "dotenv": "^16.3.1",
+    "zod": "^3.22.4"
+  } 
+}`,
     env: `PORT=3001\nDB_SERVER=${dbConfig.server}\nDB_NAME=${dbConfig.database}\nDB_USER=${dbConfig.user}\nDB_PASS=${dbConfig.password}`,
     db: `import sql from 'mssql';
 import dotenv from 'dotenv';
@@ -249,148 +259,289 @@ export const connectDB = async () => await sql.connect(config);`,
     server: `
 import express from 'express';
 import cors from 'cors';
-import sql from 'mssql';
+import { z } from 'zod';
 import { connectDB } from './db.js';
 
 const app = express();
 app.use(cors());
-app.use(express.json({limit: '50mb'})); // Increased limit for bulk push
+app.use(express.json({ limit: '50mb' }));
 
-// --- HELPERS ---
-const truncateTable = async (pool, table) => await pool.request().query(\`DELETE FROM \${table}\`);
+/* -------------------- HELPERS -------------------- */
 
-// --- PUBLIC ENDPOINTS ---
-app.get('/api/v1/health', async (req, res) => {
-  try { await connectDB(); res.json({ status: 'ONLINE' }); } 
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
+const asyncHandler = (fn) => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch(next);
 
-// GENERIC GET
-const getConfig = async (table, res) => {
+const toISODate = (d) =>
+  new Date(d).toISOString().split('T')[0];
+
+/* -------------------- HEALTH -------------------- */
+
+app.get('/api/v1/health', asyncHandler(async (_, res) => {
+  await connectDB();
+  res.json({ status: 'ONLINE' });
+}));
+
+/* -------------------- GENERIC CONFIG SYNC -------------------- */
+
+const handleConfigSync = async (table, data, mapFn) => {
+    const pool = await connectDB();
+    const transaction = new pool.Transaction();
+    await transaction.begin();
     try {
-        const pool = await connectDB();
-        const result = await pool.request().query(\`SELECT * FROM \${table}\`);
-        res.json(result.recordset);
-    } catch(e) { res.status(500).json({error: e.message}); }
+        for (const item of data) {
+            const { query, params } = mapFn(item);
+            
+            // 1. Clean existing record to ensure full update (simplistic approach for sync)
+            const checkReq = transaction.request();
+            checkReq.input('id', params.id);
+            const check = await checkReq.query(\`SELECT 1 FROM \${table} WHERE id = @id\`);
+            
+            if (check.recordset.length > 0) {
+               const delReq = transaction.request();
+               delReq.input('id', params.id);
+               await delReq.query(\`DELETE FROM \${table} WHERE id = @id\`);
+            }
+
+            // 2. Insert new record
+            const req = transaction.request();
+            Object.entries(params).forEach(([k, v]) => req.input(k, v));
+            await req.query(query);
+        }
+        await transaction.commit();
+    } catch (e) {
+        await transaction.rollback();
+        throw e;
+    }
 };
 
-app.get('/api/v1/config/users', async (req, res) => {
-    try {
-        const pool = await connectDB();
-        const result = await pool.request().query('SELECT * FROM users');
-        const data = result.recordset.map(u => ({
-            ...u, roles: JSON.parse(u.roles || '[]'), isValidated: !!u.is_validated, requiresGPS: !!u.requires_gps
-        }));
-        res.json(data);
-    } catch(e) { res.status(500).json({error: e.message}); }
-});
+/* -------------------- CONFIG ENDPOINTS -------------------- */
 
-app.get('/api/v1/config/companies', (req, res) => getConfig('companies', res));
-app.get('/api/v1/config/departments', (req, res) => getConfig('departments', res));
-app.get('/api/v1/config/offices', (req, res) => getConfig('offices', res)); // Mapper needed for real usage
-app.get('/api/v1/config/breaks', (req, res) => getConfig('break_configs', res)); // Mapper needed
-app.get('/api/v1/config/leaves', (req, res) => getConfig('leave_configs', res)); // Mapper needed
-app.get('/api/v1/config/holidays', (req, res) => getConfig('holidays', res)); 
-app.get('/api/v1/seed/corrections', (req, res) => getConfig('correction_requests', res)); // Read corrections
+// COMPANIES
+app.get('/api/v1/config/companies', asyncHandler(async (req, res) => {
+    const pool = await connectDB();
+    const result = await pool.request().query('SELECT * FROM companies');
+    res.json(result.recordset);
+}));
+app.post('/api/v1/config/companies', asyncHandler(async (req, res) => {
+    await handleConfigSync('companies', req.body, (c) => ({
+        query: 'INSERT INTO companies (id, name) VALUES (@id, @name)',
+        params: { id: c.id, name: c.name }
+    }));
+    res.json({ success: true });
+}));
 
-// --- PUSH / SEED ENDPOINTS (ADMIN) ---
+// DEPARTMENTS
+app.get('/api/v1/config/departments', asyncHandler(async (req, res) => {
+    const pool = await connectDB();
+    const result = await pool.request().query('SELECT * FROM departments');
+    res.json(result.recordset.map(d => ({
+        id: d.id, name: d.name, companyId: d.company_id, managerId: d.manager_id, emailNotifications: d.email_notifications
+    })));
+}));
+app.post('/api/v1/config/departments', asyncHandler(async (req, res) => {
+    await handleConfigSync('departments', req.body, (d) => ({
+        query: 'INSERT INTO departments (id, name, company_id, manager_id, email_notifications) VALUES (@id, @name, @cid, @mid, @en)',
+        params: { id: d.id, name: d.name, cid: d.companyId, mid: d.managerId || null, en: d.emailNotifications ? 1 : 0 }
+    }));
+    res.json({ success: true });
+}));
 
-// Generic Upsert for simple Configs
-app.post('/api/v1/config/:table', async (req, res) => {
-    const { table } = req.params;
-    const data = req.body;
-    if (!Array.isArray(data)) return res.status(400).send("Body must be array");
-    
-    // Map Frontend table names to DB table names if needed
-    const dbTableMap = {
-        'users': 'users', 'companies': 'companies', 'departments': 'departments', 'offices': 'offices',
-        'breaks': 'break_configs', 'leaves': 'leave_configs', 'holidays': 'holidays'
-    };
-    const targetTable = dbTableMap[table] || table;
+// OFFICES
+app.get('/api/v1/config/offices', asyncHandler(async (req, res) => {
+    const pool = await connectDB();
+    const result = await pool.request().query('SELECT * FROM offices');
+    res.json(result.recordset.map(o => ({
+        id: o.id, name: o.name, radiusMeters: o.radius_meters,
+        coordinates: { latitude: o.latitude, longitude: o.longitude }
+    })));
+}));
+app.post('/api/v1/config/offices', asyncHandler(async (req, res) => {
+    await handleConfigSync('offices', req.body, (o) => ({
+        query: 'INSERT INTO offices (id, name, latitude, longitude, radius_meters) VALUES (@id, @name, @lat, @long, @rad)',
+        params: { id: o.id, name: o.name, lat: o.coordinates.latitude, long: o.coordinates.longitude, rad: o.radiusMeters }
+    }));
+    res.json({ success: true });
+}));
 
-    try {
-        const pool = await connectDB();
-        await truncateTable(pool, targetTable);
-        // Basic insert loop (Note: In prod, use Table-Valued Parameters or Bulk Insert)
-        for (const item of data) {
-            const keys = Object.keys(item).filter(k => k !== 'children'); // Filter out complex nested props
-            // Simple mapping logic placeholder...
-            // For this demo generator, we assume the user knows how to map via SQL or manual code adjustments
+// USERS
+app.get('/api/v1/config/users', asyncHandler(async (req, res) => {
+    const pool = await connectDB();
+    const result = await pool.request().query('SELECT * FROM users');
+    res.json(result.recordset.map(u => ({
+        ...u,
+        roles: u.roles ? JSON.parse(u.roles) : [],
+        alternativeScheduleIds: u.alternative_schedule_ids ? JSON.parse(u.alternative_schedule_ids) : [],
+        companyId: u.company_id, departmentId: u.department_id, assignedOfficeId: u.assigned_office_id,
+        mainScheduleId: u.main_schedule_id, contractHours: u.contract_hours, isValidated: u.is_validated,
+        requiresGPS: u.requires_gps, erpId: u.erp_id, authType: u.auth_type, employmentStatus: u.employment_status
+    })));
+}));
+app.post('/api/v1/config/users', asyncHandler(async (req, res) => {
+    await handleConfigSync('users', req.body, (u) => ({
+        query: \`INSERT INTO users (id, erp_id, company_id, department_id, assigned_office_id, main_schedule_id, name, email, auth_type, roles, contract_hours, is_validated, requires_gps, employment_status) 
+                VALUES (@id, @erpId, @cid, @did, @oid, @sid, @name, @email, @auth, @roles, @hours, @val, @gps, @status)\`,
+        params: {
+            id: u.id, erpId: u.erpId || null, cid: u.companyId, did: u.departmentId || null, oid: u.assignedOfficeId || null, sid: u.mainScheduleId || null,
+            name: u.name, email: u.email, auth: u.authType, roles: JSON.stringify(u.roles), hours: u.contractHours, val: u.isValidated?1:0, gps: u.requiresGPS?1:0, status: u.employmentStatus
         }
-        res.json({ success: true, message: \`Pushed \${data.length} records to \${targetTable}\` });
-    } catch(e) { res.status(500).json({error: e.message}); }
-});
+    }));
+    res.json({ success: true });
+}));
 
-// Specific Seed for Timesheets
-app.post('/api/v1/seed/timesheets', async (req, res) => {
-    const timesheets = req.body;
+// OTHER CONFIGS
+app.get('/api/v1/config/breaks', asyncHandler(async (req, res) => {
+    const pool = await connectDB();
+    const result = await pool.request().query('SELECT * FROM break_configs');
+    res.json(result.recordset.map(b => ({ id: b.id, name: b.name, isPaid: b.is_paid, icon: b.icon })));
+}));
+app.post('/api/v1/config/breaks', asyncHandler(async (req, res) => {
+    await handleConfigSync('break_configs', req.body, (b) => ({
+        query: 'INSERT INTO break_configs (id, name, is_paid, icon) VALUES (@id, @name, @paid, @icon)',
+        params: { id: b.id, name: b.name, paid: b.isPaid?1:0, icon: b.icon }
+    }));
+    res.json({ success: true });
+}));
+
+app.get('/api/v1/config/leaves', asyncHandler(async (req, res) => {
+    const pool = await connectDB();
+    const result = await pool.request().query('SELECT * FROM leave_configs');
+    res.json(result.recordset.map(l => ({ id: l.id, name: l.name, code: l.code, requiresApproval: l.requires_approval })));
+}));
+app.post('/api/v1/config/leaves', asyncHandler(async (req, res) => {
+    await handleConfigSync('leave_configs', req.body, (l) => ({
+        query: 'INSERT INTO leave_configs (id, name, code, requires_approval) VALUES (@id, @name, @code, @req)',
+        params: { id: l.id, name: l.name, code: l.code, req: l.requiresApproval?1:0 }
+    }));
+    res.json({ success: true });
+}));
+
+app.get('/api/v1/config/holidays', asyncHandler(async (req, res) => {
+    const pool = await connectDB();
+    const result = await pool.request().query('SELECT * FROM holidays');
+    res.json(result.recordset.map(h => ({ id: h.id, date: toISODate(h.date), name: h.name })));
+}));
+app.post('/api/v1/config/holidays', asyncHandler(async (req, res) => {
+    await handleConfigSync('holidays', req.body, (h) => ({
+        query: 'INSERT INTO holidays (id, date, name) VALUES (@id, @date, @name)',
+        params: { id: h.id, date: h.date, name: h.name }
+    }));
+    res.json({ success: true });
+}));
+
+/* -------------------- SEED ENDPOINTS -------------------- */
+
+// TIMESHEETS
+app.get('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
+    const pool = await connectDB();
+    const { recordset } = await pool.request().query(\`
+        SELECT t.*, b.id as bid, b.type_id, b.start_time as bstart, b.end_time as bend, b.status as bstatus, bc.name as bname
+        FROM timesheets t
+        LEFT JOIN breaks b ON b.timesheet_id = t.id
+        LEFT JOIN break_configs bc ON bc.id = b.type_id
+    \`);
+    
+    const map = new Map();
+    recordset.forEach(r => {
+        if (!map.has(r.id)) {
+            map.set(r.id, {
+                id: r.id, userId: r.user_id, date: toISODate(r.date),
+                startTime: r.start_time, endTime: r.end_time, status: r.status,
+                matchedOfficeId: r.matched_office_id, distanceToOffice: 0,
+                detectedScheduleId: r.detected_schedule_id,
+                breaks: []
+            });
+        }
+        if (r.bid) {
+            map.get(r.id).breaks.push({
+                id: r.bid, typeId: r.type_id, typeName: r.bname,
+                startTime: r.bstart, endTime: r.bend, status: r.bstatus
+            });
+        }
+    });
+    res.json([...map.values()]);
+}));
+
+app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
+    const pool = await connectDB();
+    const transaction = new pool.Transaction();
+    await transaction.begin();
     try {
-        const pool = await connectDB();
-        await truncateTable(pool, 'breaks');
-        await truncateTable(pool, 'timesheets');
-        
-        for (const ts of timesheets) {
-            await pool.request()
-                .input('id', ts.id)
-                .input('uid', ts.userId)
-                .input('st', ts.startTime)
-                .input('et', ts.endTime || null)
-                .input('d', ts.date)
-                .input('stat', ts.status)
-                .input('off', ts.matchedOfficeId || null)
-                .input('dsid', ts.detectedScheduleId || null)
-                .input('lat', ts.startLocation ? ts.startLocation.latitude : null)
-                .input('long', ts.startLocation ? ts.startLocation.longitude : null)
-                .query(\`INSERT INTO timesheets (id, user_id, start_time, end_time, date, status, matched_office_id, detected_schedule_id, start_lat, start_long) 
-                        VALUES (@id, @uid, @st, @et, @d, @stat, @off, @dsid, @lat, @long)\`);
+        for (const t of req.body) {
+            await transaction.request().input('id', t.id).query('DELETE FROM timesheets WHERE id = @id');
+            await transaction.request().input('id', t.id).query('DELETE FROM breaks WHERE timesheet_id = @id');
+
+            await transaction.request()
+               .input('id', t.id).input('uid', t.userId).input('date', t.date)
+               .input('start', t.startTime).input('end', t.endTime || null)
+               .input('status', t.status).input('oid', t.matchedOfficeId || null)
+               .input('sid', t.detectedScheduleId || null)
+               .query(\`INSERT INTO timesheets (id, user_id, date, start_time, end_time, status, matched_office_id, detected_schedule_id) 
+                       VALUES (@id, @uid, @date, @start, @end, @status, @oid, @sid)\`);
             
-            if (ts.breaks) {
-                for (const b of ts.breaks) {
-                    await pool.request()
-                        .input('id', b.id).input('tid', ts.id).input('ty', b.typeId).input('st', b.startTime).input('et', b.endTime || null).input('stat', b.status)
-                        .query(\`INSERT INTO breaks (id, timesheet_id, type_id, start_time, end_time, status) VALUES (@id, @tid, @ty, @st, @et, @stat)\`);
+            if (t.breaks) {
+                for (const b of t.breaks) {
+                    await transaction.request()
+                       .input('id', b.id).input('tid', t.id).input('type', b.typeId)
+                       .input('start', b.startTime).input('end', b.endTime || null).input('status', b.status)
+                       .query(\`INSERT INTO breaks (id, timesheet_id, type_id, start_time, end_time, status) 
+                               VALUES (@id, @tid, @type, @start, @end, @status)\`);
                 }
             }
         }
-        res.json({success: true});
-    } catch(e) { console.error(e); res.status(500).json({error: e.message}); }
-});
+        await transaction.commit();
+        res.json({ success: true });
+    } catch(e) {
+        await transaction.rollback();
+        throw e;
+    }
+}));
 
-// Specific Seed for Leaves
-app.post('/api/v1/seed/leaves', async (req, res) => {
-    const leaves = req.body;
-    try {
-        const pool = await connectDB();
-        await truncateTable(pool, 'leave_requests');
-        for (const l of leaves) {
-             await pool.request()
-                .input('id', l.id).input('uid', l.userId).input('ty', l.typeId).input('sd', l.startDate).input('ed', l.endDate)
-                .input('r', l.reason).input('s', l.status)
-                .query(\`INSERT INTO leave_requests (id, user_id, type_id, start_date, end_date, reason, status) VALUES (@id, @uid, @ty, @sd, @ed, @r, @s)\`);
-        }
-        res.json({success: true});
-    } catch(e) { res.status(500).json({error: e.message}); }
-});
+// LEAVES
+app.get('/api/v1/seed/leaves', asyncHandler(async (req, res) => {
+    const pool = await connectDB();
+    const result = await pool.request().query(\`
+        SELECT l.*, lc.name as type_name, lc.code 
+        FROM leave_requests l
+        LEFT JOIN leave_configs lc ON lc.id = l.type_id
+    \`);
+    res.json(result.recordset.map(l => ({
+        id: l.id, userId: l.user_id, typeId: l.type_id, typeName: l.type_name,
+        startDate: toISODate(l.start_date), endDate: toISODate(l.end_date),
+        reason: l.reason, status: l.status, managerComment: l.manager_comment
+    })));
+}));
 
-// Specific Seed for Corrections
-app.post('/api/v1/seed/corrections', async (req, res) => {
-    const corrections = req.body;
-    try {
-        const pool = await connectDB();
-        await truncateTable(pool, 'correction_requests');
-        for (const c of corrections) {
-             await pool.request()
-                .input('id', c.id).input('uid', c.userId).input('tid', c.timesheetId).input('rd', c.requestedDate)
-                .input('rst', c.requestedStartTime).input('ret', c.requestedEndTime)
-                .input('r', c.reason).input('s', c.status)
-                .query(\`INSERT INTO correction_requests (id, user_id, timesheet_id, requested_date, requested_start_time, requested_end_time, reason, status) VALUES (@id, @uid, @tid, @rd, @rst, @ret, @r, @s)\`);
-        }
-        res.json({success: true});
-    } catch(e) { res.status(500).json({error: e.message}); }
-});
+app.post('/api/v1/seed/leaves', asyncHandler(async (req, res) => {
+    await handleConfigSync('leave_requests', req.body, (l) => ({
+        query: 'INSERT INTO leave_requests (id, user_id, type_id, start_date, end_date, reason, status, manager_comment) VALUES (@id, @uid, @tid, @start, @end, @reason, @status, @comm)',
+        params: { id: l.id, uid: l.userId, tid: l.typeId, start: l.startDate, end: l.endDate, reason: l.reason, status: l.status, comm: l.managerComment || null }
+    }));
+    res.json({ success: true });
+}));
 
+// CORRECTIONS
+app.get('/api/v1/seed/corrections', asyncHandler(async (req, res) => {
+    const pool = await connectDB();
+    const result = await pool.request().query('SELECT * FROM correction_requests');
+    res.json(result.recordset.map(c => ({
+        id: c.id, userId: c.user_id, timesheetId: c.timesheet_id,
+        requestedDate: toISODate(c.requested_date), requestedStartTime: c.requested_start_time, requestedEndTime: c.requested_end_time,
+        reason: c.reason, status: c.status, managerNote: c.manager_note
+    })));
+}));
 
-app.listen(3001, () => console.log('Bridge Server running on 3001'));
+app.post('/api/v1/seed/corrections', asyncHandler(async (req, res) => {
+    await handleConfigSync('correction_requests', req.body, (c) => ({
+        query: 'INSERT INTO correction_requests (id, user_id, timesheet_id, requested_date, requested_start_time, requested_end_time, reason, status, manager_note) VALUES (@id, @uid, @tid, @date, @start, @end, @reason, @status, @note)',
+        params: { id: c.id, uid: c.userId, tid: c.timesheetId || null, date: c.requestedDate, start: c.requestedStartTime, end: c.requestedEndTime || null, reason: c.reason, status: c.status, note: c.managerNote || null }
+    }));
+    res.json({ success: true });
+}));
+
+/* -------------------- SERVER START -------------------- */
+
+const PORT = 3001;
+app.listen(PORT, () => console.log(\`Server running on \${PORT}\`));
 `
   };
 

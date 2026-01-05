@@ -47,7 +47,7 @@ import ScheduleCalendar from './components/ScheduleCalendar';
 import CompanyManagement from './components/CompanyManagement';
 import ManagerDashboard from './components/ManagerDashboard';
 import LeaveCalendarReport from './components/LeaveCalendarReport';
-import { Users, Settings, LogOut, CheckCircle, XCircle, Building, Clock, UserCog, Database, Server, CalendarRange, Bell, PlusCircle, Briefcase, LayoutList, Palmtree, Slash, Menu, X, Wifi, WifiOff, Mail, ShieldAlert } from 'lucide-react';
+import { Users, Settings, LogOut, CheckCircle, XCircle, Building, Clock, UserCog, Database, Server, CalendarRange, Bell, PlusCircle, Briefcase, LayoutList, Palmtree, Slash, Menu, X, Wifi, WifiOff, Mail, ShieldAlert, RefreshCw } from 'lucide-react';
 import { findNearestOffice } from './services/geoService';
 import { SQLService } from './services/sqlService';
 
@@ -76,7 +76,6 @@ function usePersistedState<T>(key: string, defaultValue: T) {
 
 export default function App() {
   // --- Auth State ---
-  // Default to MOCK_USERS to ensure test data exists on fresh load
   const [users, setUsers] = usePersistedState<User[]>('pontaj_users', MOCK_USERS); 
   const [currentUser, setCurrentUser] = useState<User | null>(null); 
 
@@ -107,6 +106,7 @@ export default function App() {
   const [isLeaveModalOpen, setLeaveModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   
   // Edit Timesheet State
   const [editModalData, setEditModalData] = useState<{isOpen: boolean, timesheet: Timesheet | null}>({isOpen: false, timesheet: null});
@@ -119,63 +119,86 @@ export default function App() {
     parentId?: string;
   }>({ isOpen: false, type: null, itemId: null });
 
-  // --- SQL DATA SYNC ---
+  // --- HELPER FOR REAL-TIME SYNC ---
+  const syncItem = async (type: 'TIMESHEET' | 'LEAVE' | 'CORRECTION', item: any) => {
+      if (!isOnline) return;
+      try {
+          if (type === 'TIMESHEET') await SQLService.upsertTimesheet(item);
+          if (type === 'LEAVE') await SQLService.upsertLeave(item);
+          if (type === 'CORRECTION') await SQLService.upsertCorrection(item);
+          console.log(`[Real-Time] Synced ${type} ${item.id}`);
+      } catch (e) {
+          console.warn(`[Real-Time] Failed to sync ${type}`, e);
+          // In a full app, we would queue this in a dedicated Retry Queue
+      }
+  };
+
+  // --- SQL DATA SYNC FUNCTION ---
+  const syncData = async () => {
+      setIsSyncing(true);
+      try {
+          await SQLService.checkHealth();
+          setIsOnline(true);
+          console.log("SQL Bridge Connected. Fetching data...");
+
+          const [
+              dbUsers, dbCompanies, dbDepts, dbOffices, dbBreaks, dbLeaves, dbHolidays, dbTimesheets, dbLeaveReqs, dbCorrections
+          ] = await Promise.all([
+              SQLService.getUsers(),
+              SQLService.getCompanies(),
+              SQLService.getDepartments(),
+              SQLService.getOffices(),
+              SQLService.getBreaks(),
+              SQLService.getLeaves(),
+              SQLService.getHolidays(),
+              SQLService.getTimesheets(),
+              SQLService.getLeaveRequests(),
+              SQLService.getCorrectionRequests()
+          ]);
+
+          if (dbUsers && dbUsers.length > 0) setUsers(dbUsers);
+          if (dbCompanies && dbCompanies.length > 0) setCompanies(dbCompanies);
+          if (dbDepts && dbDepts.length > 0) setDepartments(dbDepts);
+          if (dbOffices && dbOffices.length > 0) setOffices(dbOffices);
+
+          if (Array.isArray(dbBreaks) && dbBreaks.length > 0) setBreakConfigs(dbBreaks);
+          if (Array.isArray(dbLeaves) && dbLeaves.length > 0) setLeaveConfigs(dbLeaves);
+          if (Array.isArray(dbHolidays) && dbHolidays.length > 0) setHolidays(dbHolidays);
+          
+          if (Array.isArray(dbTimesheets) && dbTimesheets.length > 0) setTimesheets(dbTimesheets);
+          if (Array.isArray(dbLeaveReqs) && dbLeaveReqs.length > 0) setLeaves(dbLeaveReqs);
+          if (Array.isArray(dbCorrections) && dbCorrections.length > 0) setCorrectionRequests(dbCorrections);
+
+      } catch (e) {
+          console.warn("Working Offline: Could not connect to SQL Bridge.", e);
+          setIsOnline(false);
+      } finally {
+          setIsSyncing(false);
+      }
+  };
+
+  // Initial Sync
   useEffect(() => {
-      const syncData = async () => {
-          try {
-              // Check connection
-              await SQLService.checkHealth();
-              setIsOnline(true);
-              console.log("SQL Bridge Connected. Fetching data...");
-
-              // Parallel Fetch
-              const [
-                  dbUsers, dbCompanies, dbDepts, dbOffices, dbBreaks, dbLeaves, dbHolidays, dbTimesheets, dbLeaveReqs, dbCorrections
-              ] = await Promise.all([
-                  SQLService.getUsers(),
-                  SQLService.getCompanies(),
-                  SQLService.getDepartments(),
-                  SQLService.getOffices(),
-                  SQLService.getBreaks(),
-                  SQLService.getLeaves(),
-                  SQLService.getHolidays(),
-                  SQLService.getTimesheets(),
-                  SQLService.getLeaveRequests(),
-                  SQLService.getCorrectionRequests()
-              ]);
-
-              // Update State - INTELLIGENT MERGE LOGIC
-              // Rule: If DB returns empty arrays (fresh install), DO NOT overwrite local data if local data exists.
-              // This protects the "Offline First / Manual Push" workflow.
-
-              if (dbUsers && dbUsers.length > 0) setUsers(dbUsers);
-              if (dbCompanies && dbCompanies.length > 0) setCompanies(dbCompanies);
-              if (dbDepts && dbDepts.length > 0) setDepartments(dbDepts);
-              if (dbOffices && dbOffices.length > 0) setOffices(dbOffices);
-
-              if (Array.isArray(dbBreaks) && dbBreaks.length > 0) setBreakConfigs(dbBreaks);
-              if (Array.isArray(dbLeaves) && dbLeaves.length > 0) setLeaveConfigs(dbLeaves);
-              if (Array.isArray(dbHolidays) && dbHolidays.length > 0) setHolidays(dbHolidays);
-              
-              // Transactions: Only overwrite if DB has data, otherwise keep local "working copy"
-              if (Array.isArray(dbTimesheets) && dbTimesheets.length > 0) setTimesheets(dbTimesheets);
-              if (Array.isArray(dbLeaveReqs) && dbLeaveReqs.length > 0) setLeaves(dbLeaveReqs);
-              if (Array.isArray(dbCorrections) && dbCorrections.length > 0) setCorrectionRequests(dbCorrections);
-
-          } catch (e) {
-              console.warn("Working Offline: Could not connect to SQL Bridge.", e);
-              setIsOnline(false);
-          }
-      };
-
       syncData();
   }, []);
+
+  // --- Auto-Reconnect Polling ---
+  useEffect(() => {
+    if (isOnline) return;
+    const intervalId = setInterval(async () => {
+        try {
+            await SQLService.checkHealth();
+            console.log("Auto-reconnect success!");
+            setIsOnline(true);
+            syncData();
+        } catch (e) {}
+    }, 5000);
+    return () => clearInterval(intervalId);
+  }, [isOnline]);
 
   // --- Derived State for Active Shift ---
   const currentShift = useMemo(() => {
       if (!currentUser) return null;
-      // Filter for any active shift (WORKING or ON_BREAK) regardless of start time
-      // This is more robust than checking startTime <= now for immediate updates
       const active = timesheets.find(t => 
           t.userId === currentUser.id && 
           (t.status === ShiftStatus.WORKING || t.status === ShiftStatus.ON_BREAK)
@@ -230,40 +253,43 @@ export default function App() {
   };
   
   const handleConfirmRejection = async (reason: string) => {
-      if (rejectionModal.type === 'LEAVE_CANCEL' && rejectionModal.itemId) {
-          const targetLeave = leaves.find(l => l.id === rejectionModal.itemId);
-          if (currentUser && targetLeave) {
-              const userDept = departments.find(d => d.id === currentUser.departmentId);
-              if (userDept?.managerId && userDept.managerId !== currentUser.id) {
-                  const newNotif: Notification = {
-                      id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                      userId: userDept.managerId,
-                      title: 'Anulare Concediu Aprobat',
-                      message: `Angajatul ${currentUser.name} a anulat concediul de ${targetLeave.typeName} (${targetLeave.startDate} - ${targetLeave.endDate}). Motiv: ${reason}`,
-                      type: 'ALERT',
-                      isRead: false,
-                      date: new Date().toISOString()
-                  };
-                  setNotifications(prev => [newNotif, ...prev]);
-              }
-          }
+      let updatedItem: any = null;
+      let syncType: 'LEAVE' | 'CORRECTION' | 'TIMESHEET' | null = null;
 
-          setLeaves(prev => prev.map(l => l.id === rejectionModal.itemId ? { 
-              ...l, 
-              status: LeaveStatus.CANCELLED, 
-              cancellationReason: reason 
-          } : l));
+      if (rejectionModal.type === 'LEAVE_CANCEL' && rejectionModal.itemId) {
+          setLeaves(prev => {
+              const updated = prev.map(l => l.id === rejectionModal.itemId ? { ...l, status: LeaveStatus.CANCELLED, cancellationReason: reason } : l);
+              updatedItem = updated.find(l => l.id === rejectionModal.itemId);
+              return updated;
+          });
+          syncType = 'LEAVE';
       } else if (rejectionModal.type === 'LEAVE' && rejectionModal.itemId) {
-          setLeaves(prev => prev.map(l => l.id === rejectionModal.itemId ? { ...l, status: LeaveStatus.REJECTED, managerComment: reason } : l));
+          setLeaves(prev => {
+              const updated = prev.map(l => l.id === rejectionModal.itemId ? { ...l, status: LeaveStatus.REJECTED, managerComment: reason } : l);
+              updatedItem = updated.find(l => l.id === rejectionModal.itemId);
+              return updated;
+          });
+          syncType = 'LEAVE';
       } else if (rejectionModal.type === 'CORRECTION' && rejectionModal.itemId) {
-          setCorrectionRequests(prev => prev.map(c => c.id === rejectionModal.itemId ? { ...c, status: 'REJECTED', managerNote: reason } : c));
+          setCorrectionRequests(prev => {
+              const updated = prev.map(c => c.id === rejectionModal.itemId ? { ...c, status: 'REJECTED', managerNote: reason } : c);
+              updatedItem = updated.find(c => c.id === rejectionModal.itemId);
+              return updated as CorrectionRequest[];
+          });
+          syncType = 'CORRECTION';
       } else if (rejectionModal.type === 'BREAK' && rejectionModal.itemId && rejectionModal.parentId) {
-          setTimesheets(prev => prev.map(ts => ts.id !== rejectionModal.parentId ? ts : { 
-              ...ts, breaks: ts.breaks.map(b => b.id === rejectionModal.itemId ? { ...b, status: BreakStatus.REJECTED, managerNote: reason } : b) 
-          }));
+          setTimesheets(prev => {
+              const updated = prev.map(ts => ts.id !== rejectionModal.parentId ? ts : { 
+                  ...ts, breaks: ts.breaks.map(b => b.id === rejectionModal.itemId ? { ...b, status: BreakStatus.REJECTED, managerNote: reason } : b) 
+              });
+              updatedItem = updated.find(ts => ts.id === rejectionModal.parentId);
+              return updated;
+          });
+          syncType = 'TIMESHEET';
       }
       
-      setRejectionModal({ isOpen: false, type: null, itemId: null }); 
+      setRejectionModal({ isOpen: false, type: null, itemId: null });
+      if (updatedItem && syncType) syncItem(syncType, updatedItem);
   };
 
   const handleCreateUser = (newUser: User) => { setUsers(prev => [...prev, { ...newUser, employmentStatus: 'ACTIVE' }]); };
@@ -274,37 +300,62 @@ export default function App() {
       if(confirm("Sigur doriți să ștergeți acest pontaj? Acțiunea este ireversibilă.")) {
           setTimesheets(prev => prev.filter(t => t.id !== id));
           setEditModalData({isOpen: false, timesheet: null});
+          // Note: Full delete sync not implemented in simple Upsert logic, would need delete endpoint
       }
   };
 
   const handleTimesheetSave = async (data: any) => { 
+      let newItem: any = null;
+      let syncType: 'TIMESHEET' | 'LEAVE' | null = null;
+
       if (data.type === 'WORK') {
           if(data.tsId) {
-             setTimesheets(prev => prev.map(ts => ts.id === data.tsId ? { ...ts, date: data.date, startTime: data.start, endTime: data.end, detectedScheduleId: data.scheduleId } : ts));
+             setTimesheets(prev => {
+                 const updated = prev.map(ts => ts.id === data.tsId ? { ...ts, date: data.date, startTime: data.start, endTime: data.end, detectedScheduleId: data.scheduleId } : ts);
+                 newItem = updated.find(ts => ts.id === data.tsId);
+                 return updated;
+             });
           } else {
              const newTs: Timesheet = {
                  id: `ts-${Date.now()}`, userId: currentUser!.id, date: data.date, startTime: data.start, endTime: data.end, status: ShiftStatus.COMPLETED, breaks: []
              };
              setTimesheets(prev => [...prev, newTs]);
+             newItem = newTs;
           }
+          syncType = 'TIMESHEET';
       } else {
-          handleLeaveSubmit({
+          // It's a Leave
+          const newLeave: LeaveRequest = {
+              id: `lr-${Date.now()}`, userId: currentUser!.id, 
               typeId: data.leaveTypeId,
               typeName: leaveConfigs.find(lc => lc.id === data.leaveTypeId)?.name || 'Manual',
               startDate: data.date,
               endDate: data.date,
               reason: data.reason,
-              status: hasRole(Role.MANAGER) || hasRole(Role.ADMIN) ? LeaveStatus.APPROVED : LeaveStatus.PENDING
-          });
+              status: hasRole(Role.MANAGER) || hasRole(Role.ADMIN) ? LeaveStatus.APPROVED : LeaveStatus.PENDING,
+              createdAt: new Date().toISOString()
+          };
+          setLeaves(prev => [newLeave, ...prev]);
+          newItem = newLeave;
+          syncType = 'LEAVE';
 
           if (data.tsId) {
               setTimesheets(prev => prev.filter(t => t.id !== data.tsId));
           }
       }
       setEditModalData({isOpen: false, timesheet: null});
+      if(newItem && syncType) syncItem(syncType, newItem);
   };
 
-  const handleApproveCorrection = (reqId: string) => { setCorrectionRequests(prev => prev.map(c => c.id === reqId ? {...c, status: 'APPROVED'} : c)); };
+  const handleApproveCorrection = (reqId: string) => { 
+      let updatedItem: any = null;
+      setCorrectionRequests(prev => {
+          const updated = prev.map(c => c.id === reqId ? {...c, status: 'APPROVED'} : c);
+          updatedItem = updated.find(c => c.id === reqId);
+          return updated as CorrectionRequest[];
+      });
+      if(updatedItem) syncItem('CORRECTION', updatedItem);
+  };
   
   const handleAssignSchedule = (userId: string, date: string, scheduleId: string) => { 
       const existing = schedulePlans.find(s => s.userId === userId && s.date === date);
@@ -324,7 +375,6 @@ export default function App() {
 
   const handleClockIn = async (loc: Coordinates, off: Office | null, dist: number) => {
       if (!currentUser) return;
-      // FIX: Ensure startTime is ISO string and valid
       const now = new Date();
       const today = now.toISOString().split('T')[0];
       const detectedId = schedulePlans.find(s => s.userId === currentUser.id && s.date === today)?.scheduleId || currentUser.mainScheduleId;
@@ -342,45 +392,65 @@ export default function App() {
           distanceToOffice: dist, 
           detectedScheduleId: detectedId, 
           detectedScheduleName: schedName, 
-          syncStatus: 'SYNCED'
+          syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC'
       };
       
-      // Update state immediately
       setTimesheets(prev => [newTs, ...prev]);
+      syncItem('TIMESHEET', newTs);
   };
 
   const handleClockOut = async (loc: Coordinates) => {
       if (!currentUser || !currentShift) return;
       const { distance: endDist } = findNearestOffice(loc, offices);
       const updatedTs: Timesheet = { 
-          ...currentShift, endTime: new Date().toISOString(), status: ShiftStatus.COMPLETED, endLocation: loc, endDistanceToOffice: endDist, syncStatus: 'SYNCED' 
+          ...currentShift, endTime: new Date().toISOString(), status: ShiftStatus.COMPLETED, endLocation: loc, endDistanceToOffice: endDist, syncStatus: isOnline ? 'SYNCED' : 'PENDING_SYNC' 
       };
       setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedTs : t));
+      syncItem('TIMESHEET', updatedTs);
   };
 
   const handleToggleBreak = async (config?: BreakConfig, loc?: Coordinates) => {
       if (!currentUser || !currentShift) return;
+      let updatedTs: Timesheet | null = null;
+
       if (currentShift.status === ShiftStatus.ON_BREAK) {
           const idx = currentShift.breaks.findIndex(b => !b.endTime);
           if (idx === -1) return;
           const updatedBreak = { ...currentShift.breaks[idx], endTime: new Date().toISOString(), endLocation: loc, status: BreakStatus.PENDING };
           const updatedBreaks = [...currentShift.breaks]; updatedBreaks[idx] = updatedBreak;
-          setTimesheets(prev => prev.map(t => t.id === currentShift.id ? { ...t, status: ShiftStatus.WORKING, breaks: updatedBreaks } : t));
+          updatedTs = { ...currentShift, status: ShiftStatus.WORKING, breaks: updatedBreaks };
       } else {
           if (!config) return;
           const newBreak: Break = { 
               id: `br-${Date.now()}`, typeId: config.id, typeName: config.name, startTime: new Date().toISOString(), status: BreakStatus.PENDING, startLocation: loc 
           };
-          setTimesheets(prev => prev.map(t => t.id === currentShift.id ? { ...t, status: ShiftStatus.ON_BREAK, breaks: [...t.breaks, newBreak] } : t));
+          updatedTs = { ...currentShift, status: ShiftStatus.ON_BREAK, breaks: [...currentShift.breaks, newBreak] };
+      }
+
+      if (updatedTs) {
+          setTimesheets(prev => prev.map(t => t.id === currentShift.id ? updatedTs! : t));
+          syncItem('TIMESHEET', updatedTs);
       }
   };
 
   const handleApproveBreak = (tsId: string, brId: string, status: BreakStatus) => {
-      setTimesheets(prev => prev.map(ts => ts.id !== tsId ? ts : { ...ts, breaks: ts.breaks.map(b => b.id === brId ? { ...b, status } : b) }));
+      let updatedTs: Timesheet | null = null;
+      setTimesheets(prev => {
+          const updated = prev.map(ts => ts.id !== tsId ? ts : { ...ts, breaks: ts.breaks.map(b => b.id === brId ? { ...b, status } : b) });
+          updatedTs = updated.find(t => t.id === tsId) || null;
+          return updated;
+      });
+      if(updatedTs) syncItem('TIMESHEET', updatedTs);
   };
 
   const handleApproveLeave = (reqId: string) => {
-      setLeaves(prev => prev.map(l => l.id === reqId ? { ...l, status: LeaveStatus.APPROVED } : l));
+      let updatedLeave: any = null;
+      setLeaves(prev => {
+          const updated = prev.map(l => l.id === reqId ? { ...l, status: LeaveStatus.APPROVED } : l);
+          updatedLeave = updated.find(l => l.id === reqId);
+          return updated;
+      });
+      if(updatedLeave) syncItem('LEAVE', updatedLeave);
   };
 
   const handleLeaveSubmit = (req: Omit<LeaveRequest, 'id' | 'status' | 'userId'> & { status?: LeaveStatus }) => {
@@ -389,6 +459,7 @@ export default function App() {
           id: `lr-${Date.now()}`, userId: currentUser.id, status: req.status || LeaveStatus.PENDING, createdAt: new Date().toISOString(), ...req
       };
       setLeaves(prev => [newLeave, ...prev]);
+      syncItem('LEAVE', newLeave);
   };
 
   if (!currentUser) return <LoginScreen users={users} companies={companies} onLogin={handleLogin} />;
@@ -453,6 +524,9 @@ export default function App() {
                     {isOnline ? <Wifi size={10} className="text-green-500"/> : <WifiOff size={10} className="text-red-500"/>}
                     {isOnline ? 'Connected' : 'Offline Mode'}
                 </span>
+                <button onClick={syncData} disabled={isSyncing} className="hover:text-blue-500 transition" title="Reîncearcă conexiunea">
+                    <RefreshCw size={12} className={isSyncing ? "animate-spin text-blue-500" : ""}/>
+                </button>
             </div>
             <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 py-2 rounded-lg transition">
                 <LogOut size={16}/> Deconectare
