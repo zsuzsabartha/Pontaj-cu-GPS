@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, User as UserIcon, Utensils, Cigarette, Home, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff, History } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, Utensils, Cigarette, History, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff } from 'lucide-react';
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
 import { ShiftStatus, Coordinates, Office, User, BreakConfig, Holiday, LeaveRequest, LeaveStatus } from '../types';
 
@@ -29,9 +29,8 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showMockOption, setShowMockOption] = useState(false);
   
-  // Timer State
-  const [now, setNow] = useState<number>(Date.now());
-  const timerRef = useRef<number | null>(null);
+  // Timer State - Using simple state update via interval
+  const [currentTime, setCurrentTime] = useState(Date.now());
   
   const [showBreakSelector, setShowBreakSelector] = useState(false);
   const [confirmData, setConfirmData] = useState<{ coords: Coordinates, office: Office, distance: number } | null>(null);
@@ -63,26 +62,20 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
     ? new Date(shiftStartTime).toLocaleTimeString('ro-RO', {hour: '2-digit', minute:'2-digit'})
     : null;
 
-  // --- Robust Timer Logic (requestAnimationFrame) ---
+  // --- Robust Timer Logic (setInterval) ---
   useEffect(() => {
-    // Update immediately on mount/prop change
-    setNow(Date.now());
-
-    const update = () => {
-        setNow(Date.now());
-        timerRef.current = requestAnimationFrame(update);
-    };
-
+    // Only run timer if working or on break
     if (currentStatus === ShiftStatus.WORKING || currentStatus === ShiftStatus.ON_BREAK) {
-        timerRef.current = requestAnimationFrame(update);
-    } else {
-        if(timerRef.current) cancelAnimationFrame(timerRef.current);
-    }
+        // Immediate update
+        setCurrentTime(Date.now());
+        
+        const intervalId = setInterval(() => {
+            setCurrentTime(Date.now());
+        }, 1000);
 
-    return () => {
-        if(timerRef.current) cancelAnimationFrame(timerRef.current);
-    };
-  }, [currentStatus, shiftStartTime]);
+        return () => clearInterval(intervalId);
+    }
+  }, [currentStatus]); // Depend only on status to start/stop
 
   // --- Calculation Logic (Derived State) ---
   const calculateTimers = () => {
@@ -94,9 +87,8 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
       if (isNaN(start)) return { elapsed: "00:00:00", breakTimer: "00:00:00" };
 
       // Total duration from Shift Start to Now
-      // Using 'now' ensures we update with state changes
-      // Use max to prevent negative numbers if system clock drifted
-      let grossDuration = Math.max(0, now - start);
+      // Using 'currentTime' ensures we update with state changes
+      let grossDuration = Math.max(0, currentTime - start);
 
       let netWorkMs = 0;
       let currentBreakMs = 0;
@@ -108,7 +100,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
               // Net Work = (BreakStart - ShiftStart) - PreviousBreaks
               netWorkMs = (breakStart - start) - accumulatedBreakTime;
               // Break Timer = Now - BreakStart
-              currentBreakMs = Math.max(0, now - breakStart);
+              currentBreakMs = Math.max(0, currentTime - breakStart);
           } else {
               // Fallback
               netWorkMs = grossDuration - accumulatedBreakTime;

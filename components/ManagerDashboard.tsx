@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { User, Timesheet, LeaveRequest, CorrectionRequest, BreakStatus, LeaveStatus, ShiftStatus, Company, Office, BreakConfig, LeaveConfig } from '../types';
+import { User, Timesheet, LeaveRequest, CorrectionRequest, BreakStatus, LeaveStatus, ShiftStatus, Company, Office, BreakConfig, LeaveConfig, Holiday } from '../types';
 import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
 import TimesheetList from './TimesheetList';
 import LeaveCalendarReport from './LeaveCalendarReport';
@@ -15,6 +15,7 @@ interface ManagerDashboardProps {
   offices: Office[];
   breakConfigs?: BreakConfig[];
   leaveConfigs: LeaveConfig[];
+  holidays: Holiday[]; // Added Prop
   canViewAllCompanies: boolean;
   onApproveLeave: (id: string) => void;
   onReject: (type: 'LEAVE' | 'CORRECTION' | 'BREAK', id: string, parentId?: string) => void;
@@ -24,7 +25,7 @@ interface ManagerDashboardProps {
 }
 
 const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
-  users, currentUser, timesheets, leaves, correctionRequests, companies, offices, breakConfigs, leaveConfigs,
+  users, currentUser, timesheets, leaves, correctionRequests, companies, offices, breakConfigs, leaveConfigs, holidays,
   canViewAllCompanies, onApproveLeave, onReject, onApproveBreak, onApproveCorrection, onOpenTimesheetModal
 }) => {
   const [activeTab, setActiveTab] = useState<'status' | 'history' | 'leaves' | 'breaks' | 'calendar'>('status');
@@ -342,8 +343,9 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
             <div className="animate-in fade-in">
                 <LeaveCalendarReport 
                     users={teamUsers} 
-                    leaves={leaves} // All leaves, filtered inside component for display
+                    leaves={leaves} 
                     leaveConfigs={leaveConfigs}
+                    holidays={holidays} // PASSED HOLIDAYS TO COMPONENT
                 />
             </div>
         )}

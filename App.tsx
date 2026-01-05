@@ -366,7 +366,22 @@ export default function App() {
                 </div>
 
                 {dashboardView === 'clock' && (
-                     <ClockWidget user={currentUser} companyName={userCompany?.name} offices={offices} breakConfigs={breakConfigs} holidays={holidays} activeLeaveRequest={activeLeaveRequest} shiftStartTime={currentShift?.startTime} accumulatedBreakTime={shiftStats.accumulatedPauseMs} activeBreakStartTime={shiftStats.activeBreakStart} currentStatus={currentShift?.status || ShiftStatus.NOT_STARTED} onClockIn={handleClockIn} onClockOut={handleClockOut} onToggleBreak={handleToggleBreak} />
+                     <ClockWidget 
+                        key={currentUser.id} // FORCE REMOUNT ON USER CHANGE TO RESET TIMER
+                        user={currentUser} 
+                        companyName={userCompany?.name} 
+                        offices={offices} 
+                        breakConfigs={breakConfigs} 
+                        holidays={holidays} 
+                        activeLeaveRequest={activeLeaveRequest} 
+                        shiftStartTime={currentShift?.startTime} 
+                        accumulatedBreakTime={shiftStats.accumulatedPauseMs} 
+                        activeBreakStartTime={shiftStats.activeBreakStart} 
+                        currentStatus={currentShift?.status || ShiftStatus.NOT_STARTED} 
+                        onClockIn={handleClockIn} 
+                        onClockOut={handleClockOut} 
+                        onToggleBreak={handleToggleBreak} 
+                     />
                 )}
 
                 {dashboardView === 'history' && (
@@ -398,6 +413,7 @@ export default function App() {
                 offices={offices}
                 leaveConfigs={leaveConfigs}
                 breakConfigs={breakConfigs}
+                holidays={holidays} // PASSED HOLIDAYS
                 canViewAllCompanies={canViewAllCompanies}
                 onApproveLeave={handleApproveLeave}
                 onReject={initiateRejection}
