@@ -153,7 +153,7 @@ IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = '${dbConfig.database}') 
 GO
 USE ${dbConfig.database};
 GO
--- Simplified for brevity, same schema as before --
+-- Users
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='users' AND xtype='U')
 CREATE TABLE users (
     id NVARCHAR(50) PRIMARY KEY,
@@ -171,7 +171,28 @@ CREATE TABLE users (
     employment_status NVARCHAR(20) DEFAULT 'ACTIVE',
     created_at DATETIME2 DEFAULT GETDATE()
 );
--- ... Other tables (companies, departments, offices, timesheets, etc.) ...
+-- Config Tables
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='companies' AND xtype='U') CREATE TABLE companies (id NVARCHAR(50) PRIMARY KEY, name NVARCHAR(255));
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='departments' AND xtype='U') CREATE TABLE departments (id NVARCHAR(50) PRIMARY KEY, company_id NVARCHAR(50), name NVARCHAR(255), manager_id NVARCHAR(50), email_notifications BIT);
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='offices' AND xtype='U') CREATE TABLE offices (id NVARCHAR(50) PRIMARY KEY, name NVARCHAR(255), latitude DECIMAL(10,8), longitude DECIMAL(11,8), radius_meters INT);
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='break_configs' AND xtype='U') CREATE TABLE break_configs (id NVARCHAR(50) PRIMARY KEY, name NVARCHAR(100), is_paid BIT, icon NVARCHAR(50));
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='leave_configs' AND xtype='U') CREATE TABLE leave_configs (id NVARCHAR(50) PRIMARY KEY, name NVARCHAR(100), code NVARCHAR(20), requires_approval BIT);
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='holidays' AND xtype='U') CREATE TABLE holidays (id NVARCHAR(50) PRIMARY KEY, date DATE, name NVARCHAR(255));
+
+-- Transaction Tables
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='timesheets' AND xtype='U') 
+CREATE TABLE timesheets (
+    id NVARCHAR(50) PRIMARY KEY, user_id NVARCHAR(50), start_time DATETIME2, end_time DATETIME2, date DATE, 
+    status NVARCHAR(20), start_lat DECIMAL(10,8), start_long DECIMAL(11,8), matched_office_id NVARCHAR(50)
+);
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='breaks' AND xtype='U') 
+CREATE TABLE breaks (
+    id NVARCHAR(50) PRIMARY KEY, timesheet_id NVARCHAR(50), type_id NVARCHAR(50), start_time DATETIME2, end_time DATETIME2, status NVARCHAR(20)
+);
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='leave_requests' AND xtype='U') 
+CREATE TABLE leave_requests (
+    id NVARCHAR(50) PRIMARY KEY, user_id NVARCHAR(50), type_id NVARCHAR(50), start_date DATE, end_date DATE, reason NVARCHAR(MAX), status NVARCHAR(20), manager_comment NVARCHAR(MAX)
+);
 `;
     setGeneratedSQL(script);
   };
@@ -262,21 +283,52 @@ app.get('/api/v1/config/holidays', async (req, res) => {
 
 app.get('/api/v1/timesheets', async (req, res) => {
     const pool = await connectDB();
-    const result = await pool.request().query('SELECT * FROM timesheets');
-    // Simplified mapping for brevity - in prod map fields correctly
-    const data = result.recordset.map(t => ({
-        id: t.id, userId: t.user_id, date: new Date(t.date).toISOString().split('T')[0],
-        startTime: t.start_time, endTime: t.end_time, status: t.status,
-        breaks: [] // Populate breaks separately if needed
+    
+    // Fetch Timesheets
+    const tsResult = await pool.request().query('SELECT * FROM timesheets');
+    
+    // Fetch Breaks and JOIN Configs for Names
+    const brResult = await pool.request().query(\`
+        SELECT b.id, b.timesheet_id, b.type_id, b.start_time, b.end_time, b.status, bc.name as typeName
+        FROM breaks b
+        LEFT JOIN break_configs bc ON b.type_id = bc.id
+    \`);
+    
+    const breaks = brResult.recordset;
+    
+    const data = tsResult.recordset.map(t => ({
+        id: t.id, 
+        userId: t.user_id, 
+        date: new Date(t.date).toISOString().split('T')[0],
+        startTime: t.start_time, 
+        endTime: t.end_time, 
+        status: t.status,
+        matchedOfficeId: t.matched_office_id,
+        // Breaks mapping
+        breaks: breaks
+            .filter(b => b.timesheet_id === t.id)
+            .map(b => ({
+                id: b.id,
+                typeId: b.type_id,
+                typeName: b.typeName || 'Unknown',
+                status: b.status,
+                startTime: b.start_time,
+                endTime: b.end_time
+            }))
     }));
     res.json(data);
 });
 
 app.get('/api/v1/leaves', async (req, res) => {
     const pool = await connectDB();
-    const result = await pool.request().query('SELECT * FROM leave_requests');
+    const result = await pool.request().query(\`
+        SELECT l.id, l.user_id, l.type_id, l.start_date, l.end_date, l.reason, l.status, lc.name as typeName
+        FROM leave_requests l
+        LEFT JOIN leave_configs lc ON l.type_id = lc.id
+    \`);
     const data = result.recordset.map(l => ({
         id: l.id, userId: l.user_id, typeId: l.type_id, status: l.status,
+        typeName: l.typeName,
         startDate: new Date(l.start_date).toISOString().split('T')[0],
         endDate: new Date(l.end_date).toISOString().split('T')[0],
         reason: l.reason
@@ -284,7 +336,6 @@ app.get('/api/v1/leaves', async (req, res) => {
     res.json(data);
 });
 
-// POST endpoints omitted for brevity in this view, but they exist in full version
 const PORT = 3001;
 app.listen(PORT, () => console.log('Server running on 3001'));
 `
