@@ -5,456 +5,455 @@ import { getCurrentLocation, findNearestOffice } from '../services/geoService';
 import { ShiftStatus, Coordinates, Office, User, BreakConfig, Holiday, LeaveRequest, LeaveStatus } from '../types';
 
 interface ClockWidgetProps {
-  user: User;
-  companyName?: string;
-  offices: Office[];
-  currentStatus: ShiftStatus;
-  breakConfigs: BreakConfig[];
-  holidays: Holiday[]; 
-  activeLeaveRequest?: LeaveRequest;
-  shiftStartTime?: string;
-  shiftEndTime?: string; // NEW: For completed shifts
-  accumulatedBreakTime?: number; // Total ms of completed breaks
-  activeBreakStartTime?: string; // If currently on break
-  onClockIn: (location: Coordinates, office: Office | null, dist: number) => void;
-  onClockOut: (location: Coordinates) => void;
-  onToggleBreak: (breakConfig?: BreakConfig, location?: Coordinates, dist?: number) => void;
+    user: User;
+    companyName?: string;
+    offices: Office[];
+    currentStatus: ShiftStatus;
+    breakConfigs: BreakConfig[];
+    holidays: Holiday[];
+    activeLeaveRequest?: LeaveRequest;
+    shiftStartTime?: string;
+    shiftEndTime?: string; // NEW: For completed shifts
+    accumulatedBreakTime?: number; // Total ms of completed breaks
+    activeBreakStartTime?: string; // If currently on break
+    onClockIn: (location: Coordinates, office: Office | null, dist: number) => void;
+    onClockOut: (location: Coordinates) => void;
+    onToggleBreak: (breakConfig?: BreakConfig, location?: Coordinates, dist?: number) => void;
 }
 
-const ClockWidget: React.FC<ClockWidgetProps> = ({ 
-    user, companyName, offices, currentStatus, breakConfigs, holidays, activeLeaveRequest, 
-    shiftStartTime, shiftEndTime, accumulatedBreakTime = 0, activeBreakStartTime, 
-    onClockIn, onClockOut, onToggleBreak 
+const ClockWidget: React.FC<ClockWidgetProps> = ({
+    user, companyName, offices, currentStatus, breakConfigs, holidays, activeLeaveRequest,
+    shiftStartTime, shiftEndTime, accumulatedBreakTime = 0, activeBreakStartTime,
+    onClockIn, onClockOut, onToggleBreak
 }) => {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showMockOption, setShowMockOption] = useState(false);
-  
-  // Timer State - Refactored to useRef for absolute stability
-  const [currentTime, setCurrentTime] = useState(Date.now());
-  const timerRef = useRef<number | null>(null);
-  
-  const [showBreakSelector, setShowBreakSelector] = useState(false);
-  const [confirmData, setConfirmData] = useState<{ coords: Coordinates, office: Office, distance: number } | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [showMockOption, setShowMockOption] = useState(false);
 
-  const todayDateObj = new Date();
-  const todayDateStr = todayDateObj.toISOString().split('T')[0];
-  const todayDate = todayDateObj.toLocaleDateString('ro-RO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  const todayDateCapitalized = todayDate.charAt(0).toUpperCase() + todayDate.slice(1);
+    // Timer State - Refactored to useRef for absolute stability
+    const [currentTime, setCurrentTime] = useState(Date.now());
+    const timerRef = useRef<number | null>(null);
 
-  // Check for Holiday
-  const todayHoliday = holidays.find(h => h.date === todayDateStr);
+    const [showBreakSelector, setShowBreakSelector] = useState(false);
+    const [confirmData, setConfirmData] = useState<{ coords: Coordinates, office: Office, distance: number } | null>(null);
 
-  let statusText = "NEPONTAT";
-  let statusColor = "bg-gray-100 text-gray-500 border-gray-200";
-  
-  if (currentStatus === ShiftStatus.WORKING) {
-      statusText = "PONTAT";
-      statusColor = "bg-green-100 text-green-700 border-green-200";
-  } else if (currentStatus === ShiftStatus.ON_BREAK) {
-      statusText = "ÎN PAUZĂ";
-      statusColor = "bg-orange-100 text-orange-700 border-orange-200";
-  } else if (currentStatus === ShiftStatus.COMPLETED) {
-      statusText = "ZI ÎNCHEIATĂ";
-      statusColor = "bg-blue-100 text-blue-700 border-blue-200";
-  }
+    const todayDateObj = new Date();
+    const todayDateStr = todayDateObj.toISOString().split('T')[0];
+    const todayDate = todayDateObj.toLocaleDateString('ro-RO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const todayDateCapitalized = todayDate.charAt(0).toUpperCase() + todayDate.slice(1);
 
-  // Format Start Time for Display
-  const startTimeDisplay = shiftStartTime 
-    ? new Date(shiftStartTime).toLocaleTimeString('ro-RO', {hour: '2-digit', minute:'2-digit'})
-    : null;
-    
-  const endTimeDisplay = shiftEndTime 
-    ? new Date(shiftEndTime).toLocaleTimeString('ro-RO', {hour: '2-digit', minute:'2-digit'})
-    : null;
+    // Check for Holiday
+    const todayHoliday = holidays.find(h => h.date === todayDateStr);
 
-  // --- Robust Timer Logic (setInterval via useRef) ---
-  useEffect(() => {
-    const shouldRun = currentStatus === ShiftStatus.WORKING || currentStatus === ShiftStatus.ON_BREAK;
+    let statusText = "NEPONTAT";
+    let statusColor = "bg-gray-100 text-gray-500 border-gray-200";
 
-    if (shouldRun) {
-        // Update immediately to avoid 1s delay
-        setCurrentTime(Date.now());
-
-        if (timerRef.current) clearInterval(timerRef.current);
-        
-        timerRef.current = window.setInterval(() => {
-            setCurrentTime(Date.now());
-        }, 1000);
-    } else {
-        if (timerRef.current) {
-            clearInterval(timerRef.current);
-            timerRef.current = null;
-        }
+    if (currentStatus === ShiftStatus.WORKING) {
+        statusText = "PONTAT";
+        statusColor = "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800";
+    } else if (currentStatus === ShiftStatus.ON_BREAK) {
+        statusText = "ÎN PAUZĂ";
+        statusColor = "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800";
+    } else if (currentStatus === ShiftStatus.COMPLETED) {
+        statusText = "ZI ÎNCHEIATĂ";
+        statusColor = "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800";
     }
 
-    return () => {
-        if (timerRef.current) {
-            clearInterval(timerRef.current);
-            timerRef.current = null;
+    // Format Start Time for Display
+    const startTimeDisplay = shiftStartTime
+        ? new Date(shiftStartTime).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })
+        : null;
+
+    const endTimeDisplay = shiftEndTime
+        ? new Date(shiftEndTime).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })
+        : null;
+
+    // --- Robust Timer Logic (setInterval via useRef) ---
+    useEffect(() => {
+        const shouldRun = currentStatus === ShiftStatus.WORKING || currentStatus === ShiftStatus.ON_BREAK;
+
+        if (shouldRun) {
+            // Update immediately to avoid 1s delay
+            setCurrentTime(Date.now());
+
+            if (timerRef.current) clearInterval(timerRef.current);
+
+            timerRef.current = window.setInterval(() => {
+                setCurrentTime(Date.now());
+            }, 1000);
+        } else {
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+            }
+        }
+
+        return () => {
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+            }
+        };
+    }, [currentStatus, shiftStartTime]);
+
+    // --- Calculation Logic (Derived State) ---
+    const calculateTimers = () => {
+        if (!shiftStartTime || currentStatus === ShiftStatus.NOT_STARTED) {
+            return { elapsed: "00:00:00", breakTimer: "00:00:00" };
+        }
+
+        const start = new Date(shiftStartTime).getTime();
+        if (isNaN(start)) return { elapsed: "00:00:00", breakTimer: "00:00:00" };
+
+        // Ensure accumulatedBreakTime is safe
+        const safeAccumulatedBreak = isNaN(accumulatedBreakTime) ? 0 : accumulatedBreakTime;
+
+        // Determine the 'Current Point' in time. If shift is completed, use EndTime, else use Live Time
+        const endPoint = shiftEndTime ? new Date(shiftEndTime).getTime() : currentTime;
+
+        // Total duration from Shift Start to Endpoint
+        let grossDuration = Math.max(0, endPoint - start);
+
+        let netWorkMs = 0;
+        let currentBreakMs = 0;
+
+        if (currentStatus === ShiftStatus.ON_BREAK && activeBreakStartTime) {
+            const breakStart = new Date(activeBreakStartTime).getTime();
+            if (!isNaN(breakStart)) {
+                // Net Work = (BreakStart - ShiftStart) - PreviousBreaks
+                netWorkMs = Math.max(0, (breakStart - start) - safeAccumulatedBreak);
+                // Break Timer = Now - BreakStart
+                currentBreakMs = Math.max(0, currentTime - breakStart);
+            } else {
+                // Fallback if break start is invalid
+                netWorkMs = Math.max(0, grossDuration - safeAccumulatedBreak);
+            }
+        } else {
+            // If Working or Completed
+            // Net Work = (EndPoint - ShiftStart) - TotalBreaks
+            netWorkMs = Math.max(0, grossDuration - safeAccumulatedBreak);
+            currentBreakMs = 0;
+        }
+
+        const formatMs = (ms: number) => {
+            if (isNaN(ms) || ms < 0) return "00:00:00";
+            const h = Math.floor(ms / 3600000);
+            const m = Math.floor((ms % 3600000) / 60000);
+            const s = Math.floor((ms % 60000) / 1000);
+            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        };
+
+        return {
+            elapsed: formatMs(netWorkMs),
+            breakTimer: formatMs(currentBreakMs)
+        };
+    };
+
+    const { elapsed, breakTimer } = calculateTimers();
+
+    const handleClockIn = async () => {
+        if (!user.isValidated) return; // double check
+
+        setLoading(true);
+        setError(null);
+        setConfirmData(null);
+        setShowMockOption(false);
+
+        try {
+            const coords = await getCurrentLocation();
+            const { office, distance } = findNearestOffice(coords, offices);
+
+            if (office && distance > office.radiusMeters + 500) {
+                setConfirmData({ coords, office, distance });
+                setLoading(false);
+                return;
+            }
+
+            onClockIn(coords, office, distance);
+
+        } catch (err: any) {
+            console.error("GPS Error:", err);
+            setError(err.message || 'Eroare localizare');
+            setShowMockOption(true);
+        } finally {
+            if (!confirmData) setLoading(false);
         }
     };
-  }, [currentStatus, shiftStartTime]); 
 
-  // --- Calculation Logic (Derived State) ---
-  const calculateTimers = () => {
-      if (!shiftStartTime || currentStatus === ShiftStatus.NOT_STARTED) {
-          return { elapsed: "00:00:00", breakTimer: "00:00:00" };
-      }
+    const handleConfirmLocation = () => {
+        if (confirmData) {
+            onClockIn(confirmData.coords, confirmData.office, confirmData.distance);
+            setConfirmData(null);
+        }
+    };
 
-      const start = new Date(shiftStartTime).getTime();
-      if (isNaN(start)) return { elapsed: "00:00:00", breakTimer: "00:00:00" };
+    const handleCancelLocation = () => {
+        setConfirmData(null);
+    };
 
-      // Ensure accumulatedBreakTime is safe
-      const safeAccumulatedBreak = isNaN(accumulatedBreakTime) ? 0 : accumulatedBreakTime;
+    const handleForceMockClockIn = () => {
+        const mockCoords = offices.length > 0 ? offices[0].coordinates : { latitude: 44.4268, longitude: 26.1025 };
+        const { office, distance } = findNearestOffice(mockCoords, offices);
+        onClockIn(mockCoords, office, distance);
+        setShowMockOption(false);
+        setError(null);
+    };
 
-      // Determine the 'Current Point' in time. If shift is completed, use EndTime, else use Live Time
-      const endPoint = shiftEndTime ? new Date(shiftEndTime).getTime() : currentTime;
-
-      // Total duration from Shift Start to Endpoint
-      let grossDuration = Math.max(0, endPoint - start);
-
-      let netWorkMs = 0;
-      let currentBreakMs = 0;
-
-      if (currentStatus === ShiftStatus.ON_BREAK && activeBreakStartTime) {
-          const breakStart = new Date(activeBreakStartTime).getTime();
-          if (!isNaN(breakStart)) {
-              // Net Work = (BreakStart - ShiftStart) - PreviousBreaks
-              netWorkMs = Math.max(0, (breakStart - start) - safeAccumulatedBreak);
-              // Break Timer = Now - BreakStart
-              currentBreakMs = Math.max(0, currentTime - breakStart);
-          } else {
-              // Fallback if break start is invalid
-              netWorkMs = Math.max(0, grossDuration - safeAccumulatedBreak);
-          }
-      } else {
-          // If Working or Completed
-          // Net Work = (EndPoint - ShiftStart) - TotalBreaks
-          netWorkMs = Math.max(0, grossDuration - safeAccumulatedBreak);
-          currentBreakMs = 0;
-      }
-      
-      const formatMs = (ms: number) => {
-          if (isNaN(ms) || ms < 0) return "00:00:00";
-          const h = Math.floor(ms / 3600000);
-          const m = Math.floor((ms % 3600000) / 60000);
-          const s = Math.floor((ms % 60000) / 1000);
-          return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-      };
-
-      return { 
-          elapsed: formatMs(netWorkMs), 
-          breakTimer: formatMs(currentBreakMs) 
-      };
-  };
-
-  const { elapsed, breakTimer } = calculateTimers();
-
-  const handleClockIn = async () => {
-    if (!user.isValidated) return; // double check
-
-    setLoading(true);
-    setError(null);
-    setConfirmData(null);
-    setShowMockOption(false);
-    
-    try {
-        const coords = await getCurrentLocation();
-        const { office, distance } = findNearestOffice(coords, offices);
-
-        if (office && distance > office.radiusMeters + 500) {
-            setConfirmData({ coords, office, distance });
+    const handleClockOut = async () => {
+        setLoading(true);
+        try {
+            const coords = await getCurrentLocation().catch(() => ({ latitude: 0, longitude: 0 }));
+            onClockOut(coords);
+        } finally {
             setLoading(false);
-            return;
-        } 
-        
-        onClockIn(coords, office, distance);
+        }
+    };
 
-    } catch (err: any) {
-        console.error("GPS Error:", err);
-        setError(err.message || 'Eroare localizare');
-        setShowMockOption(true);
-    } finally {
-        if (!confirmData) setLoading(false);
+    const handleToggleBreak = async (config?: BreakConfig) => {
+        setLoading(true);
+        try {
+            const coords = await getCurrentLocation().catch(() => ({ latitude: 0, longitude: 0 }));
+            const { distance } = findNearestOffice(coords, offices);
+            onToggleBreak(config, coords, distance);
+        } finally {
+            setLoading(false);
+            setShowBreakSelector(false);
+        }
+    };
+
+    const getIcon = (iconName?: string) => {
+        switch (iconName) {
+            case 'briefcase': return <Briefcase size={18} className="mb-1" />;
+            case 'utensils': return <Utensils size={18} className="mb-1" />;
+            case 'cigarette': return <Cigarette size={18} className="mb-1" />;
+            default: return <Coffee size={18} className="mb-1" />;
+        }
     }
-  };
 
-  const handleConfirmLocation = () => {
-      if (confirmData) {
-          onClockIn(confirmData.coords, confirmData.office, confirmData.distance);
-          setConfirmData(null);
-      }
-  };
-
-  const handleCancelLocation = () => {
-      setConfirmData(null);
-  };
-
-  const handleForceMockClockIn = () => {
-     const mockCoords = offices.length > 0 ? offices[0].coordinates : { latitude: 44.4268, longitude: 26.1025 };
-     const { office, distance } = findNearestOffice(mockCoords, offices);
-     onClockIn(mockCoords, office, distance);
-     setShowMockOption(false);
-     setError(null);
-  };
-
-  const handleClockOut = async () => {
-    setLoading(true);
-    try {
-        const coords = await getCurrentLocation().catch(() => ({latitude: 0, longitude: 0}));
-        onClockOut(coords);
-    } finally {
-        setLoading(false);
-    }
-  };
-
-  const handleToggleBreak = async (config?: BreakConfig) => {
-      setLoading(true);
-      try {
-          const coords = await getCurrentLocation().catch(() => ({latitude: 0, longitude: 0}));
-          const { distance } = findNearestOffice(coords, offices);
-          onToggleBreak(config, coords, distance);
-      } finally {
-          setLoading(false);
-          setShowBreakSelector(false);
-      }
-  };
-
-  const getIcon = (iconName?: string) => {
-      switch(iconName) {
-          case 'briefcase': return <Briefcase size={18} className="mb-1"/>;
-          case 'utensils': return <Utensils size={18} className="mb-1"/>;
-          case 'cigarette': return <Cigarette size={18} className="mb-1"/>;
-          default: return <Coffee size={18} className="mb-1"/>;
-      }
-  }
-
-  // --- CONFIRMATION SCREEN ---
-  if (confirmData) {
-      return (
-        <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md mx-auto border-2 border-orange-100">
-             <div className="flex flex-col items-center text-center gap-4">
-                 <div className="bg-orange-100 p-4 rounded-full text-orange-600">
-                     <MapPin size={32} />
-                 </div>
-                 <h3 className="text-lg font-bold text-gray-800">Confirmare Locație</h3>
-                 <p className="text-sm text-gray-600">
-                     Ești la o distanță de <span className="font-bold">{confirmData.distance}m</span> de sediul <span className="font-bold">{confirmData.office.name}</span>.
-                 </p>
-                 <p className="text-xs text-orange-600 bg-orange-50 p-2 rounded">
-                     Această distanță depășește limita permisă. Ești sigur că vrei să pontezi de aici?
-                 </p>
-                 <div className="grid grid-cols-2 gap-3 w-full mt-2">
-                     <button onClick={handleCancelLocation} className="py-3 rounded-xl border border-gray-200 font-medium text-gray-600 hover:bg-gray-50">
-                        Anulează
-                     </button>
-                     <button onClick={handleConfirmLocation} className="py-3 rounded-xl bg-orange-500 text-white font-bold hover:bg-orange-600 shadow-md">
-                        Da, Sunt Aici
-                     </button>
-                 </div>
-             </div>
-        </div>
-      );
-  }
-
-  return (
-    <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md mx-auto border border-gray-100 relative overflow-hidden">
-      {/* Decorative bg */}
-      <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-blue-50 rounded-full opacity-50 blur-xl"></div>
-      
-      {/* Holiday Banner */}
-      {todayHoliday && (
-          <div className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white text-xs font-bold p-2 -mx-6 -mt-6 mb-4 flex items-center justify-center gap-2 shadow-inner relative z-20">
-              <PartyPopper size={14} className="animate-bounce"/>
-              Sărbătoare Legală: {todayHoliday.name}
-          </div>
-      )}
-
-      {/* Leave Request Banner */}
-      {activeLeaveRequest && (
-          <div className={`text-white text-xs font-bold p-2 -mx-6 -mt-6 mb-4 flex flex-col items-center justify-center gap-1 shadow-inner relative z-20 ${
-              activeLeaveRequest.status === LeaveStatus.APPROVED ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 
-              activeLeaveRequest.status === LeaveStatus.REJECTED ? 'bg-gradient-to-r from-red-500 to-rose-600' : 
-              'bg-gradient-to-r from-orange-400 to-amber-500'
-          }`}>
-              <div className="flex items-center gap-2">
-                  {activeLeaveRequest.status === LeaveStatus.APPROVED ? <CheckCircle size={14}/> : 
-                   activeLeaveRequest.status === LeaveStatus.REJECTED ? <XCircle size={14}/> : <CalendarOff size={14}/>}
-                  <span>Concediu: {activeLeaveRequest.typeName}</span>
-              </div>
-              <span className="opacity-90 bg-black/10 px-2 py-0.5 rounded text-[10px] uppercase tracking-wide">
-                  Status: {activeLeaveRequest.status === LeaveStatus.PENDING ? 'În Așteptare' : activeLeaveRequest.status === LeaveStatus.APPROVED ? 'Aprobat' : 'Respins'}
-              </span>
-          </div>
-      )}
-      
-      {/* Header Info */}
-      <div className="flex flex-col gap-4 mb-6 relative z-10">
-        <div className="flex justify-between items-start">
-            <div>
-                <h2 className="text-xl font-bold text-gray-800">Bună, {user.name.split(' ')[0]}</h2>
-                <div className="flex flex-col mt-1">
-                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                        <CalendarDays size={14}/>
-                        <span>{todayDateCapitalized}</span>
+    // --- CONFIRMATION SCREEN ---
+    if (confirmData) {
+        return (
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-6 w-full max-w-md mx-auto border-2 border-orange-100 dark:border-orange-900/30">
+                <div className="flex flex-col items-center text-center gap-4">
+                    <div className="bg-orange-100 dark:bg-orange-900/30 p-4 rounded-full text-orange-600 dark:text-orange-400">
+                        <MapPin size={32} />
                     </div>
-                    {companyName && (
-                        <div className="flex items-center gap-1 text-xs text-blue-600 font-medium mt-1">
-                            <Briefcase size={10} /> {companyName}
-                        </div>
-                    )}
+                    <h3 className="text-lg font-bold text-gray-800 dark:text-white">Confirmare Locație</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Ești la o distanță de <span className="font-bold">{confirmData.distance}m</span> de sediul <span className="font-bold">{confirmData.office.name}</span>.
+                    </p>
+                    <p className="text-xs text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 p-2 rounded">
+                        Această distanță depășește limita permisă. Ești sigur că vrei să pontezi de aici?
+                    </p>
+                    <div className="grid grid-cols-2 gap-3 w-full mt-2">
+                        <button onClick={handleCancelLocation} className="py-3 rounded-xl border border-gray-200 dark:border-gray-700 font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                            Anulează
+                        </button>
+                        <button onClick={handleConfirmLocation} className="py-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold shadow-md transition-colors">
+                            Da, Sunt Aici
+                        </button>
+                    </div>
                 </div>
             </div>
-            
-            <div className={`px-3 py-1 rounded-full border text-xs font-bold tracking-wide uppercase flex items-center gap-2 ${statusColor}`}>
-                <div className={`w-2 h-2 rounded-full ${currentStatus === ShiftStatus.WORKING ? 'bg-green-500 animate-pulse' : 'bg-current'}`}></div>
-                {statusText}
-            </div>
-        </div>
-        
-        <div className="flex items-center gap-1 text-[10px] text-gray-400">
-             <Satellite size={12} className={user.requiresGPS ? "text-blue-500" : "text-gray-300"}/>
-             {user.requiresGPS ? "Localizare obligatorie" : "Localizare opțională"}
-        </div>
-      </div>
+        );
+    }
 
-      <div className="flex flex-col items-center justify-center py-4 relative z-10">
-        <div className="flex items-center gap-2 text-gray-400 text-xs font-medium uppercase tracking-widest mb-1">
-            <Clock size={12}/> Timp Lucrat
-        </div>
-        <div className={`text-5xl font-mono font-semibold tracking-wider mb-2 ${currentStatus === ShiftStatus.ON_BREAK ? 'text-gray-400' : 'text-gray-700'}`}>
-          {elapsed}
-        </div>
-        
-        {/* Start/End Time Indicator */}
-        {(currentStatus !== ShiftStatus.NOT_STARTED) && startTimeDisplay && (
-            <div className="mb-4 flex flex-col gap-1 items-center animate-in fade-in">
-                <div className="text-xs font-medium text-blue-600 bg-blue-50 px-3 py-1 rounded-full flex items-center gap-1">
-                    <History size={12}/>
-                    Ora Start: <span className="font-mono font-bold">{startTimeDisplay}</span>
+    return (
+        <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-6 w-full max-w-md mx-auto border border-gray-100 dark:border-gray-800 relative overflow-hidden transition-all duration-300">
+            {/* Decorative bg */}
+            <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-blue-50 dark:bg-blue-900/10 rounded-full opacity-50 blur-xl"></div>
+
+            {/* Holiday Banner */}
+            {todayHoliday && (
+                <div className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white text-xs font-bold p-2 -mx-6 -mt-6 mb-4 flex items-center justify-center gap-2 shadow-inner relative z-20">
+                    <PartyPopper size={14} className="animate-bounce" />
+                    Sărbătoare Legală: {todayHoliday.name}
                 </div>
-                {endTimeDisplay && (
-                     <div className="text-xs font-medium text-gray-600 bg-gray-100 px-3 py-1 rounded-full flex items-center gap-1">
-                        <LogOut size={12}/>
-                        Ora Stop: <span className="font-mono font-bold">{endTimeDisplay}</span>
+            )}
+
+            {/* Leave Request Banner */}
+            {activeLeaveRequest && (
+                <div className={`text-white text-xs font-bold p-2 -mx-6 -mt-6 mb-4 flex flex-col items-center justify-center gap-1 shadow-inner relative z-20 ${activeLeaveRequest.status === LeaveStatus.APPROVED ? 'bg-gradient-to-r from-green-500 to-emerald-600' :
+                        activeLeaveRequest.status === LeaveStatus.REJECTED ? 'bg-gradient-to-r from-red-500 to-rose-600' :
+                            'bg-gradient-to-r from-orange-400 to-amber-500'
+                    }`}>
+                    <div className="flex items-center gap-2">
+                        {activeLeaveRequest.status === LeaveStatus.APPROVED ? <CheckCircle size={14} /> :
+                            activeLeaveRequest.status === LeaveStatus.REJECTED ? <XCircle size={14} /> : <CalendarOff size={14} />}
+                        <span>Concediu: {activeLeaveRequest.typeName}</span>
+                    </div>
+                    <span className="opacity-90 bg-black/10 px-2 py-0.5 rounded text-[10px] uppercase tracking-wide">
+                        Status: {activeLeaveRequest.status === LeaveStatus.PENDING ? 'În Așteptare' : activeLeaveRequest.status === LeaveStatus.APPROVED ? 'Aprobat' : 'Respins'}
+                    </span>
+                </div>
+            )}
+
+            {/* Header Info */}
+            <div className="flex flex-col gap-4 mb-6 relative z-10">
+                <div className="flex justify-between items-start">
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-800 dark:text-white">Bună, {user.name.split(' ')[0]}</h2>
+                        <div className="flex flex-col mt-1">
+                            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                                <CalendarDays size={14} />
+                                <span>{todayDateCapitalized}</span>
+                            </div>
+                            {companyName && (
+                                <div className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 font-medium mt-1">
+                                    <Briefcase size={10} /> {companyName}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className={`px-3 py-1 rounded-full border text-xs font-bold tracking-wide uppercase flex items-center gap-2 ${statusColor}`}>
+                        <div className={`w-2 h-2 rounded-full ${currentStatus === ShiftStatus.WORKING ? 'bg-green-500 animate-pulse' : 'bg-current'}`}></div>
+                        {statusText}
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+                    <Satellite size={12} className={user.requiresGPS ? "text-blue-500 dark:text-blue-400" : "text-gray-300 dark:text-gray-700"} />
+                    {user.requiresGPS ? "Localizare obligatorie" : "Localizare opțională"}
+                </div>
+            </div>
+
+            <div className="flex flex-col items-center justify-center py-4 relative z-10">
+                <div className="flex items-center gap-2 text-gray-400 dark:text-gray-500 text-xs font-medium uppercase tracking-widest mb-1">
+                    <Clock size={12} /> Timp Lucrat
+                </div>
+                <div className={`text-5xl font-mono font-semibold tracking-wider mb-2 ${currentStatus === ShiftStatus.ON_BREAK ? 'text-gray-400 dark:text-gray-600' : 'text-gray-700 dark:text-gray-200'}`}>
+                    {elapsed}
+                </div>
+
+                {/* Start/End Time Indicator */}
+                {(currentStatus !== ShiftStatus.NOT_STARTED) && startTimeDisplay && (
+                    <div className="mb-4 flex flex-col gap-1 items-center animate-in fade-in">
+                        <div className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full flex items-center gap-1">
+                            <History size={12} />
+                            Ora Start: <span className="font-mono font-bold">{startTimeDisplay}</span>
+                        </div>
+                        {endTimeDisplay && (
+                            <div className="text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full flex items-center gap-1">
+                                <LogOut size={12} />
+                                Ora Stop: <span className="font-mono font-bold">{endTimeDisplay}</span>
+                            </div>
+                        )}
                     </div>
                 )}
-            </div>
-        )}
-        
-        {/* Pause Duration Indicator */}
-        {currentStatus === ShiftStatus.ON_BREAK && (
-            <div className="mb-6 flex items-center gap-2 text-orange-600 bg-orange-50 px-3 py-1 rounded-full animate-pulse border border-orange-100">
-                <Coffee size={14}/>
-                <span className="text-xs font-bold uppercase">Durată Pauză:</span>
-                <span className="font-mono font-bold text-sm">{breakTimer}</span>
-            </div>
-        )}
-        {/* Spacer if not on break to keep layout stable */}
-        {currentStatus !== ShiftStatus.ON_BREAK && <div className="mb-4"></div>}
-        
-        {/* NOT VALIDATED WARNING */}
-        {!user.isValidated && (
-            <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-3 w-full">
-                <ShieldAlert className="text-red-500 shrink-0" size={20}/>
-                <div className="text-left">
-                    <p className="text-sm font-bold text-red-800">Cont Nevalidat</p>
-                    <p className="text-xs text-red-600 mt-1">
-                        Acest cont așteaptă validarea unui administrator sau manager. Nu puteți începe pontajul până la activare.
-                    </p>
-                </div>
-            </div>
-        )}
 
-        {/* Buttons Grid */}
-        <div className="grid grid-cols-2 gap-4 w-full">
-            {currentStatus === ShiftStatus.NOT_STARTED ? (
-                 <button 
-                 onClick={handleClockIn}
-                 disabled={!user.isValidated || loading || (activeLeaveRequest?.status === LeaveStatus.APPROVED && !activeLeaveRequest?.typeName.includes('Delegatie'))} // Disable if unvalidated OR approved leave
-                 className="col-span-2 flex items-center justify-center gap-2 text-white py-4 rounded-xl font-semibold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:grayscale bg-blue-600 hover:bg-blue-700 shadow-blue-200"
-               >
-                 {loading ? (
-                     <><RefreshCw className="animate-spin" size={24}/> SE LOCALIZEAZĂ...</>
-                 ) : (
-                     <><Play size={24} /> START PONTAJ</>
-                 )}
-               </button>
-            ) : currentStatus === ShiftStatus.COMPLETED ? (
-                /* --- CHANGED: Hide Start Button, Show Completed Message --- */
-                <div className="col-span-2 bg-blue-50 border border-blue-200 rounded-xl p-4 text-center animate-in fade-in">
-                    <div className="flex justify-center mb-2"><CheckSquare className="text-blue-500" size={32}/></div>
-                    <h3 className="font-bold text-blue-900">Program Încheiat</h3>
-                    <p className="text-xs text-blue-700 mt-1">Ziua de lucru a fost înregistrată.</p>
-                    <p className="text-[10px] text-blue-500 mt-2">Pentru modificări, vă rugăm folosiți secțiunea "Istoric" din panoul principal.</p>
-                </div>
-            ) : (
-                <>
-                    {/* Break Logic */}
-                    {showBreakSelector ? (
-                        <div className="col-span-2 grid grid-cols-3 gap-2 animate-in fade-in zoom-in duration-200 bg-gray-50 p-2 rounded-lg border border-gray-200">
-                             {breakConfigs.map(config => (
-                                 <button 
-                                    key={config.id}
-                                    onClick={() => handleToggleBreak(config)}
-                                    className={`flex flex-col items-center justify-center border p-2 rounded-lg text-xs font-bold transition h-20 ${config.isPaid ? 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700' : 'bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700'}`}
-                                 >
-                                     {getIcon(config.icon)}
-                                     <span className="text-center leading-tight">{config.name}</span>
-                                     <span className="text-[9px] opacity-75 mt-1">{config.isPaid ? '(Plătit)' : '(Neplătit)'}</span>
-                                 </button>
-                             ))}
-                             
-                             <button 
-                                onClick={() => setShowBreakSelector(false)}
-                                className="w-full bg-gray-200 hover:bg-gray-300 text-gray-600 rounded-lg flex items-center justify-center text-xs font-bold"
-                             >
-                                 ANULEAZĂ
-                             </button>
+                {/* Pause Duration Indicator */}
+                {currentStatus === ShiftStatus.ON_BREAK && (
+                    <div className="mb-6 flex items-center gap-2 text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-3 py-1 rounded-full animate-pulse border border-orange-100 dark:border-orange-900/30">
+                        <Coffee size={14} />
+                        <span className="text-xs font-bold uppercase">Durată Pauză:</span>
+                        <span className="font-mono font-bold text-sm">{breakTimer}</span>
+                    </div>
+                )}
+                {/* Spacer if not on break to keep layout stable */}
+                {currentStatus !== ShiftStatus.ON_BREAK && <div className="mb-4"></div>}
+
+                {/* NOT VALIDATED WARNING */}
+                {!user.isValidated && (
+                    <div className="mb-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 flex items-start gap-3 w-full transition-colors">
+                        <ShieldAlert className="text-red-500 dark:text-red-400 shrink-0" size={20} />
+                        <div className="text-left">
+                            <p className="text-sm font-bold text-red-800 dark:text-red-300">Cont Nevalidat</p>
+                            <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                                Acest cont așteaptă validarea unui administrator sau manager. Nu puteți începe pontajul până la activare.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {/* Buttons Grid */}
+                <div className="grid grid-cols-2 gap-4 w-full">
+                    {currentStatus === ShiftStatus.NOT_STARTED ? (
+                        <button
+                            onClick={handleClockIn}
+                            disabled={!user.isValidated || loading || (activeLeaveRequest?.status === LeaveStatus.APPROVED && !activeLeaveRequest?.typeName.includes('Delegatie'))} // Disable if unvalidated OR approved leave
+                            className="col-span-2 flex items-center justify-center gap-2 text-white py-4 rounded-xl font-semibold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:grayscale bg-blue-600 hover:bg-blue-700 shadow-blue-200"
+                        >
+                            {loading ? (
+                                <><RefreshCw className="animate-spin" size={24} /> SE LOCALIZEAZĂ...</>
+                            ) : (
+                                <><Play size={24} /> START PONTAJ</>
+                            )}
+                        </button>
+                    ) : currentStatus === ShiftStatus.COMPLETED ? (
+                        /* --- CHANGED: Hide Start Button, Show Completed Message --- */
+                        <div className="col-span-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 text-center animate-in fade-in">
+                            <div className="flex justify-center mb-2"><CheckSquare className="text-blue-500 dark:text-blue-400" size={32} /></div>
+                            <h3 className="font-bold text-blue-900 dark:text-blue-300">Program Încheiat</h3>
+                            <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">Ziua de lucru a fost înregistrată.</p>
+                            <p className="text-[10px] text-blue-500 dark:text-blue-500 mt-2">Pentru modificări, vă rugăm folosiți secțiunea "Istoric" din panoul principal.</p>
                         </div>
                     ) : (
-                        <button 
-                            onClick={() => currentStatus === ShiftStatus.ON_BREAK ? handleToggleBreak() : setShowBreakSelector(true)}
-                            disabled={loading}
-                            className={`flex items-center justify-center gap-2 py-4 rounded-xl font-semibold transition-all shadow-sm border-2 ${currentStatus === ShiftStatus.ON_BREAK ? 'bg-orange-100 border-orange-200 text-orange-700 shadow-inner' : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'}`}
-                        >
-                            <Coffee size={20} />
-                            {loading ? '...' : (currentStatus === ShiftStatus.ON_BREAK ? 'STOP PAUZĂ' : 'START PAUZĂ')}
-                        </button>
+                        <>
+                            {/* Break Logic */}
+                            {showBreakSelector ? (
+                                <div className="col-span-2 grid grid-cols-3 gap-2 animate-in fade-in zoom-in duration-200 bg-gray-50 dark:bg-gray-800 p-2 rounded-lg border border-gray-200 dark:border-gray-700">
+                                    {breakConfigs.map(config => (
+                                        <button
+                                            key={config.id}
+                                            onClick={() => handleToggleBreak(config)}
+                                            className={`flex flex-col items-center justify-center border p-2 rounded-lg text-xs font-bold transition h-20 shadow-sm ${config.isPaid ? 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700 dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:border-blue-800 dark:text-blue-300' : 'bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700 dark:bg-orange-900/40 dark:hover:bg-orange-900/60 dark:border-orange-800 dark:text-orange-300'}`}
+                                        >
+                                            {getIcon(config.icon)}
+                                            <span className="text-center leading-tight">{config.name}</span>
+                                            <span className="text-[9px] opacity-75 mt-1">{config.isPaid ? '(Plătit)' : '(Neplătit)'}</span>
+                                        </button>
+                                    ))}
+
+                                    <button
+                                        onClick={() => setShowBreakSelector(false)}
+                                        className="w-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-lg flex items-center justify-center text-xs font-bold transition-colors"
+                                    >
+                                        ANULEAZĂ
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => currentStatus === ShiftStatus.ON_BREAK ? handleToggleBreak() : setShowBreakSelector(true)}
+                                    disabled={loading}
+                                    className={`flex items-center justify-center gap-2 py-4 rounded-xl font-semibold transition-all shadow-sm border-2 ${currentStatus === ShiftStatus.ON_BREAK ? 'bg-orange-100 dark:bg-orange-900/40 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300 shadow-inner' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                                >
+                                    <Coffee size={20} />
+                                    {loading ? '...' : (currentStatus === ShiftStatus.ON_BREAK ? 'STOP PAUZĂ' : 'START PAUZĂ')}
+                                </button>
+                            )}
+
+                            <button
+                                onClick={handleClockOut}
+                                disabled={loading || currentStatus === ShiftStatus.ON_BREAK}
+                                className="flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white py-4 rounded-xl font-semibold transition-all shadow-lg shadow-red-200 active:scale-95 disabled:opacity-50"
+                            >
+                                <Square size={20} /> STOP
+                            </button>
+                        </>
                     )}
-
-                    <button 
-                        onClick={handleClockOut}
-                        disabled={loading || currentStatus === ShiftStatus.ON_BREAK}
-                        className="flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white py-4 rounded-xl font-semibold transition-all shadow-lg shadow-red-200 active:scale-95 disabled:opacity-50"
-                    >
-                        <Square size={20} /> STOP
-                    </button>
-                </>
-            )}
-        </div>
-
-        {error && (
-            <div className="mt-4 flex flex-col items-center gap-2 w-full animate-in slide-in-from-top-2">
-                <div className="flex items-center gap-2 text-red-500 bg-red-50 p-3 rounded-lg text-sm w-full font-medium border border-red-100">
-                    <AlertTriangle size={16} className="shrink-0" /> {error}
                 </div>
-                
-                {/* Fallback Option */}
-                {showMockOption && (
-                    <button 
-                        onClick={handleForceMockClockIn}
-                        className="text-xs bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition w-full flex items-center justify-center gap-2"
-                    >
-                        <Satellite size={14}/> Forțează Start (Test Mode / Locație Simulată)
-                    </button>
+
+                {error && (
+                    <div className="mt-4 flex flex-col items-center gap-2 w-full animate-in slide-in-from-top-2">
+                        <div className="flex items-center gap-2 text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg text-sm w-full font-medium border border-red-100 dark:border-red-800">
+                            <AlertTriangle size={16} className="shrink-0" /> {error}
+                        </div>
+
+                        {/* Fallback Option */}
+                        {showMockOption && (
+                            <button
+                                onClick={handleForceMockClockIn}
+                                className="text-xs bg-gray-800 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition w-full flex items-center justify-center gap-2"
+                            >
+                                <Satellite size={14} /> Forțează Start (Test Mode / Locație Simulată)
+                            </button>
+                        )}
+                    </div>
                 )}
             </div>
-        )}
-      </div>
-    </div>
-  );
+        </div>
+    );
 };
 
 export default ClockWidget;

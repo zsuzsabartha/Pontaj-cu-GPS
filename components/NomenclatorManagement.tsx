@@ -17,13 +17,13 @@ interface NomenclatorManagementProps {
   onUpdateLockedDate: (date: string) => void;
 }
 
-const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({ 
+const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
   breakConfigs, leaveConfigs, workSchedules, holidays, currentLockedDate,
-  onUpdateBreaks, onUpdateLeaves, onUpdateSchedules, onUpdateHolidays, onUpdateLockedDate 
+  onUpdateBreaks, onUpdateLeaves, onUpdateSchedules, onUpdateHolidays, onUpdateLockedDate
 }) => {
   const [activeTab, setActiveTab] = useState<'breaks' | 'leaves' | 'schedules' | 'holidays' | 'settings'>('breaks');
   const [isSaving, setIsSaving] = useState(false);
-  
+
   // Local state for editing to avoid constant prop updates
   const [localBreaks, setLocalBreaks] = useState(breakConfigs);
   const [localLeaves, setLocalLeaves] = useState(leaveConfigs);
@@ -33,29 +33,29 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
 
   // Helper to save to backend
   const saveToSQL = async (endpoint: string, data: any[]) => {
-      setIsSaving(true);
-      try {
-          // Attempt to save to backend (if running)
-          const response = await fetch(`${API_CONFIG.BASE_URL}/config/${endpoint}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(data)
-          }).catch(() => null); // Catch network errors silently to fallback
+    setIsSaving(true);
+    try {
+      // Attempt to save to backend (if running)
+      const response = await fetch(`${API_CONFIG.BASE_URL}/config/${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      }).catch(() => null); // Catch network errors silently to fallback
 
-          if (response && response.ok) {
-              const res = await response.json();
-              console.log("SQL Sync Success:", res);
-              return true;
-          } else {
-              console.warn("SQL Bridge not connected or error. Saving locally only.");
-              return false;
-          }
-      } catch (e) {
-          console.error("Save error:", e);
-          return false;
-      } finally {
-          setIsSaving(false);
+      if (response && response.ok) {
+        const res = await response.json();
+        console.log("SQL Sync Success:", res);
+        return true;
+      } else {
+        console.warn("SQL Bridge not connected or error. Saving locally only.");
+        return false;
       }
+    } catch (e) {
+      console.error("Save error:", e);
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // --- Break Handlers ---
@@ -110,102 +110,102 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
 
   // --- Schedule Handlers ---
   const addSchedule = () => {
-      const newSchedule: WorkSchedule = {
-          id: `sch-${Date.now()}`,
-          name: 'Program Nou',
-          startTime: '09:00',
-          endTime: '17:00',
-          crossesMidnight: false
-      };
-      setLocalSchedules([...localSchedules, newSchedule]);
+    const newSchedule: WorkSchedule = {
+      id: `sch-${Date.now()}`,
+      name: 'Program Nou',
+      startTime: '09:00',
+      endTime: '17:00',
+      crossesMidnight: false
+    };
+    setLocalSchedules([...localSchedules, newSchedule]);
   }
 
   const updateSchedule = (id: string, field: keyof WorkSchedule, value: any) => {
-      setLocalSchedules(prev => prev.map(s => {
-          if (s.id !== id) return s;
-          const updated = { ...s, [field]: value };
-          // Auto-calc midnight crossing
-          if (field === 'startTime' || field === 'endTime') {
-              // Simple check: if End < Start, it crosses midnight (e.g. 22:00 to 06:00)
-              // NOTE: This assumes start/end are just times.
-              if (updated.startTime && updated.endTime) {
-                  updated.crossesMidnight = updated.endTime < updated.startTime;
-              }
-          }
-          return updated;
-      }));
+    setLocalSchedules(prev => prev.map(s => {
+      if (s.id !== id) return s;
+      const updated = { ...s, [field]: value };
+      // Auto-calc midnight crossing
+      if (field === 'startTime' || field === 'endTime') {
+        // Simple check: if End < Start, it crosses midnight (e.g. 22:00 to 06:00)
+        // NOTE: This assumes start/end are just times.
+        if (updated.startTime && updated.endTime) {
+          updated.crossesMidnight = updated.endTime < updated.startTime;
+        }
+      }
+      return updated;
+    }));
   }
 
   const deleteSchedule = (id: string) => {
-      setLocalSchedules(prev => prev.filter(s => s.id !== id));
+    setLocalSchedules(prev => prev.filter(s => s.id !== id));
   }
 
   const saveSchedules = async () => {
-      onUpdateSchedules(localSchedules);
-      // await saveToSQL('schedules', localSchedules); // Assuming backend support exists or handled locally
-      alert("Programe de Lucru actualizate!");
+    onUpdateSchedules(localSchedules);
+    // await saveToSQL('schedules', localSchedules); // Assuming backend support exists or handled locally
+    alert("Programe de Lucru actualizate!");
   }
 
   // --- Holiday Handlers ---
   const addHoliday = () => {
     const newHoliday: Holiday = {
-        id: `h-${Date.now()}`,
-        date: new Date().toISOString().split('T')[0],
-        name: 'Sărbătoare Nouă'
+      id: `h-${Date.now()}`,
+      date: new Date().toISOString().split('T')[0],
+      name: 'Sărbătoare Nouă'
     };
     setLocalHolidays([...localHolidays, newHoliday]);
   };
 
   const updateHoliday = (id: string, field: keyof Holiday, value: any) => {
-      setLocalHolidays(prev => prev.map(h => h.id === id ? { ...h, [field]: value } : h));
+    setLocalHolidays(prev => prev.map(h => h.id === id ? { ...h, [field]: value } : h));
   };
 
   const deleteHoliday = (id: string) => {
-      setLocalHolidays(prev => prev.filter(h => h.id !== id));
+    setLocalHolidays(prev => prev.filter(h => h.id !== id));
   };
 
   const saveHolidays = async () => {
-      onUpdateHolidays(localHolidays);
-      const synced = await saveToSQL('holidays', localHolidays);
-      alert(`Lista Zilelor Libere a fost actualizată! ${synced ? '(Sincronizat cu SQL Server)' : '(Doar Local - Bridge Offline)'}`);
+    onUpdateHolidays(localHolidays);
+    const synced = await saveToSQL('holidays', localHolidays);
+    alert(`Lista Zilelor Libere a fost actualizată! ${synced ? '(Sincronizat cu SQL Server)' : '(Doar Local - Bridge Offline)'}`);
   };
-  
+
   // --- General Settings Handlers ---
   const saveGeneralSettings = () => {
-      onUpdateLockedDate(localLockedDate);
-      alert(`Setări Generale Actualizate! Luna este închisă până la: ${localLockedDate}`);
+    onUpdateLockedDate(localLockedDate);
+    alert(`Setări Generale Actualizate! Luna este închisă până la: ${localLockedDate}`);
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-      <div className="flex border-b border-gray-200 overflow-x-auto">
-        <button 
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden transition-colors">
+      <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto transition-colors">
+        <button
           onClick={() => setActiveTab('breaks')}
-          className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'breaks' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
+          className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 transition-colors ${activeTab === 'breaks' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-500' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
         >
           <Coffee size={18} /> Tipuri Pauze
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab('leaves')}
-          className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'leaves' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
+          className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 transition-colors ${activeTab === 'leaves' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-500' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
         >
           <FileText size={18} /> Tipuri Concedii
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab('schedules')}
-          className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'schedules' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
+          className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 transition-colors ${activeTab === 'schedules' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-500' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
         >
           <CalendarClock size={18} /> Programe de Lucru
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab('holidays')}
-          className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'holidays' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
+          className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 transition-colors ${activeTab === 'holidays' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-500' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
         >
           <CalendarDays size={18} /> Zile Libere
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab('settings')}
-          className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 ${activeTab === 'settings' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}
+          className={`flex-1 py-4 px-2 whitespace-nowrap text-sm font-medium flex items-center justify-center gap-2 transition-colors ${activeTab === 'settings' ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-500' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
         >
           <Settings size={18} /> Configurări Generale
         </button>
@@ -214,59 +214,59 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
       <div className="p-6">
         {activeTab === 'breaks' && (
           <div className="space-y-4">
-            <div className="grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 uppercase mb-2">
-               <div className="col-span-5">Denumire</div>
-               <div className="col-span-2 text-center">Plătită? (Se scade?)</div>
-               <div className="col-span-3">Icon</div>
-               <div className="col-span-2">Acțiuni</div>
+            <div className="grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">
+              <div className="col-span-5">Denumire</div>
+              <div className="col-span-2 text-center">Plătită? (Se scade?)</div>
+              <div className="col-span-3">Icon</div>
+              <div className="col-span-2">Acțiuni</div>
             </div>
-            
+
             {localBreaks.map(br => (
-              <div key={br.id} className="grid grid-cols-12 gap-2 items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
+              <div key={br.id} className="grid grid-cols-12 gap-2 items-center bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-100 dark:border-gray-700 transition-colors">
                 <div className="col-span-5">
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={br.name}
                     onChange={(e) => updateBreak(br.id, 'name', e.target.value)}
-                    className="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-all"
                   />
                 </div>
                 <div className="col-span-2 flex justify-center">
-                   <button 
-                     onClick={() => updateBreak(br.id, 'isPaid', !br.isPaid)}
-                     className={`px-3 py-1 rounded text-xs font-bold ${br.isPaid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
-                   >
-                     {br.isPaid ? 'PLĂTITĂ' : 'NEPLĂTITĂ'}
-                   </button>
+                  <button
+                    onClick={() => updateBreak(br.id, 'isPaid', !br.isPaid)}
+                    className={`px-3 py-1 rounded text-xs font-bold transition-colors ${br.isPaid ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}
+                  >
+                    {br.isPaid ? 'PLĂTITĂ' : 'NEPLĂTITĂ'}
+                  </button>
                 </div>
                 <div className="col-span-3">
-                   <select 
-                     value={br.icon || 'coffee'}
-                     onChange={(e) => updateBreak(br.id, 'icon', e.target.value)}
-                     className="w-full p-2 border rounded text-sm bg-white"
-                   >
-                     <option value="coffee">Cafea</option>
-                     <option value="briefcase">Serviciu</option>
-                     <option value="utensils">Mancare</option>
-                     <option value="cigarette">Tigara</option>
-                   </select>
+                  <select
+                    value={br.icon || 'coffee'}
+                    onChange={(e) => updateBreak(br.id, 'icon', e.target.value)}
+                    className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded text-sm bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors"
+                  >
+                    <option value="coffee">Cafea</option>
+                    <option value="briefcase">Serviciu</option>
+                    <option value="utensils">Mancare</option>
+                    <option value="cigarette">Tigara</option>
+                  </select>
                 </div>
                 <div className="col-span-2 flex justify-end">
-                   <button onClick={() => deleteBreak(br.id)} className="text-gray-400 hover:text-red-500 p-2"><Trash2 size={16}/></button>
+                  <button onClick={() => deleteBreak(br.id)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"><Trash2 size={16} /></button>
                 </div>
               </div>
             ))}
 
-            <div className="flex justify-between pt-4 border-t border-gray-100">
-              <button onClick={addBreak} className="flex items-center gap-2 text-blue-600 text-sm font-medium hover:bg-blue-50 px-3 py-2 rounded">
-                 <Plus size={16}/> Adaugă Tip
+            <div className="flex justify-between pt-4 border-t border-gray-100 dark:border-gray-700 transition-colors">
+              <button onClick={addBreak} className="flex items-center gap-2 text-blue-600 dark:text-blue-400 text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-900/30 px-3 py-2 rounded transition-colors">
+                <Plus size={16} /> Adaugă Tip
               </button>
-              <button 
-                onClick={saveBreaks} 
+              <button
+                onClick={saveBreaks}
                 disabled={isSaving}
-                className="flex items-center gap-2 bg-blue-600 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-blue-700 shadow-md disabled:opacity-70"
+                className="flex items-center gap-2 bg-blue-600 dark:bg-blue-700 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 shadow-md disabled:opacity-70 transition-all"
               >
-                 {isSaving ? <RefreshCw className="animate-spin" size={16}/> : <Save size={16}/>} Salvează Modificări
+                {isSaving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />} Salvează Modificări
               </button>
             </div>
           </div>
@@ -274,55 +274,57 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
 
         {activeTab === 'leaves' && (
           <div className="space-y-4">
-             <div className="grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 uppercase mb-2">
-               <div className="col-span-5">Denumire</div>
-               <div className="col-span-2">Cod (ERP)</div>
-               <div className="col-span-3 text-center">Necesită Aprobare?</div>
-               <div className="col-span-2">Acțiuni</div>
+            <div className="grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">
+              <div className="col-span-5">Denumire</div>
+              <div className="col-span-2">Cod (ERP)</div>
+              <div className="col-span-3 text-center">Necesită Aprobare?</div>
+              <div className="col-span-2">Acțiuni</div>
             </div>
 
             {localLeaves.map(lv => (
-               <div key={lv.id} className="grid grid-cols-12 gap-2 items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
-                  <div className="col-span-5">
-                    <input 
-                      type="text" 
-                      value={lv.name}
-                      onChange={(e) => updateLeave(lv.id, 'name', e.target.value)}
-                      className="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <input 
-                      type="text" 
-                      value={lv.code}
-                      onChange={(e) => updateLeave(lv.id, 'code', e.target.value)}
-                      className="w-full p-2 border rounded text-sm font-mono uppercase focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                  </div>
-                  <div className="col-span-3 flex justify-center">
-                    <button 
-                       onClick={() => updateLeave(lv.id, 'requiresApproval', !lv.requiresApproval)}
-                       className={`p-1 rounded ${lv.requiresApproval ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-400'}`}
-                    >
-                       {lv.requiresApproval ? <Check size={16} /> : <X size={16} />}
-                    </button>
-                  </div>
+              <div key={lv.id} className="grid grid-cols-12 gap-2 items-center bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-100 dark:border-gray-700 transition-colors">
+                <div className="col-span-5">
+                  <input
+                    type="text"
+                    value={lv.name}
+                    onChange={(e) => updateLeave(lv.id, 'name', e.target.value)}
+                    className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-all"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <input
+                    type="text"
+                    value={lv.code}
+                    onChange={(e) => updateLeave(lv.id, 'code', e.target.value)}
+                    className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded text-sm font-mono uppercase focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-all font-medium"
+                  />
+                </div>
+                <div className="col-span-3 flex justify-center">
+                  <button
+                    onClick={() => updateLeave(lv.id, 'requiresApproval', !lv.requiresApproval)}
+                    className={`p-1 rounded transition-colors ${lv.requiresApproval ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500'}`}
+                  >
+                    {lv.requiresApproval ? <Check size={16} /> : <X size={16} />}
+                  </button>
+                </div>
+                <div className="col-span-2 flex justify-end">
                   <div className="col-span-2 flex justify-end">
-                     <button onClick={() => deleteLeave(lv.id)} className="text-gray-400 hover:text-red-500 p-2"><Trash2 size={16}/></button>
+                    <button onClick={() => deleteLeave(lv.id)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"><Trash2 size={16} /></button>
                   </div>
-               </div>
+                </div>
+              </div>
             ))}
 
-            <div className="flex justify-between pt-4 border-t border-gray-100">
-              <button onClick={addLeave} className="flex items-center gap-2 text-blue-600 text-sm font-medium hover:bg-blue-50 px-3 py-2 rounded">
-                 <Plus size={16}/> Adaugă Tip
+            <div className="flex justify-between pt-4 border-t border-gray-100 dark:border-gray-700 transition-colors">
+              <button onClick={addLeave} className="flex items-center gap-2 text-blue-600 dark:text-blue-400 text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-900/30 px-3 py-2 rounded transition-colors">
+                <Plus size={16} /> Adaugă Tip
               </button>
-              <button 
-                onClick={saveLeaves} 
+              <button
+                onClick={saveLeaves}
                 disabled={isSaving}
-                className="flex items-center gap-2 bg-blue-600 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-blue-700 shadow-md disabled:opacity-70"
+                className="flex items-center gap-2 bg-blue-600 dark:bg-blue-700 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 shadow-md disabled:opacity-70 transition-all"
               >
-                 {isSaving ? <RefreshCw className="animate-spin" size={16}/> : <Save size={16}/>} Salvează Modificări
+                {isSaving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />} Salvează Modificări
               </button>
             </div>
           </div>
@@ -330,160 +332,162 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
 
         {/* SCHEDULES TAB */}
         {activeTab === 'schedules' && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
-                <div className="grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 uppercase mb-2">
-                    <div className="col-span-4">Denumire Program</div>
-                    <div className="col-span-2">Start</div>
-                    <div className="col-span-2">Stop</div>
-                    <div className="col-span-2 text-center">Tip</div>
-                    <div className="col-span-2 text-right">Acțiuni</div>
-                </div>
-
-                {localSchedules.map(sch => (
-                    <div key={sch.id} className="grid grid-cols-12 gap-2 items-center bg-gray-50 p-3 rounded-lg border border-gray-100">
-                        <div className="col-span-4">
-                            <input 
-                                type="text"
-                                value={sch.name}
-                                onChange={(e) => updateSchedule(sch.id, 'name', e.target.value)}
-                                className="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                            />
-                        </div>
-                        <div className="col-span-2">
-                            <input 
-                                type="time"
-                                value={sch.startTime}
-                                onChange={(e) => updateSchedule(sch.id, 'startTime', e.target.value)}
-                                className="w-full p-2 border rounded text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
-                            />
-                        </div>
-                        <div className="col-span-2">
-                            <input 
-                                type="time"
-                                value={sch.endTime}
-                                onChange={(e) => updateSchedule(sch.id, 'endTime', e.target.value)}
-                                className="w-full p-2 border rounded text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
-                            />
-                        </div>
-                        <div className="col-span-2 flex justify-center">
-                            <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded ${sch.crossesMidnight ? 'bg-indigo-100 text-indigo-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                                {sch.crossesMidnight ? <Moon size={12}/> : <Sun size={12}/>}
-                                {sch.crossesMidnight ? 'NOAPTE' : 'ZI'}
-                            </span>
-                        </div>
-                        <div className="col-span-2 flex justify-end">
-                            <button onClick={() => deleteSchedule(sch.id)} className="text-gray-400 hover:text-red-500 p-2"><Trash2 size={16}/></button>
-                        </div>
-                    </div>
-                ))}
-
-                <div className="flex justify-between pt-4 border-t border-gray-100">
-                    <button onClick={addSchedule} className="flex items-center gap-2 text-blue-600 text-sm font-medium hover:bg-blue-50 px-3 py-2 rounded">
-                        <Plus size={16}/> Adaugă Program
-                    </button>
-                    <button 
-                        onClick={saveSchedules} 
-                        disabled={isSaving}
-                        className="flex items-center gap-2 bg-blue-600 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-blue-700 shadow-md disabled:opacity-70"
-                    >
-                        {isSaving ? <RefreshCw className="animate-spin" size={16}/> : <Save size={16}/>} Salvează Programe
-                    </button>
-                </div>
+          <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
+            <div className="grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">
+              <div className="col-span-4">Denumire Program</div>
+              <div className="col-span-2">Start</div>
+              <div className="col-span-2">Stop</div>
+              <div className="col-span-2 text-center">Tip</div>
+              <div className="col-span-2 text-right">Acțiuni</div>
             </div>
+
+            {localSchedules.map(sch => (
+              <div key={sch.id} className="grid grid-cols-12 gap-2 items-center bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-100 dark:border-gray-700 transition-colors">
+                <div className="col-span-4">
+                  <input
+                    type="text"
+                    value={sch.name}
+                    onChange={(e) => updateSchedule(sch.id, 'name', e.target.value)}
+                    className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-all font-medium"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <input
+                    type="time"
+                    value={sch.startTime}
+                    onChange={(e) => updateSchedule(sch.id, 'startTime', e.target.value)}
+                    className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-all font-medium"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <input
+                    type="time"
+                    value={sch.endTime}
+                    onChange={(e) => updateSchedule(sch.id, 'endTime', e.target.value)}
+                    className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-all font-medium"
+                  />
+                </div>
+                <div className="col-span-2 flex justify-center">
+                  <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded transition-colors ${sch.crossesMidnight ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400' : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'}`}>
+                    {sch.crossesMidnight ? <Moon size={12} /> : <Sun size={12} />}
+                    {sch.crossesMidnight ? 'NOAPTE' : 'ZI'}
+                  </span>
+                </div>
+                <div className="col-span-2 flex justify-end">
+                  <div className="col-span-2 flex justify-end">
+                    <button onClick={() => deleteSchedule(sch.id)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"><Trash2 size={16} /></button>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            <div className="flex justify-between pt-4 border-t border-gray-100 dark:border-gray-700 transition-colors">
+              <button onClick={addSchedule} className="flex items-center gap-2 text-blue-600 dark:text-blue-400 text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-900/30 px-3 py-2 rounded transition-colors">
+                <Plus size={16} /> Adaugă Program
+              </button>
+              <button
+                onClick={saveSchedules}
+                disabled={isSaving}
+                className="flex items-center gap-2 bg-blue-600 dark:bg-blue-700 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 shadow-md disabled:opacity-70 transition-all font-bold"
+              >
+                {isSaving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />} Salvează Programe
+              </button>
+            </div>
+          </div>
         )}
 
         {activeTab === 'holidays' && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
-                <div className="bg-purple-50 p-4 rounded-lg border border-purple-100 text-sm text-purple-800 flex items-center gap-2 mb-4">
-                    <PartyPopper size={20}/>
-                    <span>
-                        Zilele definite aici vor fi marcate automat ca "Sărbătoare Legală" în pontajele angajaților. 
-                        Dacă un angajat lucrează într-o astfel de zi, poate beneficia de sporuri (configurabile în ERP).
-                    </span>
-                </div>
-
-                <div className="grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 uppercase mb-2">
-                    <div className="col-span-4">Dată Calendaristică</div>
-                    <div className="col-span-6">Denumire Sărbătoare</div>
-                    <div className="col-span-2 text-right pr-4">Acțiuni</div>
-                </div>
-
-                {localHolidays.sort((a,b) => a.date.localeCompare(b.date)).map(hol => (
-                    <div key={hol.id} className="grid grid-cols-12 gap-4 items-center bg-white p-3 rounded-lg border border-gray-200 hover:border-purple-200 hover:shadow-sm transition">
-                        <div className="col-span-4">
-                            <input 
-                                type="date"
-                                value={hol.date}
-                                onChange={(e) => updateHoliday(hol.id, 'date', e.target.value)}
-                                className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50"
-                            />
-                        </div>
-                        <div className="col-span-6">
-                            <input 
-                                type="text"
-                                placeholder="Ex: Crăciun"
-                                value={hol.name}
-                                onChange={(e) => updateHoliday(hol.id, 'name', e.target.value)}
-                                className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
-                            />
-                        </div>
-                        <div className="col-span-2 flex justify-end">
-                            <button 
-                                onClick={() => deleteHoliday(hol.id)}
-                                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
-                                title="Șterge Sărbătoare"
-                            >
-                                <Trash2 size={18}/>
-                            </button>
-                        </div>
-                    </div>
-                ))}
-
-                <div className="flex justify-between pt-4 border-t border-gray-100">
-                    <button onClick={addHoliday} className="flex items-center gap-2 text-purple-600 text-sm font-medium hover:bg-purple-50 px-3 py-2 rounded transition">
-                        <Plus size={16}/> Adaugă Sărbătoare
-                    </button>
-                    <button 
-                        onClick={saveHolidays} 
-                        disabled={isSaving}
-                        className="flex items-center gap-2 bg-purple-600 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-purple-700 shadow-md shadow-purple-200 transition disabled:opacity-70"
-                    >
-                        {isSaving ? <RefreshCw className="animate-spin" size={16}/> : <Save size={16}/>} Salvează Calendar
-                    </button>
-                </div>
+          <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
+            <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg border border-purple-100 dark:border-purple-800 transition-colors text-sm text-purple-800 dark:text-purple-300 flex items-center gap-2 mb-4">
+              <PartyPopper size={20} />
+              <span>
+                Zilele definite aici vor fi marcate automat ca "Sărbătoare Legală" în pontajele angajaților.
+                Dacă un angajat lucrează într-o astfel de zi, poate beneficia de sporuri (configurabile în ERP).
+              </span>
             </div>
+
+            <div className="grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">
+              <div className="col-span-4">Dată Calendaristică</div>
+              <div className="col-span-6">Denumire Sărbătoare</div>
+              <div className="col-span-2 text-right pr-4">Acțiuni</div>
+            </div>
+
+            {localHolidays.sort((a, b) => a.date.localeCompare(b.date)).map(hol => (
+              <div key={hol.id} className="grid grid-cols-12 gap-4 items-center bg-white dark:bg-gray-900/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-purple-200 dark:hover:border-purple-800 hover:shadow-sm transition-all">
+                <div className="col-span-4">
+                  <input
+                    type="date"
+                    value={hol.date}
+                    onChange={(e) => updateHoliday(hol.id, 'date', e.target.value)}
+                    className="w-full p-2 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-purple-500 outline-none"
+                  />
+                </div>
+                <div className="col-span-6">
+                  <input
+                    type="text"
+                    placeholder="Ex: Crăciun"
+                    value={hol.name}
+                    onChange={(e) => updateHoliday(hol.id, 'name', e.target.value)}
+                    className="w-full p-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-purple-500 outline-none"
+                  />
+                </div>
+                <div className="col-span-2 flex justify-end">
+                  <button
+                    onClick={() => deleteHoliday(hol.id)}
+                    className="p-2 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                    title="Șterge Sărbătoare"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <div className="flex justify-between pt-4 border-t border-gray-100 dark:border-gray-700 transition-colors">
+              <button onClick={addHoliday} className="flex items-center gap-2 text-purple-600 dark:text-purple-400 text-sm font-medium hover:bg-purple-50 dark:hover:bg-purple-900/30 px-3 py-2 rounded transition-colors">
+                <Plus size={16} /> Adaugă Sărbătoare
+              </button>
+              <button
+                onClick={saveHolidays}
+                disabled={isSaving}
+                className="flex items-center gap-2 bg-purple-600 dark:bg-purple-700 text-white text-sm font-medium px-6 py-2 rounded-lg hover:bg-purple-700 dark:hover:bg-purple-600 shadow-md shadow-purple-200 transition-all font-bold disabled:opacity-70"
+              >
+                {isSaving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />} Salvează Calendar
+              </button>
+            </div>
+          </div>
         )}
 
         {activeTab === 'settings' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-                 <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 text-sm text-orange-800 flex items-start gap-3">
-                    <Lock size={20} className="shrink-0 mt-0.5"/>
-                    <div>
-                        <span className="font-bold block mb-1">Control Închidere Lună (Lock Date)</span>
-                        Data specificată mai jos blochează orice modificare asupra pontajelor, cererilor de concediu sau programărilor anterioare acestei date.
-                        Această dată este folosită pentru a proteja perioadele fiscale închise.
-                    </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm max-w-md">
-                     <label className="block text-sm font-bold text-gray-700 mb-2">Dată Blocare Sistem (Closed Month)</label>
-                     <div className="flex gap-4 items-center">
-                         <input 
-                            type="date"
-                            value={localLockedDate}
-                            onChange={(e) => setLocalLockedDate(e.target.value)}
-                            className="flex-1 p-3 border rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
-                         />
-                         <button 
-                            onClick={saveGeneralSettings}
-                            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md"
-                         >
-                             Aplică
-                         </button>
-                     </div>
-                     <p className="text-xs text-gray-400 mt-2 italic">Ex: Dacă setați 30-04-2024, nimeni nu mai poate modifica date din Aprilie sau mai vechi.</p>
-                </div>
+          <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
+            <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg border border-orange-100 dark:border-orange-800 transition-colors text-sm text-orange-800 dark:text-orange-300 flex items-start gap-3">
+              <Lock size={20} className="shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold block mb-1">Control Închidere Lună (Lock Date)</span>
+                Data specificată mai jos blochează orice modificare asupra pontajelor, cererilor de concediu sau programărilor anterioare acestei date.
+                Această dată este folosită pentru a proteja perioadele fiscale închise.
+              </div>
             </div>
+
+            <div className="bg-white dark:bg-gray-800 p-6 rounded-lg border border-gray-200 dark:border-gray-700 transition-colors shadow-sm max-w-md">
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Dată Blocare Sistem (Closed Month)</label>
+              <div className="flex gap-4 items-center">
+                <input
+                  type="date"
+                  value={localLockedDate}
+                  onChange={(e) => setLocalLockedDate(e.target.value)}
+                  className="flex-1 p-3 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                />
+                <button
+                  onClick={saveGeneralSettings}
+                  className="bg-blue-600 dark:bg-blue-700 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700 dark:hover:bg-blue-600 transition-all shadow-md"
+                >
+                  Aplică
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 italic">Ex: Dacă setați 30-04-2024, nimeni nu mai poate modifica date din Aprilie sau mai vechi.</p>
+            </div>
+          </div>
         )}
       </div>
     </div>

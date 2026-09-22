@@ -4,222 +4,222 @@ import { User, Company, Department, Office, Role, WorkSchedule } from '../types'
 import { X, CheckCircle, Save, Building, Clock, Fingerprint, Briefcase, CalendarClock } from 'lucide-react';
 
 interface UserValidationModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  user: User | null;
-  companies: Company[];
-  departments: Department[];
-  offices: Office[];
-  workSchedules: WorkSchedule[]; // New Prop
-  onValidate: (updatedUser: User) => void;
+   isOpen: boolean;
+   onClose: () => void;
+   user: User | null;
+   companies: Company[];
+   departments: Department[];
+   offices: Office[];
+   workSchedules: WorkSchedule[]; // New Prop
+   onValidate: (updatedUser: User) => void;
 }
 
 const UserValidationModal: React.FC<UserValidationModalProps> = ({ isOpen, onClose, user, companies, departments, offices, workSchedules, onValidate }) => {
-  const [formData, setFormData] = useState<Partial<User>>({});
-  
-  // Available selections based on current company selection
-  const availableDepartments = departments.filter(d => d.companyId === formData.companyId);
-  // Offices are shared (global), so no filtering by companyId
-  const availableOffices = offices;
+   const [formData, setFormData] = useState<Partial<User>>({});
 
-  useEffect(() => {
-    if (user) {
-      setFormData({ ...user });
-    }
-  }, [user]);
+   // Available selections based on current company selection
+   const availableDepartments = departments.filter(d => d.companyId === formData.companyId);
+   // Offices are shared (global), so no filtering by companyId
+   const availableOffices = offices;
 
-  if (!isOpen || !user) return null;
+   useEffect(() => {
+      if (user) {
+         setFormData({ ...user });
+      }
+   }, [user]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (formData) {
-        onValidate(formData as User);
-        onClose();
-    }
-  };
+   if (!isOpen || !user) return null;
 
-  const toggleAltSchedule = (scheduleId: string) => {
+   const handleSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (formData) {
+         onValidate(formData as User);
+         onClose();
+      }
+   };
+
+   const toggleAltSchedule = (scheduleId: string) => {
       const currentAlts = formData.alternativeScheduleIds || [];
       const exists = currentAlts.includes(scheduleId);
       const newAlts = exists ? currentAlts.filter(id => id !== scheduleId) : [...currentAlts, scheduleId];
       setFormData({ ...formData, alternativeScheduleIds: newAlts });
-  }
+   }
 
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh]">
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-4 flex justify-between items-center text-white shrink-0">
-          <div className="flex items-center gap-3">
-             <img src={user.avatarUrl} className="w-10 h-10 rounded-full border-2 border-white/30" />
-             <div>
-                 <h3 className="font-bold text-lg leading-tight">Validare Angajat</h3>
-                 <p className="text-xs text-blue-100 opacity-80">{user.email}</p>
-             </div>
-          </div>
-          <button onClick={onClose} className="hover:bg-white/20 p-1 rounded transition"><X size={20}/></button>
-        </div>
-        
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto">
-           <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg text-sm text-blue-800">
-              Vă rugăm să verificați și să corectați datele de mai jos înainte de activarea contului.
-           </div>
+   return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
+         <div className="bg-white dark:bg-gray-900 rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col max-h-[90vh] border border-gray-200 dark:border-gray-800 transition-colors">
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 dark:from-blue-700 dark:to-indigo-900 p-4 flex justify-between items-center text-white shrink-0">
+               <div className="flex items-center gap-3">
+                  <img src={user.avatarUrl} className="w-10 h-10 rounded-full border-2 border-white/30" />
+                  <div>
+                     <h3 className="font-bold text-lg leading-tight">Validare Angajat</h3>
+                     <p className="text-xs text-blue-100 opacity-80">{user.email}</p>
+                  </div>
+               </div>
+               <button onClick={onClose} className="hover:bg-white/20 p-1 rounded transition"><X size={20} /></button>
+            </div>
 
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-               <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nume Complet</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={formData.name || ''}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
+            <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto transition-colors">
+               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 p-3 rounded-lg text-sm text-blue-800 dark:text-blue-300 transition-colors">
+                  Vă rugăm să verificați și să corectați datele de mai jos înainte de activarea contului.
                </div>
-               <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Fingerprint size={12}/> ID ERP</label>
-                  <input 
-                    type="text" 
-                    value={formData.erpId || ''}
-                    onChange={(e) => setFormData({...formData, erpId: e.target.value})}
-                    placeholder="Ex: EMP-001"
-                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
-                  />
-               </div>
-           </div>
 
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-               <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Companie</label>
-                  <select 
-                    value={formData.companyId || ''}
-                    onChange={(e) => setFormData({...formData, companyId: e.target.value, departmentId: '', assignedOfficeId: ''})}
-                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                  >
-                     {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                     <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Nume Complet</label>
+                     <input
+                        type="text"
+                        required
+                        value={formData.name || ''}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                     />
+                  </div>
+                  <div>
+                     <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 flex items-center gap-1"><Fingerprint size={12} /> ID ERP</label>
+                     <input
+                        type="text"
+                        value={formData.erpId || ''}
+                        onChange={(e) => setFormData({ ...formData, erpId: e.target.value })}
+                        placeholder="Ex: EMP-001"
+                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none font-mono transition-all"
+                     />
+                  </div>
                </div>
-               <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Departament</label>
-                  <select 
-                    value={formData.departmentId || ''}
-                    onChange={(e) => setFormData({...formData, departmentId: e.target.value})}
-                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                  >
-                     <option value="">Selectează...</option>
-                     {availableDepartments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
-               </div>
-           </div>
 
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-               <div>
-                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Clock size={12}/> Normă (Ore/Zi)</label>
-                   <input 
-                      type="number"
-                      min={1}
-                      max={12}
-                      value={formData.contractHours || 8}
-                      onChange={(e) => setFormData({...formData, contractHours: parseInt(e.target.value) || 8})}
-                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                   />
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                     <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Companie</label>
+                     <select
+                        value={formData.companyId || ''}
+                        onChange={(e) => setFormData({ ...formData, companyId: e.target.value, departmentId: '', assignedOfficeId: '' })}
+                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                     >
+                        {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                     </select>
+                  </div>
+                  <div>
+                     <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Departament</label>
+                     <select
+                        value={formData.departmentId || ''}
+                        onChange={(e) => setFormData({ ...formData, departmentId: e.target.value })}
+                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                     >
+                        <option value="">Selectează...</option>
+                        {availableDepartments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                     </select>
+                  </div>
                </div>
-               <div>
-                   <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Building size={12}/> Sediu Alocat</label>
-                   <select 
-                    value={formData.assignedOfficeId || ''}
-                    onChange={(e) => setFormData({...formData, assignedOfficeId: e.target.value})}
-                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                  >
-                     <option value="">-- Fără Sediu (Remote/Mobil) --</option>
-                     {availableOffices.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                  </select>
-               </div>
-           </div>
 
-           {/* Schedule Config */}
-           <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-               <h4 className="text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-1">
-                   <CalendarClock size={14}/> Configurare Orar
-               </h4>
-               <div className="mb-3">
-                   <label className="block text-xs font-medium text-gray-700 mb-1">Program Principal</label>
-                   <select 
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                     <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 flex items-center gap-1"><Clock size={12} /> Normă (Ore/Zi)</label>
+                     <input
+                        type="number"
+                        min={1}
+                        max={12}
+                        value={formData.contractHours || 8}
+                        onChange={(e) => setFormData({ ...formData, contractHours: parseInt(e.target.value) || 8 })}
+                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                     />
+                  </div>
+                  <div>
+                     <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1 flex items-center gap-1"><Building size={12} /> Sediu Alocat</label>
+                     <select
+                        value={formData.assignedOfficeId || ''}
+                        onChange={(e) => setFormData({ ...formData, assignedOfficeId: e.target.value })}
+                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                     >
+                        <option value="">-- Fără Sediu (Remote/Mobil) --</option>
+                        {availableOffices.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                     </select>
+                  </div>
+               </div>
+
+               {/* Schedule Config */}
+               <div className="bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg border border-gray-200 dark:border-gray-700 transition-colors">
+                  <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2 flex items-center gap-1">
+                     <CalendarClock size={14} /> Configurare Orar
+                  </h4>
+                  <div className="mb-3">
+                     <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Program Principal</label>
+                     <select
                         value={formData.mainScheduleId || ''}
-                        onChange={(e) => setFormData({...formData, mainScheduleId: e.target.value})}
-                        className="w-full p-2 border rounded text-sm bg-white"
-                   >
-                       <option value="">Selectează...</option>
-                       {workSchedules.map(sch => (
+                        onChange={(e) => setFormData({ ...formData, mainScheduleId: e.target.value })}
+                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 transition-colors"
+                     >
+                        <option value="">Selectează...</option>
+                        {workSchedules.map(sch => (
                            <option key={sch.id} value={sch.id}>{sch.name}</option>
-                       ))}
-                   </select>
-               </div>
-               <div>
-                   <label className="block text-xs font-medium text-gray-700 mb-1">Programe Alternative</label>
-                   <div className="flex flex-wrap gap-2">
-                       {workSchedules.map(sch => {
+                        ))}
+                     </select>
+                  </div>
+                  <div>
+                     <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Programe Alternative</label>
+                     <div className="flex flex-wrap gap-2">
+                        {workSchedules.map(sch => {
                            const isMain = formData.mainScheduleId === sch.id;
                            const isChecked = isMain || (formData.alternativeScheduleIds || []).includes(sch.id);
                            return (
-                               <button
-                                  type="button" 
-                                  key={sch.id}
-                                  disabled={isMain}
-                                  onClick={() => toggleAltSchedule(sch.id)}
-                                  className={`px-2 py-1 rounded text-xs border ${isChecked ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-white text-gray-600'}`}
-                               >
-                                   {sch.name} {isMain && '(Main)'}
-                               </button>
+                              <button
+                                 type="button"
+                                 key={sch.id}
+                                 disabled={isMain}
+                                 onClick={() => toggleAltSchedule(sch.id)}
+                                 className={`px-2 py-1 rounded text-xs border transition-all ${isChecked ? 'bg-blue-100 dark:bg-blue-900/30 border-blue-300 dark:border-blue-800 text-blue-700 dark:text-blue-400' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700'}`}
+                              >
+                                 {sch.name} {isMain && '(Main)'}
+                              </button>
                            )
-                       })}
-                   </div>
+                        })}
+                     </div>
+                  </div>
                </div>
-           </div>
-           
-           <div className="grid grid-cols-1 gap-4">
-              <div>
-                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Permisiuni / Roluri</label>
-                 <div className="flex gap-4 p-3 border rounded-lg bg-gray-50">
-                    {Object.values(Role).map(role => (
-                       <label key={role} className="flex items-center gap-2 cursor-pointer">
-                          <input 
-                            type="checkbox"
-                            checked={formData.roles?.includes(role)}
-                            onChange={() => {
-                                const currentRoles = formData.roles || [];
-                                const newRoles = currentRoles.includes(role) 
-                                   ? currentRoles.filter(r => r !== role)
-                                   : [...currentRoles, role];
-                                setFormData({...formData, roles: newRoles});
-                            }}
-                            className="w-4 h-4 text-blue-600 rounded"
-                          />
-                          <span className="text-sm font-medium">{role}</span>
-                       </label>
-                    ))}
-                 </div>
-              </div>
-           </div>
 
-           <div className="flex items-center gap-4 pt-4 border-t border-gray-100 mt-2">
-                <button 
-                  type="button" 
-                  onClick={onClose}
-                  className="w-full py-3 rounded-xl border border-gray-300 font-medium text-gray-600 hover:bg-gray-50 transition"
-                >
-                  Anulează
-                </button>
-                <button 
-                  type="submit" 
-                  className="w-full py-3 rounded-xl bg-green-600 text-white font-bold hover:bg-green-700 transition flex items-center justify-center gap-2 shadow-lg shadow-green-100"
-                >
-                   <CheckCircle size={20} /> Confirmă Validarea
-                </button>
-           </div>
-        </form>
+               <div className="grid grid-cols-1 gap-4">
+                  <div>
+                     <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Permisiuni / Roluri</label>
+                     <div className="flex gap-4 p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50 transition-colors">
+                        {Object.values(Role).map(role => (
+                           <label key={role} className="flex items-center gap-2 cursor-pointer group">
+                              <input
+                                 type="checkbox"
+                                 checked={formData.roles?.includes(role)}
+                                 onChange={() => {
+                                    const currentRoles = formData.roles || [];
+                                    const newRoles = currentRoles.includes(role)
+                                       ? currentRoles.filter(r => r !== role)
+                                       : [...currentRoles, role];
+                                    setFormData({ ...formData, roles: newRoles });
+                                 }}
+                                 className="w-4 h-4 text-blue-600 dark:text-blue-500 rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                              />
+                              <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{role}</span>
+                           </label>
+                        ))}
+                     </div>
+                  </div>
+               </div>
+
+               <div className="flex items-center gap-4 pt-4 border-t border-gray-100 dark:border-gray-800 mt-2 transition-colors">
+                  <button
+                     type="button"
+                     onClick={onClose}
+                     className="w-full py-3 rounded-xl border border-gray-300 dark:border-gray-700 font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
+                  >
+                     Anulează
+                  </button>
+                  <button
+                     type="submit"
+                     className="w-full py-3 rounded-xl bg-green-600 dark:bg-green-700 text-white font-bold hover:bg-green-700 dark:hover:bg-green-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-100 dark:shadow-none"
+                  >
+                     <CheckCircle size={20} /> Confirmă Validarea
+                  </button>
+               </div>
+            </form>
+         </div>
       </div>
-    </div>
-  );
+   );
 };
 
 export default UserValidationModal;

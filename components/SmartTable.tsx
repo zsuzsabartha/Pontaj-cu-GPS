@@ -28,14 +28,14 @@ function SmartTable<T>({ data, columns, pageSize = 10, className = "" }: SmartTa
     return data.filter((row) => {
       return Object.entries(filters).every(([key, value]) => {
         if (!value) return true;
-        
+
         const col = columns.find((c, idx) => `col-${idx}` === key);
         if (!col) return true;
 
-        const cellValue = typeof col.accessor === 'function' 
-            ? col.accessor(row) 
-            : row[col.accessor as keyof T];
-            
+        const cellValue = typeof col.accessor === 'function'
+          ? col.accessor(row)
+          : row[col.accessor as keyof T];
+
         return String(cellValue ?? '').toLowerCase().includes(String(value).toLowerCase());
       });
     });
@@ -69,7 +69,7 @@ function SmartTable<T>({ data, columns, pageSize = 10, className = "" }: SmartTa
   const handleSort = (colIndex: number) => {
     const key = `col-${colIndex}`;
     let direction: 'asc' | 'desc' = 'asc';
-    
+
     if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
       direction = 'desc';
     }
@@ -82,38 +82,38 @@ function SmartTable<T>({ data, columns, pageSize = 10, className = "" }: SmartTa
   };
 
   return (
-    <div className={`bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col ${className}`}>
+    <div className={`bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden flex flex-col transition-all duration-300 ${className}`}>
       <div className="overflow-x-auto flex-1">
         <table className="w-full text-left text-sm border-collapse">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
+            <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
               {columns.map((col, idx) => (
-                <th key={idx} className={`p-4 font-bold text-gray-600 uppercase text-xs align-top ${col.width || ''}`}>
+                <th key={idx} className={`p-4 font-bold text-gray-600 dark:text-gray-400 uppercase text-xs align-top ${col.width || ''}`}>
                   <div className="flex flex-col gap-2">
-                    <div 
+                    <div
                       className={`flex items-center gap-2 ${col.sortable ? 'cursor-pointer hover:text-blue-600 select-none' : ''}`}
                       onClick={() => col.sortable && handleSort(idx)}
                     >
                       {col.header}
                       {col.sortable && (
-                        <span className="text-gray-400">
+                        <span className="text-gray-400 dark:text-gray-600">
                           {sortConfig?.key === `col-${idx}` ? (
-                            sortConfig.direction === 'asc' ? <ArrowUp size={14} className="text-blue-600"/> : <ArrowDown size={14} className="text-blue-600"/>
+                            sortConfig.direction === 'asc' ? <ArrowUp size={14} className="text-blue-600 dark:text-blue-400" /> : <ArrowDown size={14} className="text-blue-600 dark:text-blue-400" />
                           ) : (
-                            <ArrowUpDown size={14}/>
+                            <ArrowUpDown size={14} />
                           )}
                         </span>
                       )}
                     </div>
                     {col.filterable && (
                       <div className="relative">
-                        <Search size={12} className="absolute left-2 top-2 text-gray-400"/>
-                        <input 
-                          type="text" 
+                        <Search size={12} className="absolute left-2 top-2 text-gray-400 dark:text-gray-600" />
+                        <input
+                          type="text"
                           placeholder="Filtru..."
                           value={filters[`col-${idx}`] || ''}
                           onChange={(e) => handleFilterChange(idx, e.target.value)}
-                          className="w-full pl-6 pr-2 py-1 text-xs border rounded bg-white focus:ring-1 focus:ring-blue-500 outline-none"
+                          className="w-full pl-6 pr-2 py-1 text-xs border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
                         />
                       </div>
                     )}
@@ -122,14 +122,14 @@ function SmartTable<T>({ data, columns, pageSize = 10, className = "" }: SmartTa
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {paginatedData.length > 0 ? (
               paginatedData.map((row, rIdx) => (
-                <tr key={rIdx} className="hover:bg-slate-50 transition">
+                <tr key={rIdx} className="hover:bg-slate-50 dark:hover:bg-gray-800/50 transition-colors">
                   {columns.map((col, cIdx) => (
-                    <td key={cIdx} className="p-4 align-middle text-gray-700">
-                      {col.render 
-                        ? col.render(row) 
+                    <td key={cIdx} className="p-4 align-middle text-gray-700 dark:text-gray-300">
+                      {col.render
+                        ? col.render(row)
                         : String(typeof col.accessor === 'function' ? col.accessor(row) : row[col.accessor as keyof T] || '-')
                       }
                     </td>
@@ -138,7 +138,7 @@ function SmartTable<T>({ data, columns, pageSize = 10, className = "" }: SmartTa
               ))
             ) : (
               <tr>
-                <td colSpan={columns.length} className="p-8 text-center text-gray-400 italic">
+                <td colSpan={columns.length} className="p-8 text-center text-gray-400 dark:text-gray-600 italic">
                   Nu s-au găsit date conform filtrelor.
                 </td>
               </tr>
@@ -149,22 +149,22 @@ function SmartTable<T>({ data, columns, pageSize = 10, className = "" }: SmartTa
 
       {/* Pagination Footer */}
       {totalPages > 1 && (
-        <div className="bg-gray-50 p-3 border-t border-gray-200 flex justify-between items-center">
-          <span className="text-xs text-gray-500">
+        <div className="bg-gray-50 dark:bg-gray-800/50 p-3 border-t border-gray-200 dark:border-gray-800 flex justify-between items-center transition-colors">
+          <span className="text-xs text-gray-500 dark:text-gray-400">
             Pagina {currentPage} din {totalPages} ({sortedData.length} total)
           </span>
           <div className="flex gap-1">
-            <button 
+            <button
               disabled={currentPage === 1}
               onClick={() => setCurrentPage(p => p - 1)}
-              className="px-3 py-1 border rounded bg-white text-xs font-medium hover:bg-gray-100 disabled:opacity-50"
+              className="px-3 py-1 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
             >
               Anterior
             </button>
-            <button 
+            <button
               disabled={currentPage === totalPages}
               onClick={() => setCurrentPage(p => p + 1)}
-              className="px-3 py-1 border rounded bg-white text-xs font-medium hover:bg-gray-100 disabled:opacity-50"
+              className="px-3 py-1 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors"
             >
               Următor
             </button>

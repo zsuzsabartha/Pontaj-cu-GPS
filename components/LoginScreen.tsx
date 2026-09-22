@@ -4,313 +4,313 @@ import { User, Role, Company } from '../types';
 import { KeyRound, Lock, User as UserIcon, ArrowLeft, Loader2, Sparkles, MailQuestion, Shield, Users, Briefcase } from 'lucide-react';
 
 interface LoginScreenProps {
-  users: User[]; // Accept current users state
-  companies?: Company[]; // Accept companies for display
-  onLogin: (user: User, isNewUser?: boolean) => void;
-  onRequestPinReset?: (email: string) => void;
+    users: User[]; // Accept current users state
+    companies?: Company[]; // Accept companies for display
+    onLogin: (user: User, isNewUser?: boolean) => void;
+    onRequestPinReset?: (email: string) => void;
 }
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, onRequestPinReset }) => {
-  const [view, setView] = useState<'main' | 'pin' | 'forgot'>('main');
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
-  const [pin, setPin] = useState('');
-  const [resetEmail, setResetEmail] = useState('');
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+    const [view, setView] = useState<'main' | 'pin' | 'forgot'>('main');
+    const [selectedUserId, setSelectedUserId] = useState<string>('');
+    const [pin, setPin] = useState('');
+    const [resetEmail, setResetEmail] = useState('');
+    const [error, setError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
 
-  // Filter users who use PIN and are validated
-  const pinUsers = users.filter(u => u.authType === 'PIN' && u.isValidated);
+    // Filter users who use PIN and are validated
+    const pinUsers = users.filter(u => u.authType === 'PIN' && u.isValidated);
 
-  const handleMicrosoftLogin = (simulateNew: boolean = false) => {
-    setIsLoading(true);
-    // Simulate OAuth Delay
-    setTimeout(() => {
-        if (simulateNew || users.length === 0) {
-             // Create a random new user. If system is empty, create an ADMIN.
-             const isFirstUser = users.length === 0;
-             const randomId = Math.floor(Math.random() * 1000);
-             const newUser: User = {
-                 id: `ms-${Date.now()}`,
-                 name: isFirstUser ? 'System Admin' : `New User ${randomId}`,
-                 email: isFirstUser ? 'admin@system.local' : `new.user${randomId}@example.com`,
-                 roles: isFirstUser ? [Role.ADMIN, Role.MANAGER] : [Role.EMPLOYEE],
-                 companyId: companies && companies.length > 0 ? companies[0].id : 'c1', 
-                 avatarUrl: `https://ui-avatars.com/api/?name=${isFirstUser ? 'Sys+Admin' : 'New+User'}`,
-                 authType: 'MICROSOFT',
-                 isValidated: isFirstUser, // Auto-validate first admin
-                 requiresGPS: true,
-                 alternativeScheduleIds: ['sch1'], // Default schedule
-                 shareBirthday: false,
-                 employmentStatus: 'ACTIVE'
-             };
-             onLogin(newUser, true);
-        } else {
-             // Find a default Manager for general login if no specific demo button used
-             const msUser = users.find(u => u.authType === 'MICROSOFT' && u.isValidated);
-             if (msUser) {
-                 onLogin(msUser);
-             } else {
-                 setError("Nu s-a găsit contul Microsoft demo.");
-                 setIsLoading(false);
-             }
+    const handleMicrosoftLogin = (simulateNew: boolean = false) => {
+        setIsLoading(true);
+        // Simulate OAuth Delay
+        setTimeout(() => {
+            if (simulateNew || users.length === 0) {
+                // Create a random new user. If system is empty, create an ADMIN.
+                const isFirstUser = users.length === 0;
+                const randomId = Math.floor(Math.random() * 1000);
+                const newUser: User = {
+                    id: `ms-${Date.now()}`,
+                    name: isFirstUser ? 'System Admin' : `New User ${randomId}`,
+                    email: isFirstUser ? 'admin@system.local' : `new.user${randomId}@example.com`,
+                    roles: isFirstUser ? [Role.ADMIN, Role.MANAGER] : [Role.EMPLOYEE],
+                    companyId: companies && companies.length > 0 ? companies[0].id : 'c1',
+                    avatarUrl: `https://ui-avatars.com/api/?name=${isFirstUser ? 'Sys+Admin' : 'New+User'}`,
+                    authType: 'MICROSOFT',
+                    isValidated: isFirstUser, // Auto-validate first admin
+                    requiresGPS: true,
+                    alternativeScheduleIds: ['sch1'], // Default schedule
+                    shareBirthday: false,
+                    employmentStatus: 'ACTIVE'
+                };
+                onLogin(newUser, true);
+            } else {
+                // Find a default Manager for general login if no specific demo button used
+                const msUser = users.find(u => u.authType === 'MICROSOFT' && u.isValidated);
+                if (msUser) {
+                    onLogin(msUser);
+                } else {
+                    setError("Nu s-a găsit contul Microsoft demo.");
+                    setIsLoading(false);
+                }
+            }
+        }, 1000);
+    };
+
+    const handlePinLogin = (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+
+        const user = pinUsers.find(u => u.id === selectedUserId);
+        if (!user) {
+            setError("Selectați un utilizator.");
+            return;
         }
-    }, 1000);
-  };
 
-  const handlePinLogin = (e: React.FormEvent) => {
-      e.preventDefault();
-      setError('');
-      
-      const user = pinUsers.find(u => u.id === selectedUserId);
-      if (!user) {
-          setError("Selectați un utilizator.");
-          return;
-      }
+        if (user.pin === pin) {
+            setIsLoading(true);
+            setTimeout(() => onLogin(user), 800);
+        } else {
+            setError("PIN incorect.");
+            setPin('');
+        }
+    };
 
-      if (user.pin === pin) {
-          setIsLoading(true);
-          setTimeout(() => onLogin(user), 800);
-      } else {
-          setError("PIN incorect.");
-          setPin('');
-      }
-  };
+    const handleResetSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (onRequestPinReset) {
+            onRequestPinReset(resetEmail);
+            alert(`Dacă adresa ${resetEmail} există în sistem, un administrator a fost notificat să vă reseteze PIN-ul.`);
+            setView('main');
+            setResetEmail('');
+        }
+    };
 
-  const handleResetSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      if(onRequestPinReset) {
-          onRequestPinReset(resetEmail);
-          alert(`Dacă adresa ${resetEmail} există în sistem, un administrator a fost notificat să vă reseteze PIN-ul.`);
-          setView('main');
-          setResetEmail('');
-      }
-  };
-  
-  // Specific Demo Logins
-  const handleDemoLogin = (role: Role) => {
-      setIsLoading(true);
-      setTimeout(() => {
-          // Find the best fit user for the requested role
-          let targetUser = users.find(u => u.roles.includes(role) && u.isValidated);
-          // Special case for specific mock users to ensure consistent demo experience (if they exist)
-          if (role === Role.ADMIN) {
-              const specific = users.find(u => u.email === 'admin@techgroup.ro');
-              if(specific) targetUser = specific;
-          }
-          if (role === Role.HR) {
-              const specific = users.find(u => u.email === 'ioana.hr@techgroup.ro');
-              if(specific) targetUser = specific;
-          }
-          
-          if (targetUser) {
-              onLogin(targetUser);
-          } else {
-              setIsLoading(false);
-              alert(`Nu s-a găsit un utilizator cu rolul ${role}. Dacă baza de date este goală, folosiți butonul de "User Nou (SSO)" pentru a inițializa sistemul.`);
-          }
-      }, 800);
-  }
+    // Specific Demo Logins
+    const handleDemoLogin = (role: Role) => {
+        setIsLoading(true);
+        setTimeout(() => {
+            // Find the best fit user for the requested role
+            let targetUser = users.find(u => u.roles.includes(role) && u.isValidated);
+            // Special case for specific mock users to ensure consistent demo experience (if they exist)
+            if (role === Role.ADMIN) {
+                const specific = users.find(u => u.email === 'admin@techgroup.ro');
+                if (specific) targetUser = specific;
+            }
+            if (role === Role.HR) {
+                const specific = users.find(u => u.email === 'ioana.hr@techgroup.ro');
+                if (specific) targetUser = specific;
+            }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4 relative overflow-hidden">
-       {/* Background Decoration */}
-       <div className="absolute top-0 left-0 w-full h-1/2 bg-blue-600 transform -skew-y-6 origin-top-left z-0"></div>
-       <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-100 rounded-full blur-3xl opacity-50 z-0"></div>
+            if (targetUser) {
+                onLogin(targetUser);
+            } else {
+                setIsLoading(false);
+                alert(`Nu s-a găsit un utilizator cu rolul ${role}. Dacă baza de date este goală, folosiți butonul de "User Nou (SSO)" pentru a inițializa sistemul.`);
+            }
+        }, 800);
+    }
 
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 relative z-10">
-        
-        <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-blue-600 rounded-xl mx-auto flex items-center justify-center text-white font-bold text-3xl shadow-lg mb-4">P</div>
-            <h1 className="text-2xl font-bold text-gray-800">PontajGroup</h1>
-            <p className="text-gray-500 text-sm">Portal Angajați & Management</p>
-        </div>
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-4 relative overflow-hidden transition-colors duration-500">
+            {/* Background Decoration */}
+            <div className="absolute top-0 left-0 w-full h-1/2 bg-blue-600 dark:bg-blue-900/50 transform -skew-y-6 origin-top-left z-0 transition-colors"></div>
+            <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-100 dark:bg-blue-900/20 rounded-full blur-3xl opacity-50 z-0"></div>
 
-        {view === 'main' && (
-            <div className="space-y-4">
-                {isLoading ? (
-                    <div className="flex flex-col items-center justify-center py-8">
-                        <Loader2 className="animate-spin text-blue-600" size={32} />
-                        <p className="text-sm text-gray-500 mt-2">Autentificare în curs...</p>
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-8 relative z-10 border border-gray-100 dark:border-gray-800 transition-all">
+
+                <div className="text-center mb-8">
+                    <div className="w-16 h-16 bg-blue-600 dark:bg-blue-700 rounded-xl mx-auto flex items-center justify-center text-white font-bold text-3xl shadow-lg mb-4">P</div>
+                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white">PontajGroup</h1>
+                    <p className="text-gray-500 dark:text-gray-400 text-sm">Portal Angajați & Management</p>
+                </div>
+
+                {view === 'main' && (
+                    <div className="space-y-4">
+                        {isLoading ? (
+                            <div className="flex flex-col items-center justify-center py-8">
+                                <Loader2 className="animate-spin text-blue-600" size={32} />
+                                <p className="text-sm text-gray-500 mt-2">Autentificare în curs...</p>
+                            </div>
+                        ) : (
+                            <>
+                                <button
+                                    onClick={() => handleMicrosoftLogin(false)}
+                                    className="w-full bg-[#2F2F2F] dark:bg-gray-800 text-white p-3 rounded-lg font-medium flex items-center justify-center gap-3 hover:bg-black dark:hover:bg-gray-700 transition-all shadow-md group"
+                                >
+                                    <svg className="w-5 h-5" viewBox="0 0 23 23">
+                                        <path fill="#f35325" d="M1 1h10v10H1z" />
+                                        <path fill="#81bc06" d="M12 1h10v10H12z" />
+                                        <path fill="#05a6f0" d="M1 12h10v10H1z" />
+                                        <path fill="#ffba08" d="M12 12h10v10H12z" />
+                                    </svg>
+                                    {users.length === 0 ? 'Initialize System (Admin SSO)' : 'Sign in with Microsoft'}
+                                </button>
+
+                                <div className="relative flex py-2 items-center">
+                                    <div className="flex-grow border-t border-gray-200 dark:border-gray-800"></div>
+                                    <span className="flex-shrink mx-4 text-gray-400 dark:text-gray-600 text-xs uppercase">sau</span>
+                                    <div className="flex-grow border-t border-gray-200 dark:border-gray-800"></div>
+                                </div>
+
+                                <button
+                                    onClick={() => setView('pin')}
+                                    disabled={users.length === 0}
+                                    className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 p-3 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all shadow-sm disabled:opacity-50"
+                                >
+                                    <KeyRound size={20} className="text-gray-400 dark:text-gray-500" />
+                                    Autentificare cu PIN
+                                </button>
+
+                                {/* DEMO SECTION - Only show if users exist */}
+                                {users.length > 0 && (
+                                    <div className="mt-8 pt-6 border-t border-dashed border-gray-200 dark:border-gray-800">
+                                        <p className="text-xs font-bold text-gray-400 dark:text-gray-600 uppercase text-center mb-3">Acces Rapid (Demo)</p>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <button onClick={() => handleDemoLogin(Role.ADMIN)} className="flex items-center gap-2 p-2 bg-slate-800 dark:bg-gray-800 text-white rounded-lg text-xs hover:bg-slate-900 dark:hover:bg-black transition shadow-sm">
+                                                <Shield size={14} className="text-yellow-400" /> Admin General
+                                            </button>
+                                            <button onClick={() => handleDemoLogin(Role.MANAGER)} className="flex items-center gap-2 p-2 bg-blue-600 dark:bg-blue-700 text-white rounded-lg text-xs hover:bg-blue-700 dark:hover:bg-blue-800 transition shadow-sm">
+                                                <Briefcase size={14} /> Manager
+                                            </button>
+                                            <button onClick={() => handleDemoLogin(Role.HR)} className="flex items-center gap-2 p-2 bg-purple-600 dark:bg-purple-700 text-white rounded-lg text-xs hover:bg-purple-700 dark:hover:bg-purple-800 transition shadow-sm">
+                                                <Users size={14} /> HR
+                                            </button>
+                                            <button onClick={() => handleDemoLogin(Role.EMPLOYEE)} className="flex items-center gap-2 p-2 bg-green-600 dark:bg-green-700 text-white rounded-lg text-xs hover:bg-green-700 dark:hover:bg-green-800 transition shadow-sm">
+                                                <UserIcon size={14} /> Angajat
+                                            </button>
+                                        </div>
+                                        <button
+                                            onClick={() => handleMicrosoftLogin(true)}
+                                            className="w-full mt-3 text-purple-600 dark:text-purple-400 text-xs font-medium hover:underline flex items-center justify-center gap-1"
+                                        >
+                                            <Sparkles size={12} /> Simulează User Nou (SSO)
+                                        </button>
+                                    </div>
+                                )}
+
+                                {users.length === 0 && (
+                                    <div className="mt-4 text-center">
+                                        <p className="text-xs text-orange-500 dark:text-orange-400 font-bold bg-orange-50 dark:bg-orange-900/20 p-2 rounded">Sistemul nu are utilizatori. Folosiți butonul "Microsoft" de mai sus pentru a crea primul cont de Administrator.</p>
+                                    </div>
+                                )}
+                            </>
+                        )}
                     </div>
-                ) : (
-                    <>
-                        <button 
-                            onClick={() => handleMicrosoftLogin(false)}
-                            className="w-full bg-[#2F2F2F] text-white p-3 rounded-lg font-medium flex items-center justify-center gap-3 hover:bg-black transition-all shadow-md group"
+                )}
+
+                {view === 'pin' && (
+                    <form onSubmit={handlePinLogin} className="space-y-4 animate-in fade-in slide-in-from-right-8">
+                        <button
+                            type="button"
+                            onClick={() => { setView('main'); setError(''); setPin(''); }}
+                            className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 flex items-center gap-1 text-sm mb-2 transition-colors"
                         >
-                            <svg className="w-5 h-5" viewBox="0 0 23 23">
-                                <path fill="#f35325" d="M1 1h10v10H1z"/>
-                                <path fill="#81bc06" d="M12 1h10v10H12z"/>
-                                <path fill="#05a6f0" d="M1 12h10v10H1z"/>
-                                <path fill="#ffba08" d="M12 12h10v10H12z"/>
-                            </svg>
-                            {users.length === 0 ? 'Initialize System (Admin SSO)' : 'Sign in with Microsoft'}
+                            <ArrowLeft size={16} /> Înapoi
                         </button>
 
-                        <div className="relative flex py-2 items-center">
-                            <div className="flex-grow border-t border-gray-200"></div>
-                            <span className="flex-shrink mx-4 text-gray-400 text-xs uppercase">sau</span>
-                            <div className="flex-grow border-t border-gray-200"></div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Angajat</label>
+                            <div className="relative">
+                                <UserIcon className="absolute left-3 top-3 text-gray-400 dark:text-gray-600" size={18} />
+                                <select
+                                    className="w-full pl-10 p-2.5 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 appearance-none text-sm transition-all"
+                                    value={selectedUserId}
+                                    onChange={(e) => setSelectedUserId(e.target.value)}
+                                >
+                                    <option value="">Selectează contul...</option>
+                                    {pinUsers.map(u => {
+                                        const compName = companies?.find(c => c.id === u.companyId)?.name;
+                                        return (
+                                            <option key={u.id} value={u.id}>
+                                                {u.name} {compName ? `(${compName})` : ''}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
+                            </div>
                         </div>
 
-                        <button 
-                            onClick={() => setView('pin')}
-                            disabled={users.length === 0}
-                            className="w-full bg-white border border-gray-300 text-gray-700 p-3 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-gray-50 transition-all shadow-sm disabled:opacity-50"
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">PIN Securitate</label>
+                            <div className="relative">
+                                <Lock className="absolute left-3 top-3 text-gray-400 dark:text-gray-600" size={18} />
+                                <input
+                                    type="password"
+                                    maxLength={4}
+                                    value={pin}
+                                    onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ''))}
+                                    className="w-full pl-10 p-2.5 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-mono tracking-widest text-lg transition-all"
+                                    placeholder="****"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end">
+                            <button type="button" onClick={() => setView('forgot')} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">Am uitat PIN-ul</button>
+                        </div>
+
+                        {error && <p className="text-red-500 dark:text-red-400 text-sm text-center font-medium bg-red-50 dark:bg-red-900/20 p-2 rounded">{error}</p>}
+
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            className="w-full bg-blue-600 dark:bg-blue-700 text-white p-3 rounded-lg font-medium hover:bg-blue-700 dark:hover:bg-blue-800 transition-all shadow-lg shadow-blue-200 dark:shadow-blue-900/20 mt-2 flex justify-center"
                         >
-                            <KeyRound size={20} className="text-gray-400"/>
-                            Autentificare cu PIN
+                            {isLoading ? <Loader2 className="animate-spin" /> : 'Accesează Contul'}
                         </button>
-                        
-                        {/* DEMO SECTION - Only show if users exist */}
+
                         {users.length > 0 && (
-                            <div className="mt-8 pt-6 border-t border-dashed border-gray-200">
-                                <p className="text-xs font-bold text-gray-400 uppercase text-center mb-3">Acces Rapid (Demo)</p>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <button onClick={() => handleDemoLogin(Role.ADMIN)} className="flex items-center gap-2 p-2 bg-slate-800 text-white rounded-lg text-xs hover:bg-slate-900 transition">
-                                        <Shield size={14} className="text-yellow-400"/> Admin General
-                                    </button>
-                                    <button onClick={() => handleDemoLogin(Role.MANAGER)} className="flex items-center gap-2 p-2 bg-blue-600 text-white rounded-lg text-xs hover:bg-blue-700 transition">
-                                        <Briefcase size={14}/> Manager
-                                    </button>
-                                    <button onClick={() => handleDemoLogin(Role.HR)} className="flex items-center gap-2 p-2 bg-purple-600 text-white rounded-lg text-xs hover:bg-purple-700 transition">
-                                        <Users size={14}/> HR
-                                    </button>
-                                    <button onClick={() => handleDemoLogin(Role.EMPLOYEE)} className="flex items-center gap-2 p-2 bg-green-600 text-white rounded-lg text-xs hover:bg-green-700 transition">
-                                        <UserIcon size={14}/> Angajat
-                                    </button>
-                                </div>
-                                <button 
-                                    onClick={() => handleMicrosoftLogin(true)}
-                                    className="w-full mt-3 text-purple-600 text-xs font-medium hover:underline flex items-center justify-center gap-1"
-                                >
-                                    <Sparkles size={12}/> Simulează User Nou (SSO)
-                                </button>
+                            <div className="text-center mt-4">
+                                <p className="text-xs text-gray-400 dark:text-gray-500">Pentru demo, PIN-urile sunt: Elena (1234), Mihai (0000)</p>
                             </div>
                         )}
-                        
-                        {users.length === 0 && (
-                            <div className="mt-4 text-center">
-                                <p className="text-xs text-orange-500 font-bold bg-orange-50 p-2 rounded">Sistemul nu are utilizatori. Folosiți butonul "Microsoft" de mai sus pentru a crea primul cont de Administrator.</p>
-                            </div>
-                        )}
-                    </>
+                    </form>
                 )}
-            </div>
-        )}
 
-        {view === 'pin' && (
-            <form onSubmit={handlePinLogin} className="space-y-4 animate-in fade-in slide-in-from-right-8">
-                 <button 
-                    type="button"
-                    onClick={() => { setView('main'); setError(''); setPin(''); }}
-                    className="text-gray-400 hover:text-gray-600 flex items-center gap-1 text-sm mb-2"
-                >
-                    <ArrowLeft size={16}/> Înapoi
-                </button>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Angajat</label>
-                    <div className="relative">
-                        <UserIcon className="absolute left-3 top-3 text-gray-400" size={18} />
-                        <select 
-                            className="w-full pl-10 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white appearance-none text-sm"
-                            value={selectedUserId}
-                            onChange={(e) => setSelectedUserId(e.target.value)}
+                {view === 'forgot' && (
+                    <form onSubmit={handleResetSubmit} className="space-y-4 animate-in fade-in slide-in-from-right-8">
+                        <button
+                            type="button"
+                            onClick={() => setView('pin')}
+                            className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 flex items-center gap-1 text-sm mb-2 transition-colors"
                         >
-                            <option value="">Selectează contul...</option>
-                            {pinUsers.map(u => {
-                                const compName = companies?.find(c => c.id === u.companyId)?.name;
-                                return (
-                                    <option key={u.id} value={u.id}>
-                                        {u.name} {compName ? `(${compName})` : ''}
-                                    </option>
-                                );
-                            })}
-                        </select>
-                    </div>
-                </div>
+                            <ArrowLeft size={16} /> Înapoi
+                        </button>
 
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">PIN Securitate</label>
-                    <div className="relative">
-                        <Lock className="absolute left-3 top-3 text-gray-400" size={18} />
-                        <input 
-                            type="password"
-                            maxLength={4}
-                            value={pin}
-                            onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ''))}
-                            className="w-full pl-10 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono tracking-widest text-lg"
-                            placeholder="****"
-                        />
-                    </div>
-                </div>
+                        <div className="text-center mb-4">
+                            <MailQuestion size={48} className="mx-auto text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 p-2 rounded-full mb-2" />
+                            <h3 className="font-bold text-gray-800 dark:text-white">Recuperare PIN</h3>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Introduceți email-ul asociat contului.</p>
+                        </div>
 
-                <div className="flex justify-end">
-                    <button type="button" onClick={() => setView('forgot')} className="text-xs text-blue-600 hover:underline">Am uitat PIN-ul</button>
-                </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                            <input
+                                required
+                                type="email"
+                                value={resetEmail}
+                                onChange={(e) => setResetEmail(e.target.value)}
+                                className="w-full p-2.5 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 transition-all"
+                                placeholder="nume@companie.ro"
+                            />
+                        </div>
 
-                {error && <p className="text-red-500 text-sm text-center font-medium bg-red-50 p-2 rounded">{error}</p>}
-
-                <button 
-                    type="submit" 
-                    disabled={isLoading}
-                    className="w-full bg-blue-600 text-white p-3 rounded-lg font-medium hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 mt-2 flex justify-center"
-                >
-                    {isLoading ? <Loader2 className="animate-spin"/> : 'Accesează Contul'}
-                </button>
-                
-                {users.length > 0 && (
-                    <div className="text-center mt-4">
-                        <p className="text-xs text-gray-400">Pentru demo, PIN-urile sunt: Elena (1234), Mihai (0000)</p>
-                    </div>
+                        <button
+                            type="submit"
+                            className="w-full bg-blue-600 dark:bg-blue-700 text-white p-3 rounded-lg font-medium hover:bg-blue-700 dark:hover:bg-blue-800 transition-all shadow-lg shadow-blue-200 dark:shadow-blue-900/20 mt-2"
+                        >
+                            Solicită Resetare
+                        </button>
+                    </form>
                 )}
-            </form>
-        )}
 
-        {view === 'forgot' && (
-            <form onSubmit={handleResetSubmit} className="space-y-4 animate-in fade-in slide-in-from-right-8">
-                 <button 
-                    type="button"
-                    onClick={() => setView('pin')}
-                    className="text-gray-400 hover:text-gray-600 flex items-center gap-1 text-sm mb-2"
-                >
-                    <ArrowLeft size={16}/> Înapoi
-                </button>
-
-                <div className="text-center mb-4">
-                    <MailQuestion size={48} className="mx-auto text-blue-500 bg-blue-50 p-2 rounded-full mb-2"/>
-                    <h3 className="font-bold text-gray-800">Recuperare PIN</h3>
-                    <p className="text-sm text-gray-500">Introduceți email-ul asociat contului.</p>
+                <div className="mt-8 text-center text-xs text-gray-400 dark:text-gray-600">
+                    &copy; 2024 PontajGroup Enterprise. Secure Access.
                 </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                    <input 
-                        required
-                        type="email"
-                        value={resetEmail}
-                        onChange={(e) => setResetEmail(e.target.value)}
-                        className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                        placeholder="nume@companie.ro"
-                    />
-                </div>
-
-                <button 
-                    type="submit" 
-                    className="w-full bg-blue-600 text-white p-3 rounded-lg font-medium hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 mt-2"
-                >
-                    Solicită Resetare
-                </button>
-            </form>
-        )}
-        
-        <div className="mt-8 text-center text-xs text-gray-400">
-             &copy; 2024 PontajGroup Enterprise. Secure Access.
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default LoginScreen;

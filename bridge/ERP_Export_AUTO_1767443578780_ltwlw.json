@@ -1,0 +1,131 @@
+{
+  "IdPartener": "111",
+  "DataInceput": "01.01.2026",
+  "DataSfarsit": "31.01.2026",
+  "CampaniiFinanciare": [
+    {
+      "Clasificare": "Procentual",
+      "Produse": [
+        "9004348"
+      ],
+      "Nivele": [
+        {
+          "Prag": 2,
+          "Beneficiu": 3
+        },
+        {
+          "Prag": 5,
+          "Beneficiu": 5
+        },
+        {
+          "Prag": 10,
+          "Beneficiu": 8
+        }
+      ],
+      "ListaTipClient": [],
+      "ListaExceptiiClienti": []
+    },
+    {
+      "Clasificare": "Procentual",
+      "Produse": [
+        "30947"
+      ],
+      "Nivele": [
+        {
+          "Prag": 10,
+          "Beneficiu": 10
+        },
+        {
+          "Prag": 20,
+          "Beneficiu": 12
+        },
+        {
+          "Prag": 35,
+          "Beneficiu": 15
+        }
+      ],
+      "ListaTipClient": [],
+      "ListaExceptiiClienti": []
+    },
+    {
+      "Clasificare": "Procentual",
+      "Produse": [
+        "36257"
+      ],
+      "Nivele": [
+        {
+          "Prag": 3,
+          "Beneficiu": 5
+        },
+        {
+          "Prag": 5,
+          "Beneficiu": 10
+        },
+        {
+          "Prag": 10,
+          "Beneficiu": 15
+        }
+      ],
+      "ListaTipClient": [],
+      "ListaExceptiiClienti": []
+    }
+  ],
+  "CampaniiRabat": [
+    {
+      "Produse": [
+        "3873"
+      ],
+      "Nivele": [
+        {
+          "PragCantitativ": 1,
+          "Beneficiu": [
+            {
+              "Produs": "UNKNOWN"
+            }
+          ]
+        }
+      ],
+      "ListaTipClient": [
+        "Distribuitori"
+      ],
+      "ListaExceptiiClienti": []
+    },
+    {
+      "Produse": [
+        "3873"
+      ],
+      "Nivele": [
+        {
+          "PragCantitativ": 1,
+          "Beneficiu": [
+            {
+              "Produs": "UNKNOWN"
+            }
+          ]
+        }
+      ],
+      "ListaTipClient": [
+        "Distribuitori"
+      ],
+      "ListaExceptiiClienti": []
+    },
+    {
+      "Produse": [
+        "3873"
+      ],
+      "Nivele": [
+        {
+          "PragCantitativ": 1,
+          "Beneficiu": [
+            {
+              "Produs": "UNKNOWN",
+              "Cantitate": 1
+            }
+          ]
+        }
+      ],
+      "ListaTipClient": [],
+      "ListaExceptiiClienti": []
+    }
+  ]
+}
