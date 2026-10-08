@@ -644,7 +644,7 @@ app.listen(PORT, () => console.log(\`Server running on \${PORT}\`));
             {/* Header */}
             <div className="bg-gray-50 dark:bg-slate-950 p-4 border-b border-gray-200 dark:border-slate-800 flex justify-between items-center transition-colors">
                 <div className="flex items-center gap-3">
-                    <Shield size={24} className="text-blue-600 dark:text-blue-400" />
+                    <Shield size={24} className="text-emerald-600 dark:text-emerald-400" />
                     <h2 className="font-bold text-gray-800 dark:text-white">Admin Deployment Center</h2>
                 </div>
                 <span className={`text-xs font-bold px-2 py-1 rounded transition-colors ${connectionStatus === 'ONLINE' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-400'}`}>{connectionStatus}</span>
@@ -652,9 +652,9 @@ app.listen(PORT, () => console.log(\`Server running on \${PORT}\`));
 
             {/* Tabs */}
             <div className="flex bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 transition-colors">
-                <button onClick={() => setActiveTab('status')} className={`px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors ${activeTab === 'status' ? 'text-blue-600 dark:text-white border-b-2 border-blue-600 dark:border-blue-500' : 'text-gray-500 dark:text-slate-500'}`}>Status</button>
-                <button onClick={() => setActiveTab('bridge')} className={`px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors ${activeTab === 'bridge' ? 'text-blue-600 dark:text-white border-b-2 border-blue-600 dark:border-blue-500' : 'text-gray-500 dark:text-slate-500'}`}>Bridge Source</button>
-                <button onClick={() => setActiveTab('sql')} className={`px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors ${activeTab === 'sql' ? 'text-blue-600 dark:text-white border-b-2 border-blue-600 dark:border-blue-500' : 'text-gray-500 dark:text-slate-500'}`}>SQL Script</button>
+                <button onClick={() => setActiveTab('status')} className={`px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors ${activeTab === 'status' ? 'text-emerald-600 dark:text-white border-b-2 border-emerald-600 dark:border-emerald-500' : 'text-gray-500 dark:text-slate-500'}`}>Status</button>
+                <button onClick={() => setActiveTab('bridge')} className={`px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors ${activeTab === 'bridge' ? 'text-emerald-600 dark:text-white border-b-2 border-emerald-600 dark:border-emerald-500' : 'text-gray-500 dark:text-slate-500'}`}>Bridge Source</button>
+                <button onClick={() => setActiveTab('sql')} className={`px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors ${activeTab === 'sql' ? 'text-emerald-600 dark:text-white border-b-2 border-emerald-600 dark:border-emerald-500' : 'text-gray-500 dark:text-slate-500'}`}>SQL Script</button>
             </div>
 
             <div className="flex-1 overflow-auto bg-slate-900/50 p-4">
@@ -664,7 +664,7 @@ app.listen(PORT, () => console.log(\`Server running on \${PORT}\`));
                             <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded border border-gray-200 dark:border-slate-700 transition-colors">
                                 <h3 className="text-gray-800 dark:text-white font-bold mb-2">Sync Status</h3>
                                 <div className="flex gap-2">
-                                    <button onClick={handlePushToSQL} disabled={isSeeding} className="bg-blue-600 dark:bg-blue-700 text-white px-3 py-1 rounded text-xs flex items-center gap-2 hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors shadow-sm">
+                                    <button onClick={handlePushToSQL} disabled={isSeeding} className="bg-emerald-600 dark:bg-emerald-700 text-white px-3 py-1 rounded text-xs flex items-center gap-2 hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors shadow-sm">
                                         {isSeeding ? <RefreshCw className="animate-spin" size={12} /> : <UploadCloud size={12} />} Push Local &rarr; SQL
                                     </button>
                                     <button onClick={handleTestConnection} disabled={isTesting} className="bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-white px-3 py-1 rounded text-xs hover:bg-slate-300 dark:hover:bg-slate-500 transition-colors">
@@ -689,7 +689,7 @@ app.listen(PORT, () => console.log(\`Server running on \${PORT}\`));
                     <div className="h-full flex flex-col">
                         <div className="flex gap-2 mb-2 justify-end">
                             <button onClick={() => handleCopy(generatedSQL)} className="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-white px-3 py-1 rounded text-xs flex items-center gap-1 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"><Copy size={12} /> {copyFeedback || 'Copy'}</button>
-                            <button onClick={() => handleDownload('deployment.sql', generatedSQL)} className="bg-blue-600 dark:bg-blue-700 text-white px-3 py-1 rounded text-xs flex items-center gap-1 hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors"><Download size={12} /> Download .sql</button>
+                            <button onClick={() => handleDownload('deployment.sql', generatedSQL)} className="bg-emerald-600 dark:bg-emerald-700 text-white px-3 py-1 rounded text-xs flex items-center gap-1 hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors"><Download size={12} /> Download .sql</button>
                         </div>
                         <textarea readOnly value={generatedSQL} className="w-full h-full bg-gray-900 dark:bg-black p-4 text-xs font-mono text-green-500 dark:text-green-400 resize-none rounded border border-gray-200 dark:border-slate-700 shadow-inner" />
                     </div>
@@ -699,14 +699,14 @@ app.listen(PORT, () => console.log(\`Server running on \${PORT}\`));
                     <div className="h-full flex flex-col">
                         <div className="flex gap-2 mb-2 justify-between">
                             <div className="flex gap-2">
-                                <button onClick={() => setBridgeFile('server')} className={`px-2 py-1 text-xs rounded transition-colors ${bridgeFile === 'server' ? 'bg-blue-600 dark:bg-blue-700 text-white' : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400'}`}>server.js</button>
-                                <button onClick={() => setBridgeFile('db')} className={`px-2 py-1 text-xs rounded transition-colors ${bridgeFile === 'db' ? 'bg-blue-600 dark:bg-blue-700 text-white' : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400'}`}>db.js</button>
-                                <button onClick={() => setBridgeFile('package')} className={`px-2 py-1 text-xs rounded transition-colors ${bridgeFile === 'package' ? 'bg-blue-600 dark:bg-blue-700 text-white' : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400'}`}>package.json</button>
-                                <button onClick={() => setBridgeFile('env')} className={`px-2 py-1 text-xs rounded transition-colors ${bridgeFile === 'env' ? 'bg-blue-600 dark:bg-blue-700 text-white' : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400'}`}>.env</button>
+                                <button onClick={() => setBridgeFile('server')} className={`px-2 py-1 text-xs rounded transition-colors ${bridgeFile === 'server' ? 'bg-emerald-600 dark:bg-emerald-700 text-white' : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400'}`}>server.js</button>
+                                <button onClick={() => setBridgeFile('db')} className={`px-2 py-1 text-xs rounded transition-colors ${bridgeFile === 'db' ? 'bg-emerald-600 dark:bg-emerald-700 text-white' : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400'}`}>db.js</button>
+                                <button onClick={() => setBridgeFile('package')} className={`px-2 py-1 text-xs rounded transition-colors ${bridgeFile === 'package' ? 'bg-emerald-600 dark:bg-emerald-700 text-white' : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400'}`}>package.json</button>
+                                <button onClick={() => setBridgeFile('env')} className={`px-2 py-1 text-xs rounded transition-colors ${bridgeFile === 'env' ? 'bg-emerald-600 dark:bg-emerald-700 text-white' : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400'}`}>.env</button>
                             </div>
                         </div>
                         <div className="relative flex-1">
-                            <textarea readOnly value={bridgeSources[bridgeFile]} className="w-full h-full bg-gray-900 dark:bg-black p-4 text-xs font-mono text-blue-500 dark:text-blue-300 resize-none rounded border border-gray-200 dark:border-slate-700 shadow-inner" />
+                            <textarea readOnly value={bridgeSources[bridgeFile]} className="w-full h-full bg-gray-900 dark:bg-black p-4 text-xs font-mono text-emerald-500 dark:text-emerald-300 resize-none rounded border border-gray-200 dark:border-slate-700 shadow-inner" />
                             <div className="absolute top-2 right-2 flex gap-2">
                                 <button onClick={() => handleCopy(bridgeSources[bridgeFile])} className="bg-slate-100 dark:bg-slate-700 text-gray-700 dark:text-white px-2 py-1 rounded text-xs flex items-center gap-1 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors shadow-sm"><Copy size={12} /> {copyFeedback || 'Copy'}</button>
                                 <button onClick={() => handleDownload(`${bridgeFile === 'env' ? '' : bridgeFile}.${bridgeFile === 'package' ? 'json' : bridgeFile === 'env' ? 'env' : bridgeFile === 'readme' ? 'md' : 'js'}`, bridgeSources[bridgeFile])} className="bg-slate-100 dark:bg-slate-700 text-gray-700 dark:text-white px-2 py-1 rounded text-xs flex items-center gap-1 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors shadow-sm"><Download size={12} /> Download</button>

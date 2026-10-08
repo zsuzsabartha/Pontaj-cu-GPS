@@ -15,10 +15,16 @@ interface OfficeManagementProps {
     onDeleteOffice: (id: string) => void;
     onUpdateDepartments: (deps: Department[]) => void;
     onUpdateCompany: (company: Company) => void;
+    filterCompanyId?: string | null;
+    onNavigateToAddUser?: (companyId: string, departmentId: string) => void;
 }
 
-const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies, departments, users, onAddOffice, onUpdateOffice, onDeleteOffice, onUpdateDepartments }) => {
-    const [activeTab, setActiveTab] = useState<'offices' | 'departments'>('offices');
+const OfficeManagement: React.FC<OfficeManagementProps> = ({ 
+    offices, companies, departments, users, 
+    onAddOffice, onUpdateOffice, onDeleteOffice, onUpdateDepartments,
+    filterCompanyId, onNavigateToAddUser
+}) => {
+    const [activeTab, setActiveTab] = useState<'offices' | 'departments'>('departments');
     const [isAdding, setIsAdding] = useState(false);
     const [isAddingDept, setIsAddingDept] = useState(false);
 
@@ -194,22 +200,22 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
         <div className="space-y-6">
             <div className="flex justify-between items-center transition-colors">
                 <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                    <Building className="text-blue-600 dark:text-blue-400" />
+                    <Building className="text-emerald-600 dark:text-emerald-400" />
                     Structură Organizațională
                 </h2>
-                {isSyncing && <span className="text-xs text-blue-500 dark:text-blue-400 flex items-center gap-1"><RefreshCw size={12} className="animate-spin" /> Syncing SQL...</span>}
+                {isSyncing && <span className="text-xs text-emerald-500 dark:text-emerald-400 flex items-center gap-1"><RefreshCw size={12} className="animate-spin" /> Syncing SQL...</span>}
             </div>
 
             <div className="flex border-b border-gray-200 dark:border-gray-800 transition-colors">
                 <button
                     onClick={() => setActiveTab('offices')}
-                    className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'offices' ? 'border-blue-600 dark:border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                    className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'offices' ? 'border-emerald-600 dark:border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
                 >
                     Sedii (Shared HQ)
                 </button>
                 <button
                     onClick={() => setActiveTab('departments')}
-                    className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'departments' ? 'border-blue-600 dark:border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                    className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'departments' ? 'border-emerald-600 dark:border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}
                 >
                     Departamente
                 </button>
@@ -217,22 +223,22 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
 
             {activeTab === 'offices' && (
                 <>
-                    <div className="flex justify-between items-center bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800 mb-4 transition-colors">
-                        <span className="text-xs text-blue-800 dark:text-blue-300">Sediile definite aici sunt vizibile și utilizabile de către toate companiile din grup.</span>
+                    <div className="flex justify-between items-center bg-emerald-50 dark:bg-emerald-900/20 p-3 rounded-lg border border-emerald-100 dark:border-emerald-800 mb-4 transition-colors">
+                        <span className="text-xs text-emerald-800 dark:text-emerald-300">Sediile definite aici sunt vizibile și utilizabile de către toate companiile din grup.</span>
                         <button
                             onClick={() => {
                                 setIsAdding(!isAdding);
                                 setEditingOfficeId(null);
                                 setFormData({ name: '', latitude: '', longitude: '', radiusMeters: '100' });
                             }}
-                            className="bg-blue-600 dark:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 dark:hover:bg-blue-600 transition-all flex items-center gap-2 shadow-sm"
+                            className="bg-emerald-600 dark:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-all flex items-center gap-2 shadow-sm"
                         >
                             {isAdding ? 'Anulează' : <><Plus size={16} /> Adaugă Sediu</>}
                         </button>
                     </div>
 
                     {isAdding && (
-                        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-blue-100 dark:border-blue-900/30 animate-in fade-in slide-in-from-top-4 transition-colors">
+                        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-emerald-100 dark:border-emerald-900/30 animate-in fade-in slide-in-from-top-4 transition-colors">
                             <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-4">{editingOfficeId ? 'Editare Sediu' : 'Detalii Sediu Nou'}</h3>
                             <form onSubmit={handleOfficeSubmit} className="space-y-4">
                                 <div>
@@ -242,7 +248,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                                         type="text"
                                         value={formData.name}
                                         onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                                         placeholder="Ex: Depozit Vest"
                                     />
                                 </div>
@@ -256,7 +262,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                                             step="any"
                                             value={formData.latitude}
                                             onChange={e => setFormData({ ...formData, latitude: e.target.value })}
-                                            className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                            className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                                         />
                                     </div>
                                     <div>
@@ -267,7 +273,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                                             step="any"
                                             value={formData.longitude}
                                             onChange={e => setFormData({ ...formData, longitude: e.target.value })}
-                                            className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                            className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                                         />
                                     </div>
                                     <button
@@ -288,41 +294,59 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                                         type="number"
                                         value={formData.radiusMeters}
                                         onChange={e => setFormData({ ...formData, radiusMeters: e.target.value })}
-                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                                     />
                                 </div>
 
-                                <button type="submit" className="w-full bg-blue-600 dark:bg-blue-700 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 dark:hover:bg-blue-600 transition-all shadow-lg shadow-blue-200 dark:shadow-none">
+                                <button type="submit" className="w-full bg-emerald-600 dark:bg-emerald-700 text-white py-2.5 rounded-lg font-medium hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 dark:shadow-none">
                                     {editingOfficeId ? 'Actualizează Sediu' : 'Salvează Sediu'}
                                 </button>
                             </form>
                         </div>
                     )}
 
-                    <div className="grid gap-4 md:grid-cols-2">
-                        {offices.map(office => (
-                            <div key={office.id} className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md dark:hover:border-gray-600 transition-all relative group">
-                                <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition">
-                                    <button onClick={() => startEditOffice(office)} className="text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 p-1 rounded hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"><Edit2 size={16} /></button>
-                                    <button onClick={() => handleDeleteOfficeSafe(office.id)} className="text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"><Trash2 size={16} /></button>
-                                </div>
-
-                                <div className="flex items-start gap-3">
-                                    <div className="bg-blue-50 dark:bg-blue-900/30 p-3 rounded-lg text-blue-600 dark:text-blue-400 transition-colors">
-                                        <MapPin size={24} />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-gray-800 dark:text-gray-100 transition-colors">{office.name}</h3>
-                                        <p className="text-xs text-blue-500 dark:text-blue-400 font-medium">Shared Headquarters</p>
-                                        <div className="mt-2 text-xs text-gray-400 dark:text-gray-500 font-mono space-y-1 transition-colors">
-                                            <p>Lat: {office.coordinates.latitude.toFixed(4)}</p>
-                                            <p>Long: {office.coordinates.longitude.toFixed(4)}</p>
-                                            <p className="text-blue-400 dark:text-blue-500">Rază: {office.radiusMeters}m</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
+                    <div className="overflow-x-auto bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
+                        <table className="w-full text-left border-collapse">
+                            <thead className="bg-gray-50 dark:bg-gray-800/50 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase border-b border-gray-200 dark:border-gray-800">
+                                <tr>
+                                    <th className="p-3 w-16 text-center">Icon</th>
+                                    <th className="p-3">Nume Sediu</th>
+                                    <th className="p-3">Coordonate</th>
+                                    <th className="p-3">Rază (m)</th>
+                                    <th className="p-3 text-right">Acțiuni</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                {offices.map(office => (
+                                    <tr key={office.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                        <td className="p-3 text-center">
+                                            <div className="bg-emerald-50 dark:bg-emerald-900/30 w-8 h-8 rounded flex items-center justify-center text-emerald-600 dark:text-emerald-400 mx-auto">
+                                                <MapPin size={16} />
+                                            </div>
+                                        </td>
+                                        <td className="p-3">
+                                            <span className="font-bold text-gray-800 dark:text-gray-100">{office.name}</span>
+                                            <div className="text-[10px] text-emerald-500 dark:text-emerald-400 font-bold uppercase mt-0.5">Sediu / Locație</div>
+                                        </td>
+                                        <td className="p-3 text-xs text-gray-500 dark:text-gray-400 font-mono">
+                                            <div>Lat: {office.coordinates.latitude.toFixed(4)}</div>
+                                            <div>Long: {office.coordinates.longitude.toFixed(4)}</div>
+                                        </td>
+                                        <td className="p-3">
+                                            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded">
+                                                {office.radiusMeters}m
+                                            </span>
+                                        </td>
+                                        <td className="p-3 text-right">
+                                            <div className="flex justify-end gap-1">
+                                                <button onClick={() => startEditOffice(office)} className="p-2 text-gray-400 dark:text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded transition-colors"><Edit2 size={16} /></button>
+                                                <button onClick={() => handleDeleteOfficeSafe(office.id)} className="p-2 text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"><Trash2 size={16} /></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </>
             )}
@@ -341,7 +365,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                                 setEditingDeptId(null);
                                 setDeptFormData({ name: '', companyId: companies[0]?.id || '', managerId: '' });
                             }}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${isAddingDept ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400' : 'bg-blue-600 dark:bg-blue-700 text-white hover:bg-blue-700 dark:hover:bg-blue-600 shadow-sm'}`}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${isAddingDept ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400' : 'bg-emerald-600 dark:bg-emerald-700 text-white hover:bg-emerald-700 dark:hover:bg-emerald-600 shadow-sm'}`}
                         >
                             {isAddingDept ? 'Închide Formular' : <><Plus size={16} /> Departament Nou</>}
                         </button>
@@ -349,10 +373,10 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
 
                     {/* Add/Edit Form - Contextually Aware */}
                     {isAddingDept && (
-                        <div id="dept-form" className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-2 border-blue-100 dark:border-blue-900/30 animate-in fade-in slide-in-from-top-4 relative transition-colors">
-                            <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500 dark:bg-blue-600 rounded-l-xl"></div>
+                        <div id="dept-form" className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border-2 border-emerald-100 dark:border-emerald-900/30 animate-in fade-in slide-in-from-top-4 relative transition-colors">
+                            <div className="absolute top-0 left-0 w-1.5 h-full bg-emerald-500 dark:bg-emerald-600 rounded-l-xl"></div>
                             <h3 className="font-bold text-lg text-gray-800 dark:text-gray-100 mb-6 flex items-center gap-2">
-                                {editingDeptId ? <Edit2 size={20} className="text-blue-600 dark:text-blue-400" /> : <Plus size={20} className="text-green-600 dark:text-green-400" />}
+                                {editingDeptId ? <Edit2 size={20} className="text-emerald-600 dark:text-emerald-400" /> : <Plus size={20} className="text-green-600 dark:text-green-400" />}
                                 {editingDeptId ? 'Editare Departament' : 'Adăugare Departament Nou'}
                             </h3>
 
@@ -365,7 +389,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                                     <select
                                         value={deptFormData.companyId}
                                         onChange={e => setDeptFormData({ ...deptFormData, companyId: e.target.value, managerId: '' })}
-                                        className="w-full p-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-900 font-medium text-slate-800 dark:text-slate-200 transition-colors"
+                                        className="w-full p-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-gray-900 font-medium text-slate-800 dark:text-slate-200 transition-colors"
                                     >
                                         {companies.map(c => (
                                             <option key={c.id} value={c.id}>{c.name}</option>
@@ -382,7 +406,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                                             type="text"
                                             value={deptFormData.name}
                                             onChange={e => setDeptFormData({ ...deptFormData, name: e.target.value })}
-                                            className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                            className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                                             placeholder="Ex: Vânzări"
                                         />
                                     </div>
@@ -393,7 +417,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                                         <select
                                             value={deptFormData.managerId}
                                             onChange={e => setDeptFormData({ ...deptFormData, managerId: e.target.value })}
-                                            className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none transition-colors"
+                                            className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-emerald-500 outline-none transition-colors"
                                         >
                                             <option value="">-- Fără Manager Alocat --</option>
                                             {users
@@ -414,7 +438,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                                     >
                                         Anulează
                                     </button>
-                                    <button type="submit" className="bg-blue-600 dark:bg-blue-700 text-white px-8 py-2.5 rounded-lg font-bold hover:bg-blue-700 dark:hover:bg-blue-600 transition-all shadow-lg shadow-blue-200 dark:shadow-none">
+                                    <button type="submit" className="bg-emerald-600 dark:bg-emerald-700 text-white px-8 py-2.5 rounded-lg font-bold hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 dark:shadow-none">
                                         {editingDeptId ? 'Salvează Modificările' : 'Creează Departament'}
                                     </button>
                                 </div>
@@ -424,7 +448,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
 
                     {/* Grouped List by Company */}
                     <div className="space-y-6">
-                        {companies.map(company => {
+                        {(filterCompanyId ? companies.filter(c => c.id === filterCompanyId) : companies).map(company => {
                             const compDepts = departments.filter(d => d.companyId === company.id);
 
                             return (
@@ -444,80 +468,109 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({ offices, companies,
                                                 setEditingDeptId(null);
                                                 document.getElementById('dept-form')?.scrollIntoView({ behavior: 'smooth' });
                                             }}
-                                            className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 border border-transparent hover:border-blue-100 dark:hover:border-blue-800"
+                                            className="text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1 border border-transparent hover:border-emerald-100 dark:hover:border-emerald-800"
                                         >
                                             <Plus size={14} /> Adaugă Departament Aici
                                         </button>
                                     </div>
 
-                                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                                    <div className="overflow-x-auto">
                                         {compDepts.length === 0 ? (
                                             <div className="p-6 text-center text-sm text-gray-400 dark:text-gray-500 italic">
                                                 Niciun departament configurat pentru {company.name}.
                                             </div>
                                         ) : (
-                                            compDepts.map(dept => {
-                                                const manager = users.find(u => u.id === dept.managerId);
-                                                const isEditing = editingDeptId === dept.id;
+                                            <table className="w-full text-left border-collapse">
+                                                <thead className="bg-gray-50 dark:bg-gray-800/50 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase border-y border-gray-200 dark:border-gray-700">
+                                                    <tr>
+                                                        <th className="p-3 w-16 text-center">Icon</th>
+                                                        <th className="p-3">Nume Departament</th>
+                                                        <th className="p-3">Manager (Aprobator)</th>
+                                                        <th className="p-3 text-right">Acțiuni</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                                    {compDepts.map(dept => {
+                                                        const manager = users.find(u => u.id === dept.managerId);
+                                                        const isEditing = editingDeptId === dept.id;
 
-                                                return (
-                                                    <div key={dept.id} className={`p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all ${isEditing ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}>
-                                                        <div className="flex items-center gap-4">
-                                                            <div className={`p-2 rounded-lg transition-colors ${isEditing ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'}`}>
-                                                                <FolderTree size={20} />
-                                                            </div>
-                                                            <div>
-                                                                <div className="flex items-center gap-2">
-                                                                    <h4 className="font-bold text-gray-800 dark:text-gray-100 text-sm">{dept.name}</h4>
-                                                                    {isEditing && <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider bg-blue-100 dark:bg-blue-900/40 px-1.5 rounded">Editing</span>}
-                                                                </div>
-
-                                                                {manager ? (
-                                                                    <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                                                        <UserIcon size={12} className="text-indigo-400 dark:text-indigo-500" />
-                                                                        <span>Manager: <span className="font-medium text-gray-700 dark:text-gray-200">{manager.name}</span></span>
+                                                        return (
+                                                            <tr key={dept.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all ${isEditing ? 'bg-emerald-50/50 dark:bg-emerald-900/10' : ''}`}>
+                                                                <td className="p-3 text-center">
+                                                                    <div className={`w-8 h-8 rounded mx-auto flex items-center justify-center transition-colors ${isEditing ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'}`}>
+                                                                        <FolderTree size={16} />
                                                                     </div>
-                                                                ) : (
-                                                                    <div className="text-[10px] text-orange-400 dark:text-orange-500 mt-0.5 italic">Fără Manager</div>
-                                                                )}
-                                                            </div>
-                                                        </div>
+                                                                </td>
+                                                                <td className="p-3">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <h4 className="font-bold text-gray-800 dark:text-gray-100">{dept.name}</h4>
+                                                                        {dept.source === 'ERP' && <span title="Sincronizat din ERP" className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold shrink-0">📦 ERP</span>}
+                                                                        {isEditing && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/40 px-1.5 rounded">Editing</span>}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="p-3">
+                                                                    {manager ? (
+                                                                        <div className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-300">
+                                                                            <UserIcon size={14} className="text-indigo-400 dark:text-indigo-500" />
+                                                                            <span className="font-medium">{manager.name}</span>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="text-xs text-orange-400 dark:text-orange-500 italic">Fără Manager</div>
+                                                                    )}
+                                                                </td>
+                                                                <td className="p-3 text-right">
+                                                                    <div className="flex items-center justify-end gap-1">
+                                                                        <button
+                                                                            onClick={() => toggleDeptEmail(dept.id)}
+                                                                            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium border transition-all ${dept.emailNotifications
+                                                                                ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/40'
+                                                                                : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                                                                }`}
+                                                                            title={dept.emailNotifications ? 'Dezactivează notificări email' : 'Activează notificări email'}
+                                                                        >
+                                                                            {dept.emailNotifications ? <Mail size={14} /> : <BellOff size={14} />}
+                                                                        </button>
 
-                                                        <div className="flex items-center gap-2 self-end md:self-auto">
-                                                            <button
-                                                                onClick={() => toggleDeptEmail(dept.id)}
-                                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${dept.emailNotifications
-                                                                    ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/40'
-                                                                    : 'bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
-                                                                    }`}
-                                                            >
-                                                                {dept.emailNotifications ? <Mail size={12} /> : <BellOff size={12} />}
-                                                                {dept.emailNotifications ? 'Notificări Active' : 'Fără Notificări'}
-                                                            </button>
+                                                                        {onNavigateToAddUser && (
+                                                                            <button
+                                                                                onClick={() => onNavigateToAddUser(company.id, dept.id)}
+                                                                                className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all ml-1"
+                                                                                title="Adaugă angajat în acest departament"
+                                                                            >
+                                                                                <Plus size={14} /> Angajat
+                                                                            </button>
+                                                                        )}
 
-                                                            <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1"></div>
+                                                                        {dept.source !== 'ERP' && (
+                                                                            <>
+                                                                                <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1"></div>
 
-                                                            <button
-                                                                onClick={() => {
-                                                                    startEditDept(dept);
-                                                                    document.getElementById('dept-form')?.scrollIntoView({ behavior: 'smooth' });
-                                                                }}
-                                                                className="text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 p-2 hover:bg-white dark:hover:bg-gray-800 rounded-lg transition-all"
-                                                                title="Editează"
-                                                            >
-                                                                <Edit2 size={16} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleDeleteDept(dept.id)}
-                                                                className="text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 p-2 hover:bg-white dark:hover:bg-gray-800 rounded-lg transition-all"
-                                                                title="Șterge"
-                                                            >
-                                                                <Trash2 size={16} />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                )
-                                            })
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        startEditDept(dept);
+                                                                                        document.getElementById('dept-form')?.scrollIntoView({ behavior: 'smooth' });
+                                                                                    }}
+                                                                                    className="text-gray-400 dark:text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-all"
+                                                                                    title="Editează"
+                                                                                >
+                                                                                    <Edit2 size={16} />
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => handleDeleteDept(dept.id)}
+                                                                                    className="text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-all"
+                                                                                    title="Șterge"
+                                                                                >
+                                                                                    <Trash2 size={16} />
+                                                                                </button>
+                                                                            </>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        )
+                                                    })}
+                                                </tbody>
+                                            </table>
                                         )}
                                     </div>
                                 </div>

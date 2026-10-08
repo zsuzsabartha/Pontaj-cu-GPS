@@ -17,7 +17,7 @@ interface ClockWidgetProps {
     accumulatedBreakTime?: number; // Total ms of completed breaks
     activeBreakStartTime?: string; // If currently on break
     onClockIn: (location: Coordinates, office: Office | null, dist: number) => void;
-    onClockOut: (location: Coordinates) => void;
+    onClockOut: (location: Coordinates, note?: string) => void;
     onToggleBreak: (breakConfig?: BreakConfig, location?: Coordinates, dist?: number) => void;
 }
 
@@ -56,7 +56,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
         statusColor = "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800";
     } else if (currentStatus === ShiftStatus.COMPLETED) {
         statusText = "ZI ÎNCHEIATĂ";
-        statusColor = "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800";
+        statusColor = "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800";
     }
 
     // Format Start Time for Display
@@ -203,7 +203,28 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
         setLoading(true);
         try {
             const coords = await getCurrentLocation().catch(() => ({ latitude: 0, longitude: 0 }));
-            onClockOut(coords);
+            
+            // Check if worked time is very small (< 60 minutes)
+            const { elapsed } = calculateTimers();
+            const [hours, minutes] = elapsed.split(':').map(Number);
+            const totalMinutes = hours * 60 + minutes;
+
+            let note = "";
+            if (totalMinutes < 60) {
+                const userNote = window.prompt(`Ai pontat doar ${totalMinutes} minute.\nTe rugăm să introduci o scurtă justificare pentru încheierea rapidă a programului:`);
+                if (userNote === null) {
+                    setLoading(false);
+                    return;
+                }
+                if (userNote.trim() === "") {
+                    alert("Notița este obligatorie pentru un pontaj atât de scurt!");
+                    setLoading(false);
+                    return;
+                }
+                note = userNote.trim();
+            }
+
+            onClockOut(coords, note);
         } finally {
             setLoading(false);
         }
@@ -261,7 +282,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
     return (
         <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-6 w-full max-w-md mx-auto border border-gray-100 dark:border-gray-800 relative overflow-hidden transition-all duration-300">
             {/* Decorative bg */}
-            <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-blue-50 dark:bg-blue-900/10 rounded-full opacity-50 blur-xl"></div>
+            <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-emerald-50 dark:bg-emerald-900/10 rounded-full opacity-50 blur-xl"></div>
 
             {/* Holiday Banner */}
             {todayHoliday && (
@@ -299,7 +320,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
                                 <span>{todayDateCapitalized}</span>
                             </div>
                             {companyName && (
-                                <div className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 font-medium mt-1">
+                                <div className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-1">
                                     <Briefcase size={10} /> {companyName}
                                 </div>
                             )}
@@ -313,7 +334,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
-                    <Satellite size={12} className={user.requiresGPS ? "text-blue-500 dark:text-blue-400" : "text-gray-300 dark:text-gray-700"} />
+                    <Satellite size={12} className={user.requiresGPS ? "text-emerald-500 dark:text-emerald-400" : "text-gray-300 dark:text-gray-700"} />
                     {user.requiresGPS ? "Localizare obligatorie" : "Localizare opțională"}
                 </div>
             </div>
@@ -329,7 +350,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
                 {/* Start/End Time Indicator */}
                 {(currentStatus !== ShiftStatus.NOT_STARTED) && startTimeDisplay && (
                     <div className="mb-4 flex flex-col gap-1 items-center animate-in fade-in">
-                        <div className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-full flex items-center gap-1">
+                        <div className="text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1 rounded-full flex items-center gap-1">
                             <History size={12} />
                             Ora Start: <span className="font-mono font-bold">{startTimeDisplay}</span>
                         </div>
@@ -372,7 +393,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
                         <button
                             onClick={handleClockIn}
                             disabled={!user.isValidated || loading || (activeLeaveRequest?.status === LeaveStatus.APPROVED && !activeLeaveRequest?.typeName.includes('Delegatie'))} // Disable if unvalidated OR approved leave
-                            className="col-span-2 flex items-center justify-center gap-2 text-white py-4 rounded-xl font-semibold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:grayscale bg-blue-600 hover:bg-blue-700 shadow-blue-200"
+                            className="col-span-2 flex items-center justify-center gap-2 text-white py-4 rounded-xl font-semibold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:grayscale bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200"
                         >
                             {loading ? (
                                 <><RefreshCw className="animate-spin" size={24} /> SE LOCALIZEAZĂ...</>
@@ -382,11 +403,11 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
                         </button>
                     ) : currentStatus === ShiftStatus.COMPLETED ? (
                         /* --- CHANGED: Hide Start Button, Show Completed Message --- */
-                        <div className="col-span-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 text-center animate-in fade-in">
-                            <div className="flex justify-center mb-2"><CheckSquare className="text-blue-500 dark:text-blue-400" size={32} /></div>
-                            <h3 className="font-bold text-blue-900 dark:text-blue-300">Program Încheiat</h3>
-                            <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">Ziua de lucru a fost înregistrată.</p>
-                            <p className="text-[10px] text-blue-500 dark:text-blue-500 mt-2">Pentru modificări, vă rugăm folosiți secțiunea "Istoric" din panoul principal.</p>
+                        <div className="col-span-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 text-center animate-in fade-in">
+                            <div className="flex justify-center mb-2"><CheckSquare className="text-emerald-500 dark:text-emerald-400" size={32} /></div>
+                            <h3 className="font-bold text-emerald-900 dark:text-emerald-300">Program Încheiat</h3>
+                            <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">Ziua de lucru a fost înregistrată.</p>
+                            <p className="text-[10px] text-emerald-500 dark:text-emerald-500 mt-2">Pentru modificări, vă rugăm folosiți secțiunea "Istoric" din panoul principal.</p>
                         </div>
                     ) : (
                         <>
@@ -397,7 +418,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
                                         <button
                                             key={config.id}
                                             onClick={() => handleToggleBreak(config)}
-                                            className={`flex flex-col items-center justify-center border p-2 rounded-lg text-xs font-bold transition h-20 shadow-sm ${config.isPaid ? 'bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700 dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:border-blue-800 dark:text-blue-300' : 'bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700 dark:bg-orange-900/40 dark:hover:bg-orange-900/60 dark:border-orange-800 dark:text-orange-300'}`}
+                                            className={`flex flex-col items-center justify-center border p-2 rounded-lg text-xs font-bold transition h-20 shadow-sm ${config.isPaid ? 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700 dark:bg-emerald-900/40 dark:hover:bg-emerald-900/60 dark:border-emerald-800 dark:text-emerald-300' : 'bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700 dark:bg-orange-900/40 dark:hover:bg-orange-900/60 dark:border-orange-800 dark:text-orange-300'}`}
                                         >
                                             {getIcon(config.icon)}
                                             <span className="text-center leading-tight">{config.name}</span>

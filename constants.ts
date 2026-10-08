@@ -33,7 +33,7 @@ export const isDateInLockedPeriod = (dateStr: string, lockedDate: string): boole
 
 // --- API CONNECTION CONFIG ---
 export const API_CONFIG = {
-    BASE_URL: 'http://localhost:3001/api/v1',
+    BASE_URL: import.meta.env.PROD ? '/pontaj/api/v1' : 'http://localhost:3005/api/v1',
     TIMEOUT: 10000
 };
 

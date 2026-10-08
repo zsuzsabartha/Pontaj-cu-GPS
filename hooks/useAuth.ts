@@ -43,7 +43,7 @@ export const useAuth = (users: User[]) => {
         handleLogout,
         hasRole,
         isAdmin: hasRole(Role.ADMIN),
-        canViewTeam: hasRole(Role.MANAGER) || hasRole(Role.HR) || hasRole(Role.ADMIN),
+        canViewTeam: hasRole(Role.MANAGER) || hasRole(Role.HR) || hasRole(Role.ADMIN) || hasRole(Role.PONTATOR),
         canManageUsers: hasRole(Role.ADMIN) || hasRole(Role.HR)
     };
 };

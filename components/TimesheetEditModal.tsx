@@ -145,7 +145,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
             <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 border border-gray-100 dark:border-gray-800 transition-all">
-                <div className={`${isManager ? (isLocked ? 'bg-gray-500' : 'bg-blue-600') : (isLocked ? 'bg-gray-500' : 'bg-orange-500')} p-4 flex justify-between items-center text-white`}>
+                <div className={`${isManager ? (isLocked ? 'bg-gray-500' : 'bg-emerald-600') : (isLocked ? 'bg-gray-500' : 'bg-orange-500')} p-4 flex justify-between items-center text-white`}>
                     <h3 className="font-bold text-lg flex items-center gap-2">
                         {isLocked ? <Lock size={20} /> : (isCreation ? <PlusCircle size={20} /> : <Clock size={20} />)}
                         {isCreation
@@ -174,7 +174,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
                             <button
                                 type="button"
                                 onClick={() => setActiveTab('WORK')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'WORK' ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+                                className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-bold transition-all ${activeTab === 'WORK' ? 'bg-white dark:bg-gray-700 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-gray-500 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
                             >
                                 <Briefcase size={16} /> Pontaj (Lucru)
                             </button>
@@ -198,7 +198,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
                                 value={date}
                                 max={new Date().toISOString().split('T')[0]} // Cannot be in future
                                 onChange={(e) => handleDateChange(e.target.value)}
-                                className={`w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all ${isLocked ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-600' : ''}`}
+                                className={`w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all ${isLocked ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-600' : ''}`}
                             />
                         ) : (
                             <div className="font-semibold text-gray-800 dark:text-gray-100">{date}</div>
@@ -216,7 +216,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
                                         disabled={isLocked}
                                         value={startTime}
                                         onChange={(e) => setStartTime(e.target.value)}
-                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-mono disabled:bg-gray-100 dark:disabled:bg-gray-800/50 disabled:text-gray-400 dark:disabled:text-gray-600 transition-all"
+                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-mono disabled:bg-gray-100 dark:disabled:bg-gray-800/50 disabled:text-gray-400 dark:disabled:text-gray-600 transition-all"
                                     >
                                         {TIME_OPTIONS.map(t => (
                                             <option key={`start-${t}`} value={t}>{t}</option>
@@ -229,7 +229,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
                                         disabled={isLocked}
                                         value={endTime}
                                         onChange={(e) => setEndTime(e.target.value)}
-                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-mono disabled:bg-gray-100 dark:disabled:bg-gray-800/50 disabled:text-gray-400 dark:disabled:text-gray-600 transition-all"
+                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-mono disabled:bg-gray-100 dark:disabled:bg-gray-800/50 disabled:text-gray-400 dark:disabled:text-gray-600 transition-all"
                                     >
                                         <option value="">-- În lucru --</option>
                                         {TIME_OPTIONS.map(t => (
@@ -245,15 +245,15 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
 
                             {/* Schedule Override */}
                             {isManager && (
-                                <div className={`p-3 rounded-lg border border-blue-100 dark:border-blue-900/30 transition-colors ${isLocked ? 'bg-gray-50 dark:bg-gray-800 opacity-50' : 'bg-blue-50 dark:bg-blue-900/10'}`}>
-                                    <label className={`block text-sm font-medium mb-1 flex items-center gap-1 ${isLocked ? 'text-gray-500' : 'text-blue-800 dark:text-blue-300'}`}>
+                                <div className={`p-3 rounded-lg border border-emerald-100 dark:border-emerald-900/30 transition-colors ${isLocked ? 'bg-gray-50 dark:bg-gray-800 opacity-50' : 'bg-emerald-50 dark:bg-emerald-900/10'}`}>
+                                    <label className={`block text-sm font-medium mb-1 flex items-center gap-1 ${isLocked ? 'text-gray-500' : 'text-emerald-800 dark:text-emerald-300'}`}>
                                         <CalendarClock size={14} /> Tip Program (Override)
                                     </label>
                                     <select
                                         disabled={isLocked}
                                         value={scheduleId}
                                         onChange={(e) => setScheduleId(e.target.value)}
-                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100 dark:disabled:bg-gray-800/50 transition-all"
+                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-100 dark:disabled:bg-gray-800/50 transition-all"
                                     >
                                         <option value="">-- Auto Detectat --</option>
                                         {MOCK_SCHEDULES.map(sch => (
@@ -294,7 +294,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
                             rows={3}
                             value={reason}
                             onChange={(e) => setReason(e.target.value)}
-                            className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none resize-none disabled:bg-gray-100 dark:disabled:bg-gray-800/50 transition-all"
+                            className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none resize-none disabled:bg-gray-100 dark:disabled:bg-gray-800/50 transition-all"
                             placeholder={isManager ? "Ex: Adăugare manuală / Rectificare..." : "Ex: Am uitat să scanez la plecare..."}
                         ></textarea>
                     </div>
@@ -320,7 +320,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
                         <button
                             type="submit"
                             disabled={isLocked}
-                            className={`flex-1 text-white font-semibold py-3 rounded-xl transition-all shadow-lg disabled:opacity-50 disabled:grayscale ${isManager ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-orange-500 hover:bg-orange-600 shadow-orange-200'}`}
+                            className={`flex-1 text-white font-semibold py-3 rounded-xl transition-all shadow-lg disabled:opacity-50 disabled:grayscale ${isManager ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200' : 'bg-orange-500 hover:bg-orange-600 shadow-orange-200'}`}
                         >
                             {isLocked ? 'Perioadă Închisă' : (isManager ? 'Salvează Modificări' : 'Trimite Solicitarea')}
                         </button>

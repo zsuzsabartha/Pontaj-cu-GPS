@@ -2,31 +2,82 @@
 import React, { useState } from 'react';
 import { User, Role, Company } from '../types';
 import { KeyRound, Lock, User as UserIcon, ArrowLeft, Loader2, Sparkles, MailQuestion, Shield, Users, Briefcase } from 'lucide-react';
+import { useMsal } from "@azure/msal-react";
+import { loginRequest } from "../authConfig";
+import { SQLService } from '../services/sqlService';
 
 interface LoginScreenProps {
     users: User[]; // Accept current users state
     companies?: Company[]; // Accept companies for display
     onLogin: (user: User, isNewUser?: boolean) => void;
     onRequestPinReset?: (email: string) => void;
+    onCreateUser?: (u: User) => Promise<void>;
 }
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, onRequestPinReset }) => {
+const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, onRequestPinReset, onCreateUser }) => {
+    const { instance, accounts, inProgress } = useMsal();
     const [view, setView] = useState<'main' | 'pin' | 'forgot'>('main');
-    const [selectedUserId, setSelectedUserId] = useState<string>('');
+    const [email, setEmail] = useState<string>('');
     const [pin, setPin] = useState('');
     const [resetEmail, setResetEmail] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
+    const [isRegistering, setIsRegistering] = useState(false);
+
     // Filter users who use PIN and are validated
     const pinUsers = users.filter(u => u.authType === 'PIN' && u.isValidated);
 
-    const handleMicrosoftLogin = (simulateNew: boolean = false) => {
+    React.useEffect(() => {
+        if (inProgress === "none" && accounts.length > 0) {
+            // Delay auto-registration/login by 800ms to ensure the backend has finished loading the users array
+            const timer = setTimeout(() => {
+                const msAccount = accounts[0];
+                const dbUser = users.find(u => u.email.toLowerCase() === msAccount.username.toLowerCase());
+                
+                if (dbUser) {
+                    onLogin(dbUser);
+                } else if (onCreateUser && !isRegistering) {
+                    setIsRegistering(true);
+                    setIsLoading(true);
+                    // Auto-register
+                    const newUser: User = {
+                        id: `ms-${Date.now()}`,
+                        name: msAccount.name || msAccount.username.split('@')[0],
+                        email: msAccount.username,
+                        roles: users.length === 0 ? [Role.ADMIN, Role.MANAGER] : [Role.EMPLOYEE],
+                        companyId: companies && companies.length > 0 ? companies[0].id : 'c1',
+                        avatarUrl: `https://ui-avatars.com/api/?name=${msAccount.name ? msAccount.name.replace(' ', '+') : 'User'}`,
+                        authType: 'MICROSOFT',
+                        isValidated: true,
+                        requiresGPS: true,
+                        alternativeScheduleIds: [],
+                        shareBirthday: false,
+                        employmentStatus: 'ACTIVE',
+                        pin: '0000',
+                    };
+                    
+                    onCreateUser(newUser).catch(err => {
+                        console.error("Auto-registration failed", err);
+                        setError("Eroare la crearea contului.");
+                        setIsLoading(false);
+                        setIsRegistering(false);
+                    });
+                } else if (!isRegistering) {
+                    setError(`Contul de Microsoft (${msAccount.username}) nu este asociat unui angajat activ.`);
+                    setIsLoading(false);
+                }
+            }, 800);
+            
+            return () => clearTimeout(timer);
+        }
+    }, [inProgress, accounts, users, onLogin, onCreateUser, isRegistering, companies]);
+
+    const handleMicrosoftLogin = async (simulateNew: boolean = false) => {
         setIsLoading(true);
-        // Simulate OAuth Delay
-        setTimeout(() => {
-            if (simulateNew || users.length === 0) {
-                // Create a random new user. If system is empty, create an ADMIN.
+        if (simulateNew || users.length === 0) {
+            // Simulate OAuth Delay for Demo / New User creation
+            setTimeout(() => {
                 const isFirstUser = users.length === 0;
                 const randomId = Math.floor(Math.random() * 1000);
                 const newUser: User = {
@@ -37,42 +88,44 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                     companyId: companies && companies.length > 0 ? companies[0].id : 'c1',
                     avatarUrl: `https://ui-avatars.com/api/?name=${isFirstUser ? 'Sys+Admin' : 'New+User'}`,
                     authType: 'MICROSOFT',
-                    isValidated: isFirstUser, // Auto-validate first admin
+                    isValidated: isFirstUser,
                     requiresGPS: true,
-                    alternativeScheduleIds: ['sch1'], // Default schedule
+                    alternativeScheduleIds: ['sch1'],
                     shareBirthday: false,
                     employmentStatus: 'ACTIVE'
                 };
                 onLogin(newUser, true);
-            } else {
-                // Find a default Manager for general login if no specific demo button used
-                const msUser = users.find(u => u.authType === 'MICROSOFT' && u.isValidated);
-                if (msUser) {
-                    onLogin(msUser);
-                } else {
-                    setError("Nu s-a găsit contul Microsoft demo.");
-                    setIsLoading(false);
-                }
+            }, 1000);
+        } else {
+            try {
+                await instance.loginRedirect(loginRequest);
+            } catch (err) {
+                console.error(err);
+                setError("Eroare la redirecționarea către Microsoft.");
+                setIsLoading(false);
             }
-        }, 1000);
+        }
     };
 
-    const handlePinLogin = (e: React.FormEvent) => {
+    const handlePinLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
+        setIsLoading(true);
 
-        const user = pinUsers.find(u => u.id === selectedUserId);
-        if (!user) {
-            setError("Selectați un utilizator.");
-            return;
-        }
-
-        if (user.pin === pin) {
-            setIsLoading(true);
-            setTimeout(() => onLogin(user), 800);
-        } else {
-            setError("PIN incorect.");
+        try {
+            const response = await SQLService.loginPin(email, pin);
+            if (response.success && response.user) {
+                onLogin(response.user);
+            } else {
+                setError(response.error || "PIN incorect.");
+                setPin('');
+                setIsLoading(false);
+            }
+        } catch (err: any) {
+            console.error(err);
+            setError(err.message || "Eroare la autentificare.");
             setPin('');
+            setIsLoading(false);
         }
     };
 
@@ -114,22 +167,30 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-4 relative overflow-hidden transition-colors duration-500">
             {/* Background Decoration */}
-            <div className="absolute top-0 left-0 w-full h-1/2 bg-blue-600 dark:bg-blue-900/50 transform -skew-y-6 origin-top-left z-0 transition-colors"></div>
-            <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-100 dark:bg-blue-900/20 rounded-full blur-3xl opacity-50 z-0"></div>
+            <div className="absolute top-0 left-0 w-full h-1/2 bg-emerald-600 dark:bg-emerald-900/50 transform -skew-y-6 origin-top-left z-0 transition-colors"></div>
+            <div className="absolute bottom-0 right-0 w-64 h-64 bg-emerald-100 dark:bg-emerald-900/20 rounded-full blur-3xl opacity-50 z-0"></div>
 
             <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-8 relative z-10 border border-gray-100 dark:border-gray-800 transition-all">
 
-                <div className="text-center mb-8">
-                    <div className="w-16 h-16 bg-blue-600 dark:bg-blue-700 rounded-xl mx-auto flex items-center justify-center text-white font-bold text-3xl shadow-lg mb-4">P</div>
-                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white">PontajGroup</h1>
+                <div className="text-center mb-8 flex flex-col items-center">
+                    <div className="flex items-end justify-center gap-1 mb-4">
+                        <img src="https://bioeel.ro/wp-content/themes/bioeel/images/logo.png" alt="Bioeel Logo" className="h-16 object-contain" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.nextElementSibling?.classList.remove('hidden'); }} />
+                        <span className="hidden font-black text-5xl text-emerald-600 dark:text-emerald-500">Bioeel</span>
+                        <span className="font-bold text-lg tracking-tight text-emerald-600 dark:text-emerald-500">grup</span>
+                    </div>
                     <p className="text-gray-500 dark:text-gray-400 text-sm">Portal Angajați & Management</p>
                 </div>
 
                 {view === 'main' && (
                     <div className="space-y-4">
+                        {error && (
+                            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 rounded-lg text-center mb-4">
+                                <p className="text-sm font-bold text-red-600 dark:text-red-400">{error}</p>
+                            </div>
+                        )}
                         {isLoading ? (
                             <div className="flex flex-col items-center justify-center py-8">
-                                <Loader2 className="animate-spin text-blue-600" size={32} />
+                                <Loader2 className="animate-spin text-emerald-600" size={32} />
                                 <p className="text-sm text-gray-500 mt-2">Autentificare în curs...</p>
                             </div>
                         ) : (
@@ -170,7 +231,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                                             <button onClick={() => handleDemoLogin(Role.ADMIN)} className="flex items-center gap-2 p-2 bg-slate-800 dark:bg-gray-800 text-white rounded-lg text-xs hover:bg-slate-900 dark:hover:bg-black transition shadow-sm">
                                                 <Shield size={14} className="text-yellow-400" /> Admin General
                                             </button>
-                                            <button onClick={() => handleDemoLogin(Role.MANAGER)} className="flex items-center gap-2 p-2 bg-blue-600 dark:bg-blue-700 text-white rounded-lg text-xs hover:bg-blue-700 dark:hover:bg-blue-800 transition shadow-sm">
+                                            <button onClick={() => handleDemoLogin(Role.MANAGER)} className="flex items-center gap-2 p-2 bg-emerald-600 dark:bg-emerald-700 text-white rounded-lg text-xs hover:bg-emerald-700 dark:hover:bg-emerald-800 transition shadow-sm">
                                                 <Briefcase size={14} /> Manager
                                             </button>
                                             <button onClick={() => handleDemoLogin(Role.HR)} className="flex items-center gap-2 p-2 bg-purple-600 dark:bg-purple-700 text-white rounded-lg text-xs hover:bg-purple-700 dark:hover:bg-purple-800 transition shadow-sm">
@@ -203,31 +264,24 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                     <form onSubmit={handlePinLogin} className="space-y-4 animate-in fade-in slide-in-from-right-8">
                         <button
                             type="button"
-                            onClick={() => { setView('main'); setError(''); setPin(''); }}
+                            onClick={() => { setView('main'); setError(''); setEmail(''); setPin(''); }}
                             className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 flex items-center gap-1 text-sm mb-2 transition-colors"
                         >
                             <ArrowLeft size={16} /> Înapoi
                         </button>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Angajat</label>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
                             <div className="relative">
                                 <UserIcon className="absolute left-3 top-3 text-gray-400 dark:text-gray-600" size={18} />
-                                <select
-                                    className="w-full pl-10 p-2.5 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 appearance-none text-sm transition-all"
-                                    value={selectedUserId}
-                                    onChange={(e) => setSelectedUserId(e.target.value)}
-                                >
-                                    <option value="">Selectează contul...</option>
-                                    {pinUsers.map(u => {
-                                        const compName = companies?.find(c => c.id === u.companyId)?.name;
-                                        return (
-                                            <option key={u.id} value={u.id}>
-                                                {u.name} {compName ? `(${compName})` : ''}
-                                            </option>
-                                        );
-                                    })}
-                                </select>
+                                <input
+                                    type="email"
+                                    required
+                                    className="w-full pl-10 p-2.5 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 text-sm transition-all"
+                                    placeholder="nume@companie.ro"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                />
                             </div>
                         </div>
 
@@ -240,14 +294,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                                     maxLength={4}
                                     value={pin}
                                     onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ''))}
-                                    className="w-full pl-10 p-2.5 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-mono tracking-widest text-lg transition-all"
+                                    className="w-full pl-10 p-2.5 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-mono tracking-widest text-lg transition-all"
                                     placeholder="****"
                                 />
                             </div>
                         </div>
 
                         <div className="flex justify-end">
-                            <button type="button" onClick={() => setView('forgot')} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">Am uitat PIN-ul</button>
+                            <button type="button" onClick={() => setView('forgot')} className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline">Am uitat PIN-ul</button>
                         </div>
 
                         {error && <p className="text-red-500 dark:text-red-400 text-sm text-center font-medium bg-red-50 dark:bg-red-900/20 p-2 rounded">{error}</p>}
@@ -255,7 +309,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className="w-full bg-blue-600 dark:bg-blue-700 text-white p-3 rounded-lg font-medium hover:bg-blue-700 dark:hover:bg-blue-800 transition-all shadow-lg shadow-blue-200 dark:shadow-blue-900/20 mt-2 flex justify-center"
+                            className="w-full bg-emerald-600 dark:bg-emerald-700 text-white p-3 rounded-lg font-medium hover:bg-emerald-700 dark:hover:bg-emerald-800 transition-all shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20 mt-2 flex justify-center"
                         >
                             {isLoading ? <Loader2 className="animate-spin" /> : 'Accesează Contul'}
                         </button>
@@ -279,7 +333,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                         </button>
 
                         <div className="text-center mb-4">
-                            <MailQuestion size={48} className="mx-auto text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 p-2 rounded-full mb-2" />
+                            <MailQuestion size={48} className="mx-auto text-emerald-500 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 p-2 rounded-full mb-2" />
                             <h3 className="font-bold text-gray-800 dark:text-white">Recuperare PIN</h3>
                             <p className="text-sm text-gray-500 dark:text-gray-400">Introduceți email-ul asociat contului.</p>
                         </div>
@@ -291,14 +345,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                                 type="email"
                                 value={resetEmail}
                                 onChange={(e) => setResetEmail(e.target.value)}
-                                className="w-full p-2.5 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 transition-all"
+                                className="w-full p-2.5 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 transition-all"
                                 placeholder="nume@companie.ro"
                             />
                         </div>
 
                         <button
                             type="submit"
-                            className="w-full bg-blue-600 dark:bg-blue-700 text-white p-3 rounded-lg font-medium hover:bg-blue-700 dark:hover:bg-blue-800 transition-all shadow-lg shadow-blue-200 dark:shadow-blue-900/20 mt-2"
+                            className="w-full bg-emerald-600 dark:bg-emerald-700 text-white p-3 rounded-lg font-medium hover:bg-emerald-700 dark:hover:bg-emerald-800 transition-all shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20 mt-2"
                         >
                             Solicită Resetare
                         </button>
@@ -306,7 +360,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                 )}
 
                 <div className="mt-8 text-center text-xs text-gray-400 dark:text-gray-600">
-                    &copy; 2024 PontajGroup Enterprise. Secure Access.
+                    &copy; 2024 Bioeel Enterprise. Secure Access.
                 </div>
             </div>
         </div>

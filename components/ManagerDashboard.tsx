@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { User, Timesheet, LeaveRequest, CorrectionRequest, BreakStatus, LeaveStatus, ShiftStatus, Company, Office, BreakConfig, LeaveConfig, Holiday, Role } from '../types';
-import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight, Slash, LogIn, LogOut, PartyPopper, Moon, Sun, XCircle, History, Download, BarChart3 } from 'lucide-react';
+import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight, Slash, LogIn, LogOut, PartyPopper, Moon, Sun, XCircle, History, Download, BarChart3, Search } from 'lucide-react';
 import TimesheetList from './TimesheetList';
 import LeaveCalendarReport from './LeaveCalendarReport';
 
@@ -12,6 +12,7 @@ interface ManagerDashboardProps {
     leaves: LeaveRequest[];
     correctionRequests: CorrectionRequest[];
     companies: Company[];
+    departments: import('../types').Department[];
     offices: Office[];
     breakConfigs?: BreakConfig[];
     leaveConfigs: LeaveConfig[];
@@ -25,12 +26,14 @@ interface ManagerDashboardProps {
 }
 
 const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
-    users, currentUser, timesheets, leaves, correctionRequests, companies, offices, breakConfigs = [], leaveConfigs, holidays,
+    users, currentUser, timesheets, leaves, correctionRequests, companies, departments, offices, breakConfigs = [], leaveConfigs, holidays,
     canViewAllCompanies, onApproveLeave, onReject, onApproveBreak, onApproveCorrection, onOpenTimesheetModal
 }) => {
     // Added 'corrections' and 'reports' to activeTab state
     const [activeTab, setActiveTab] = useState<'status' | 'history' | 'leaves' | 'breaks' | 'corrections' | 'calendar' | 'reports'>('status');
     const [selectedTeamCompany, setSelectedTeamCompany] = useState<string>('ALL');
+    const [selectedDepartment, setSelectedDepartment] = useState<string>('ALL');
+    const [searchQuery, setSearchQuery] = useState('');
     const [dashboardDate, setDashboardDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
     // Reporting State
@@ -54,14 +57,24 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
         setDashboardDate(current.toISOString().split('T')[0]);
     }
 
+    const isOnlyPontator = currentUser.roles.includes(Role.PONTATOR) && !currentUser.roles.includes(Role.MANAGER) && !currentUser.roles.includes(Role.ADMIN) && !currentUser.roles.includes(Role.HR);
+
     // --- FILTER DATA ---
     const teamUsers = users.filter(u => {
+        if (isOnlyPontator) {
+            return u.timekeeperId === currentUser.id;
+        }
+
         if (canViewAllCompanies) {
             if (selectedTeamCompany !== 'ALL' && u.companyId !== selectedTeamCompany) return false;
-            return true;
         } else {
-            return u.companyId === currentUser.companyId;
+            if (u.companyId !== currentUser.companyId) return false;
         }
+
+        if (selectedDepartment !== 'ALL' && u.departmentId !== selectedDepartment) return false;
+        if (searchQuery && !u.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+
+        return true;
     });
 
     // 1. LEAVES LOGIC
@@ -112,7 +125,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
     const formatLocation = (matchedOfficeId?: string, distance?: number): { text: string, color: string } => {
         if (matchedOfficeId) {
             const officeName = offices.find(o => o.id === matchedOfficeId)?.name || 'Sediu';
-            return { text: `${officeName}`, color: 'text-blue-600' };
+            return { text: `${officeName}`, color: 'text-emerald-600' };
         }
         if (distance !== undefined) {
             const color = distance > 500 ? 'text-orange-600' : 'text-gray-500';
@@ -269,7 +282,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                 statusColor = 'bg-orange-100 text-orange-700 border-orange-200';
             } else {
                 status = 'COMPLETED';
-                statusColor = 'bg-blue-50 text-blue-700 border-blue-100';
+                statusColor = 'bg-emerald-50 text-emerald-700 border-emerald-100';
             }
 
             // 1. Clock In Event
@@ -347,8 +360,8 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                 <div className="flex flex-wrap gap-3 items-center">
                     {/* Sub-Tabs Navigation */}
                     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-1 flex gap-1 shadow-sm overflow-x-auto transition-colors">
-                        <button onClick={() => setActiveTab('status')} className={`px-3 py-1.5 rounded text-xs font-bold transition whitespace-nowrap ${activeTab === 'status' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>Status Echipă</button>
-                        <button onClick={() => setActiveTab('history')} className={`px-3 py-1.5 rounded text-xs font-bold transition whitespace-nowrap ${activeTab === 'history' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>Istoric</button>
+                        <button onClick={() => setActiveTab('status')} className={`px-3 py-1.5 rounded text-xs font-bold transition whitespace-nowrap ${activeTab === 'status' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>Status Echipă</button>
+                        <button onClick={() => setActiveTab('history')} className={`px-3 py-1.5 rounded text-xs font-bold transition whitespace-nowrap ${activeTab === 'history' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>Istoric</button>
                         <button onClick={() => setActiveTab('leaves')} className={`px-3 py-1.5 rounded text-xs font-bold transition whitespace-nowrap flex items-center gap-1 ${activeTab === 'leaves' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
                             Concedii {teamPendingLeaves.length > 0 && <span className="bg-purple-500 dark:bg-purple-600 text-white rounded-full px-1.5 text-[9px]">{teamPendingLeaves.length}</span>}
                         </button>
@@ -364,13 +377,31 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                         <button onClick={() => setActiveTab('calendar')} className={`px-3 py-1.5 rounded text-xs font-bold transition whitespace-nowrap ${activeTab === 'calendar' ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}>Calendar</button>
                     </div>
 
-                    {/* Company Filter (if applicable) */}
-                    {canViewAllCompanies && (
-                        <select value={selectedTeamCompany} onChange={(e) => setSelectedTeamCompany(e.target.value)} className="text-sm border border-gray-200 dark:border-gray-800 rounded-lg p-2 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 outline-none focus:ring-2 focus:ring-blue-500 transition-colors">
-                            <option value="ALL">Toate Companiile</option>
-                            {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {/* Filters (Search, Department, Company) */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                            <input 
+                                type="text" 
+                                placeholder="Caută angajat..." 
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="pl-9 pr-3 py-2 w-48 text-sm border border-gray-200 dark:border-gray-800 rounded-lg bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 outline-none focus:ring-2 focus:ring-emerald-500 transition-colors"
+                            />
+                        </div>
+                        
+                        <select value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)} className="text-sm border border-gray-200 dark:border-gray-800 rounded-lg p-2 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 outline-none focus:ring-2 focus:ring-emerald-500 transition-colors">
+                            <option value="ALL">Toate Departamentele</option>
+                            {departments.filter(d => selectedTeamCompany === 'ALL' || d.companyId === selectedTeamCompany).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                         </select>
-                    )}
+
+                        {canViewAllCompanies && (
+                            <select value={selectedTeamCompany} onChange={(e) => { setSelectedTeamCompany(e.target.value); setSelectedDepartment('ALL'); }} className="text-sm border border-gray-200 dark:border-gray-800 rounded-lg p-2 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 outline-none focus:ring-2 focus:ring-emerald-500 transition-colors">
+                                <option value="ALL">Toate Companiile</option>
+                                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -413,7 +444,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                     <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden transition-colors">
                         <div className="bg-slate-50 dark:bg-gray-800 px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                             <h3 className="font-bold text-slate-800 dark:text-gray-200 text-sm flex items-center gap-2">
-                                <Users size={16} className="text-blue-500 dark:text-blue-400" /> Status Echipă - {new Date(dashboardDate).toLocaleDateString('ro-RO')}
+                                <Users size={16} className="text-emerald-500 dark:text-emerald-400" /> Status Echipă - {new Date(dashboardDate).toLocaleDateString('ro-RO')}
                             </h3>
                             {/* Date Controls for Live View Context */}
                             <div className="flex items-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-0.5">
@@ -491,7 +522,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3 text-right align-top">
-                                                <button onClick={() => onOpenTimesheetModal(null, user.id)} className="text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-blue-50 transition"><PlusCircle size={18} /></button>
+                                                <button onClick={() => onOpenTimesheetModal(null, user.id)} className="text-gray-400 hover:text-emerald-600 p-1.5 rounded hover:bg-emerald-50 transition"><PlusCircle size={18} /></button>
                                             </td>
                                         </tr>
                                     ))}

@@ -160,13 +160,40 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
             }
         },
 
-        // 4. Balance Column (NEW)
+        // 4. Breaks Column (NEW)
+        {
+            header: 'Pauze',
+            accessor: 'id', // dummy
+            render: (ts: Timesheet) => {
+                if (!ts.breaks || ts.breaks.length === 0) return <span className="text-gray-400 dark:text-gray-600">-</span>;
+                return (
+                    <div className="flex flex-col gap-1">
+                        {ts.breaks.map((b, i) => {
+                            const bStart = new Date(b.startTime).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+                            const bEnd = b.endTime ? new Date(b.endTime).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }) : '...';
+                            const config = breakConfigs.find(bc => bc.id === b.typeId);
+                            const name = config ? config.name : 'Pauză';
+                            const isPending = b.status === BreakStatus.PENDING;
+                            return (
+                                <div key={b.id || i} className="text-xs flex items-center gap-1 bg-gray-50 dark:bg-gray-800 px-1.5 py-0.5 rounded border border-gray-100 dark:border-gray-700">
+                                    <span className="font-medium text-gray-700 dark:text-gray-300">{name}:</span>
+                                    <span className="font-mono text-gray-500 dark:text-gray-400">{bStart}-{bEnd}</span>
+                                    {isPending && <span className="text-[9px] text-orange-500 ml-1">(În curs)</span>}
+                                </div>
+                            );
+                        })}
+                    </div>
+                );
+            }
+        },
+
+        // 5. Balance Column (NEW)
         {
             header: 'Bilanț',
             accessor: 'id', // dummy
             render: (ts: any) => {
                 if (ts.isVirtual) return <span className="text-xs text-gray-400 dark:text-gray-600">-</span>;
-                if (ts.status === ShiftStatus.WORKING || ts.status === ShiftStatus.ON_BREAK) return <span className="text-xs text-blue-500 dark:text-blue-400 italic">În lucru...</span>;
+                if (ts.status === ShiftStatus.WORKING || ts.status === ShiftStatus.ON_BREAK) return <span className="text-xs text-emerald-500 dark:text-emerald-400 italic">În lucru...</span>;
                 const user = users.find(u => u.id === ts.userId);
                 return calculateBalance(ts, user);
             }
@@ -191,7 +218,7 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
                 return (
                     <div className="flex flex-col items-start">
                         {matchedOffice ? (
-                            <span className="bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border border-blue-100 dark:border-blue-800">
+                            <span className="bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 border border-emerald-100 dark:border-emerald-800">
                                 <MapPin size={10} /> {matchedOffice.name}
                             </span>
                         ) : (
@@ -264,7 +291,7 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
                         )}
                         {ts.isHoliday && <span className="text-[9px] bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-1 rounded w-fit border border-purple-200 dark:border-purple-800">Sărbătoare</span>}
                         {isManagerModified && (
-                            <span className="text-[9px] bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 px-1 rounded flex items-center gap-1 w-fit border border-blue-200 dark:border-blue-800" title="Modificat de un superior">
+                            <span className="text-[9px] bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 px-1 rounded flex items-center gap-1 w-fit border border-emerald-200 dark:border-emerald-800" title="Modificat de un superior">
                                 <UserCog size={10} /> MODIFICAT
                             </span>
                         )}
@@ -300,7 +327,7 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
                         {onEditTimesheet && !ts.isVirtual && (
                             <button
                                 onClick={() => onEditTimesheet(ts)}
-                                className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition"
+                                className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded transition"
                                 title={isManagerView ? "Editează" : "Solicită Corecție"}
                             >
                                 <Edit2 size={16} />
@@ -318,7 +345,7 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
     return (
         <div className="space-y-4">
             <h3 className="text-lg font-bold text-gray-800 dark:text-gray-200 flex items-center gap-2">
-                <UserIcon size={20} className="text-blue-600 dark:text-blue-400" />
+                <UserIcon size={20} className="text-emerald-600 dark:text-emerald-400" />
                 Istoric Pontaje {isManagerView ? '(Toată Echipa)' : '(Personal)'}
             </h3>
 

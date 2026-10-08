@@ -63,9 +63,9 @@ const LeaveCalendarReport: React.FC<LeaveCalendarReportProps> = ({ users, leaves
         const holiday = holidays.find(h => h.date === `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
 
         days.push(
-            <div key={day} className={`h-32 border p-1 flex flex-col transition-colors ${isToday ? 'bg-blue-50/30 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' : (isWeekend ? 'bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-800' : 'bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800')} ${holiday ? 'bg-red-50/50 dark:bg-red-900/20 border-red-200 dark:border-red-900/40' : ''}`}>
+            <div key={day} className={`h-32 border p-1 flex flex-col transition-colors ${isToday ? 'bg-emerald-50/30 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' : (isWeekend ? 'bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-800' : 'bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800')} ${holiday ? 'bg-red-50/50 dark:bg-red-900/20 border-red-200 dark:border-red-900/40' : ''}`}>
                 <div className="flex justify-between items-start mb-1 px-1">
-                    <span className={`text-xs font-semibold ${isToday ? 'text-blue-600 dark:text-blue-400' : (holiday || isWeekend ? 'text-gray-400 dark:text-gray-500' : 'text-gray-500 dark:text-gray-400')}`}>{day}</span>
+                    <span className={`text-xs font-semibold ${isToday ? 'text-emerald-600 dark:text-emerald-400' : (holiday || isWeekend ? 'text-gray-400 dark:text-gray-500' : 'text-gray-500 dark:text-gray-400')}`}>{day}</span>
                     {dayLeaves.length > 0 && <span className="text-[10px] text-gray-400 dark:text-gray-500 font-medium">{dayLeaves.length}</span>}
                 </div>
 
@@ -101,7 +101,7 @@ const LeaveCalendarReport: React.FC<LeaveCalendarReportProps> = ({ users, leaves
         <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden transition-colors">
             <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 transition-colors">
                 <h2 className="font-bold text-gray-700 dark:text-gray-100 flex items-center gap-2">
-                    <Calendar className="text-blue-600 dark:text-blue-400" /> Raport Concedii & Absențe
+                    <Calendar className="text-emerald-600 dark:text-emerald-400" /> Raport Concedii & Absențe
                 </h2>
                 <div className="flex items-center gap-4">
                     <div className="flex bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-1 shadow-sm transition-colors">

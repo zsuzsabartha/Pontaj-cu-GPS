@@ -6,8 +6,9 @@ import {
     User, Timesheet, LeaveRequest, CorrectionRequest,
     ShiftStatus, LeaveStatus, BreakStatus, Role,
     Coordinates, Office, Break, BreakConfig, LeaveConfig,
-    WorkSchedule, DailySchedule
+    WorkSchedule, DailySchedule, Department
 } from '../types';
+import { sendLeaveEmailViaGraph } from '../services/graphService';
 
 interface TimesheetManagerProps {
     currentUser: User | null;
@@ -20,6 +21,7 @@ interface TimesheetManagerProps {
     correctionRequests: CorrectionRequest[];
     setCorrectionRequests: React.Dispatch<React.SetStateAction<CorrectionRequest[]>>;
     offices: Office[];
+    departments: Department[];
     leaveConfigs: LeaveConfig[];
     workSchedules: WorkSchedule[];
     schedulePlans: DailySchedule[];
@@ -32,7 +34,7 @@ export const useTimesheetManager = ({
     currentUser, users, setUsers, timesheets, setTimesheets,
     leaves, setLeaves,
     correctionRequests, setCorrectionRequests,
-    offices, leaveConfigs, workSchedules, schedulePlans, setSchedulePlans,
+    offices, departments, leaveConfigs, workSchedules, schedulePlans, setSchedulePlans,
     setIsGlobalLoading, fetchAllData
 }: TimesheetManagerProps) => {
 
@@ -102,13 +104,13 @@ export const useTimesheetManager = ({
         }
     }, [currentUser, schedulePlans, workSchedules, setTimesheets, setIsGlobalLoading]);
 
-    const handleClockOut = useCallback(async (loc: Coordinates, activeTs: Timesheet | null) => {
+    const handleClockOut = useCallback(async (loc: Coordinates, activeTs: Timesheet | null, note?: string) => {
         if (!currentUser || !activeTs) return;
         setIsGlobalLoading(true);
         try {
             const { distance: endDist } = findNearestOffice(loc, offices);
             const updatedTs: Timesheet = {
-                ...activeTs, endTime: new Date().toISOString(), status: ShiftStatus.COMPLETED, endLocation: loc, endDistanceToOffice: endDist
+                ...activeTs, endTime: new Date().toISOString(), status: ShiftStatus.COMPLETED, endLocation: loc, endDistanceToOffice: endDist, notes: note || activeTs.notes
             };
             await SQLService.upsertTimesheet(updatedTs);
             setTimesheets(prev => prev.map(t => t.id === activeTs.id ? updatedTs : t));
@@ -185,12 +187,31 @@ export const useTimesheetManager = ({
             };
             await SQLService.upsertLeave(newLeave);
             setLeaves(prev => [newLeave, ...prev]);
+
+            // Try sending email to manager
+            try {
+                const dept = departments.find(d => d.id === currentUser.departmentId);
+                let targetEmail = '';
+                if (dept && dept.managerId) {
+                    const manager = users.find(u => u.id === dept.managerId);
+                    if (manager && manager.email) targetEmail = manager.email;
+                }
+                
+                if (targetEmail) {
+                    await sendLeaveEmailViaGraph(targetEmail, currentUser.name, newLeave);
+                } else {
+                    console.warn("Niciun manager setat pentru departament, emailul nu a fost trimis.");
+                }
+            } catch (emailErr) {
+                console.error("Eroare la trimiterea mail-ului MSAL", emailErr);
+            }
+
         } catch (e) {
             alert("Nu s-a putut trimite cererea. Server offline?");
         } finally {
             setIsGlobalLoading(false);
         }
-    }, [currentUser, setLeaves, setIsGlobalLoading]);
+    }, [currentUser, setLeaves, setIsGlobalLoading, departments, users]);
 
 
     const handleCreateUser = useCallback(async (newUser: User) => {

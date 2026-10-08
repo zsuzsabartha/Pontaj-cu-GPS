@@ -1,10 +1,11 @@
 
 import React, { useState } from 'react';
 import { User, Role, Company, Department, Office, WorkSchedule, Timesheet, LeaveRequest, CorrectionRequest, ShiftStatus, LeaveStatus } from '../types';
-import { UserPlus, ShieldAlert, Database, RefreshCw, Mail, Eye, AlertTriangle, BellRing, Upload, Edit2, X, Save, Wand2, Users, FileText, Download, Briefcase, Building, Clock, MapPin, CalendarClock } from 'lucide-react';
+import { UserPlus, ShieldAlert, Database, RefreshCw, Mail, Eye, AlertTriangle, BellRing, Upload, Edit2, X, Save, Wand2, Users, FileText, Download, Briefcase, Building, Clock, MapPin, CalendarClock, DownloadCloud, UploadCloud } from 'lucide-react';
 import UserValidationModal from './UserValidationModal';
 import { API_CONFIG, HOLIDAYS_RO, INITIAL_LEAVE_CONFIGS } from '../constants';
 import SmartTable, { Column } from './SmartTable';
+import { SQLService } from '../services/sqlService';
 
 interface AdminUserManagementProps {
     users: User[];
@@ -16,10 +17,19 @@ interface AdminUserManagementProps {
     onCreateUser: (user: User) => void;
     onUpdateUser: (user: User) => void;
     onBulkImport?: (timesheets: Timesheet[], leaves: LeaveRequest[], corrections: CorrectionRequest[]) => void;
+    defaultCompanyId?: string | null;
+    defaultDepartmentId?: string | null;
+    onRefreshData?: () => Promise<void>;
 }
 
-const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, companies, departments, offices, workSchedules, onValidateUser, onCreateUser, onUpdateUser, onBulkImport }) => {
-    const [activeSubTab, setActiveSubTab] = useState<'pending' | 'create' | 'import' | 'inactive' | 'generator'>('pending');
+const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ 
+    users, companies, departments, offices, workSchedules, 
+    onValidateUser, onCreateUser, onUpdateUser, onBulkImport,
+    defaultCompanyId, defaultDepartmentId, onRefreshData
+}) => {
+    const [activeSubTab, setActiveSubTab] = useState<'pending' | 'create' | 'import' | 'inactive' | 'generator'>(
+        defaultCompanyId ? 'create' : 'pending'
+    );
     const [isDbSyncing, setIsDbSyncing] = useState(false);
     const [dbStatus, setDbStatus] = useState<'connected' | 'error'>('connected');
     const [isGenerating, setIsGenerating] = useState(false);
@@ -31,7 +41,10 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
     const [generatedData, setGeneratedData] = useState<{ timesheets: Timesheet[], leaves: LeaveRequest[], corrections: CorrectionRequest[] } | null>(null);
 
     const [newUser, setNewUser] = useState({
-        name: '', email: '', erpId: '', companyId: companies[0]?.id || '', departmentId: '', assignedOfficeId: '',
+        name: '', email: '', erpId: '', 
+        companyId: defaultCompanyId || companies[0]?.id || '', 
+        departmentId: defaultDepartmentId || '', 
+        assignedOfficeId: '',
         contractHours: 8, roles: [Role.EMPLOYEE] as Role[], requiresGPS: true, birthDate: '', shareBirthday: false,
         mainScheduleId: '', alternativeScheduleIds: [] as string[]
     });
@@ -39,6 +52,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
     const pendingUsers = users.filter(u => !u.isValidated);
     const inactiveUsers = users.filter(u => u.isValidated && !u.lastLoginDate && u.employmentStatus === 'ACTIVE');
     const activeListUsers = users.filter(u => u.isValidated);
+    const pontators = users.filter(u => u.roles.includes(Role.PONTATOR));
 
     const getStatusLabel = (status?: string) => {
         switch (status) {
@@ -69,10 +83,18 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
             assignedOfficeId: newUser.assignedOfficeId || undefined, contractHours: newUser.contractHours, roles: newUser.roles,
             authType: 'PIN', pin: Math.floor(1000 + Math.random() * 9000).toString(), isValidated: true, requiresGPS: newUser.requiresGPS,
             avatarUrl: `https://ui-avatars.com/api/?name=${newUser.name}&background=random`, mainScheduleId: newUser.mainScheduleId || (workSchedules[0]?.id || ''),
-            alternativeScheduleIds: newUser.alternativeScheduleIds, birthDate: newUser.birthDate || undefined, shareBirthday: newUser.shareBirthday, employmentStatus: 'ACTIVE'
+            alternativeScheduleIds: newUser.alternativeScheduleIds, birthDate: newUser.birthDate || undefined, shareBirthday: newUser.shareBirthday, employmentStatus: 'ACTIVE', timekeeperId: (newUser as any).timekeeperId
         };
         onCreateUser(user);
         alert(`User creat! PIN: ${user.pin}`);
+        
+        // Reset form
+        setNewUser({
+            name: '', email: '', erpId: '', companyId: companies[0]?.id || '', departmentId: '', assignedOfficeId: '',
+            contractHours: 8, roles: [Role.EMPLOYEE] as Role[], requiresGPS: true, birthDate: '', shareBirthday: false,
+            mainScheduleId: '', alternativeScheduleIds: [] as string[]
+        });
+        setActiveSubTab('inactive'); // Since they are immediately validated, they go to active/inactive list, not pending. We can just send them to 'inactive' or 'pending' view
     };
 
     // Toggle helper for edit modal
@@ -315,7 +337,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
         { header: 'ID ERP', accessor: 'erpId', render: (u) => <span className="font-mono text-xs bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-2 py-1 rounded transition-colors">{u.erpId || '-'}</span> },
         { header: 'Companie', accessor: (u) => <span className="text-gray-700 dark:text-gray-300 transition-colors">{companies.find(c => c.id === u.companyId)?.name || '-'}</span> },
         { header: 'Status', accessor: 'employmentStatus', render: (u) => getStatusLabel(u.employmentStatus) },
-        { header: 'Acțiuni', accessor: 'id', render: (u) => <button onClick={() => setEditingUser(u)} className="text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 p-2 transition-colors"><Edit2 size={16} /></button> }
+        { header: 'Acțiuni', accessor: 'id', render: (u) => <button onClick={() => setEditingUser(u)} className="text-gray-400 dark:text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 p-2 transition-colors"><Edit2 size={16} /></button> }
     ];
 
     return (
@@ -326,8 +348,8 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
             </div>
 
             <div className="flex gap-4 border-b border-gray-200 dark:border-gray-800 pb-2 overflow-x-auto transition-colors">
-                <button onClick={() => setActiveSubTab('pending')} className={`pb-2 px-1 text-sm font-medium transition-colors ${activeSubTab === 'pending' ? 'border-b-2 border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>Listă Utilizatori</button>
-                <button onClick={() => setActiveSubTab('create')} className={`pb-2 px-1 text-sm font-medium transition-colors ${activeSubTab === 'create' ? 'border-b-2 border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>Creare User</button>
+                <button onClick={() => setActiveSubTab('pending')} className={`pb-2 px-1 text-sm font-medium transition-colors ${activeSubTab === 'pending' ? 'border-b-2 border-emerald-600 text-emerald-600 dark:text-emerald-400 dark:border-emerald-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>Listă Utilizatori</button>
+                <button onClick={() => setActiveSubTab('create')} className={`pb-2 px-1 text-sm font-medium transition-colors ${activeSubTab === 'create' ? 'border-b-2 border-emerald-600 text-emerald-600 dark:text-emerald-400 dark:border-emerald-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>Sincronizare BioeelAuth</button>
                 <button onClick={() => setActiveSubTab('generator')} className={`pb-2 px-1 text-sm font-medium flex items-center gap-1 transition-colors ${activeSubTab === 'generator' ? 'border-b-2 border-purple-600 text-purple-600 dark:text-purple-400 dark:border-purple-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}><Wand2 size={14} /> Generator 2025</button>
             </div>
 
@@ -375,19 +397,54 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                             ))}
                         </div>
                     )}
+                    {activeSubTab === 'create' && (
+                <div className="bg-white dark:bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 max-w-2xl transition-colors">
+                    <h3 className="font-bold text-gray-800 dark:text-gray-100 mb-2 flex items-center gap-2">
+                        <RefreshCw size={20} className="text-emerald-600 dark:text-emerald-400" /> Sincronizare Director Angajați (BioeelAuth)
+                    </h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                        Gestiunea utilizatorilor este acum centralizată. Aplicația de Pontaj se sincronizează automat cu baza de date <strong>BioeelAuth</strong> (REST API). Nu mai este necesară crearea manuală a angajaților în Pontaj.
+                    </p>
+                    
+                    <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900 p-4 rounded-lg mb-6">
+                        <h4 className="font-bold text-emerald-800 dark:text-emerald-400 text-sm mb-2 flex items-center gap-1">
+                            <Layers size={16} /> Ce date se importă/actualizează?
+                        </h4>
+                        <ul className="list-disc list-inside text-xs text-emerald-700 dark:text-emerald-500 space-y-1">
+                            <li>Datele personale de bază: Nume, Email, ID ERP (Marca).</li>
+                            <li>Afilierile de companie și departamentele angajaților.</li>
+                            <li>Statusul contului (angajații marcați inactivi în BioeelAuth sunt suspendați instantaneu).</li>
+                            <li>Setările specifice de pontaj (Roluri, Reguli GPS, Programe) rămân configurabile local.</li>
+                        </ul>
+                    </div>
+
+                    <button
+                        onClick={async () => {
+                            setIsDbSyncing(true);
+                            try {
+                                const res = await SQLService.syncUsers();
+                                if (res.success) {
+                                    alert(`Sincronizare finalizată cu succes! S-au actualizat ${res.count} utilizatori.`);
+                                    if (onRefreshData) {
+                                        await onRefreshData();
+                                    }
+                                } else {
+                                    alert("Eroare la sincronizare: " + res.error);
+                                }
+                            } catch (e: any) {
+                                alert("Eroare de rețea la sincronizare: " + e.message);
+                            } finally {
+                                setIsDbSyncing(false);
+                            }
+                        }}
+                        disabled={isDbSyncing}
+                        className="w-full bg-emerald-600 dark:bg-emerald-700 hover:bg-emerald-700 dark:hover:bg-emerald-600 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-50"
+                    >
+                        <RefreshCw size={18} className={isDbSyncing ? "animate-spin" : ""} />
+                        {isDbSyncing ? 'Sincronizare în curs...' : 'Sincronizează Acum cu BioeelAuth'}
+                    </button>
                 </div>
             )}
-
-            {activeSubTab === 'create' && (
-                <div className="bg-white dark:bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 max-w-2xl transition-colors">
-                    <h3 className="font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2"><UserPlus size={20} className="text-blue-600 dark:text-blue-400" /> Adaugă Angajat Nou</h3>
-                    <form onSubmit={handleCreateSubmit} className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div><label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Nume</label><input required type="text" value={newUser.name} onChange={e => setNewUser({ ...newUser, name: e.target.value })} className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 outline-none focus:ring-2 focus:ring-blue-500 transition-all" /></div>
-                            <div><label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Email</label><input required type="email" value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })} className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 outline-none focus:ring-2 focus:ring-blue-500 transition-all" /></div>
-                        </div>
-                        <button type="submit" className="w-full bg-blue-600 dark:bg-blue-700 text-white py-2 rounded font-medium hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors">Creează Cont</button>
-                    </form>
                 </div>
             )}
 
@@ -395,8 +452,11 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
             {editingUser && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
                     <div className="bg-white dark:bg-gray-900 rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-gray-200 dark:border-gray-800 transition-colors">
-                        <div className="bg-blue-600 dark:bg-blue-700 p-4 flex justify-between items-center text-white shrink-0">
-                            <h3 className="font-bold text-lg flex items-center gap-2"><Edit2 size={20} /> Editare Utilizator</h3>
+                        <div className="bg-emerald-600 dark:bg-emerald-700 p-4 flex justify-between items-center text-white shrink-0">
+                            <h3 className="font-bold text-lg flex items-center gap-2">
+                                <Edit2 size={20} /> Editare Utilizator
+                                {editingUser.source === 'ERP' && <span className="text-xs bg-white text-emerald-700 px-2 py-0.5 rounded font-bold ml-2 shadow-sm shrink-0">📦 Sincronizat ERP</span>}
+                            </h3>
                             <button onClick={() => setEditingUser(null)} className="hover:bg-white/20 p-1 rounded transition-colors"><X size={20} /></button>
                         </div>
 
@@ -408,8 +468,9 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                                     <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Nume Complet</label>
                                     <input
                                         type="text"
-                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-900"
                                         value={editingUser.name}
+                                        disabled={editingUser.source === 'ERP'}
                                         onChange={e => setEditingUser({ ...editingUser, name: e.target.value })}
                                     />
                                 </div>
@@ -417,8 +478,9 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                                     <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Email</label>
                                     <input
                                         type="email"
-                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-900"
                                         value={editingUser.email}
+                                        disabled={editingUser.source === 'ERP'}
                                         onChange={e => setEditingUser({ ...editingUser, email: e.target.value })}
                                     />
                                 </div>
@@ -426,8 +488,9 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                                     <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">ID ERP</label>
                                     <input
                                         type="text"
-                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none font-mono transition-all"
+                                        className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none font-mono transition-all disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-900"
                                         value={editingUser.erpId || ''}
+                                        disabled={editingUser.source === 'ERP'}
                                         onChange={e => setEditingUser({ ...editingUser, erpId: e.target.value })}
                                     />
                                 </div>
@@ -436,7 +499,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                                     <select
                                         value={editingUser.employmentStatus || 'ACTIVE'}
                                         onChange={e => setEditingUser({ ...editingUser, employmentStatus: e.target.value as any })}
-                                        className={`w-full p-2 border dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-bold transition-all ${editingUser.employmentStatus === 'TERMINATED' ? 'text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-400 border-red-200' :
+                                        className={`w-full p-2 border dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none font-bold transition-all ${editingUser.employmentStatus === 'TERMINATED' ? 'text-red-600 bg-red-50 dark:bg-red-900/30 dark:text-red-400 border-red-200' :
                                             editingUser.employmentStatus === 'SUSPENDED' ? 'text-orange-600 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200' : 'text-green-600 bg-green-50 dark:bg-green-900/30 dark:text-green-400 border-green-200'
                                             }`}
                                     >
@@ -454,8 +517,9 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                                     <div>
                                         <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Companie</label>
                                         <select
-                                            className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 transition-colors"
+                                            className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 transition-colors disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-900"
                                             value={editingUser.companyId}
+                                            disabled={editingUser.source === 'ERP'}
                                             onChange={e => setEditingUser({ ...editingUser, companyId: e.target.value, departmentId: '' })}
                                         >
                                             {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -464,8 +528,9 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                                     <div>
                                         <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Departament</label>
                                         <select
-                                            className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 transition-colors"
+                                            className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 transition-colors disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-900"
                                             value={editingUser.departmentId || ''}
+                                            disabled={editingUser.source === 'ERP'}
                                             onChange={e => setEditingUser({ ...editingUser, departmentId: e.target.value })}
                                         >
                                             <option value="">Fără departament</option>
@@ -483,6 +548,17 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                                         >
                                             <option value="">Niciunul (Remote/Mobil)</option>
                                             {offices.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Pontator Alocat</label>
+                                        <select
+                                            className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 transition-colors"
+                                            value={editingUser.timekeeperId || ''}
+                                            onChange={e => setEditingUser({ ...editingUser, timekeeperId: e.target.value })}
+                                        >
+                                            <option value="">Fără pontator (Management direct)</option>
+                                            {pontators.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                         </select>
                                     </div>
                                 </div>
@@ -517,7 +593,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                                             type="checkbox"
                                             checked={editingUser.requiresGPS}
                                             onChange={e => setEditingUser({ ...editingUser, requiresGPS: e.target.checked })}
-                                            className="w-4 h-4 text-blue-600 dark:text-blue-500 rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                                            className="w-4 h-4 text-emerald-600 dark:text-emerald-500 rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
                                         />
                                         <span className="text-sm text-gray-700 dark:text-gray-300">Necesită GPS la pontaj</span>
                                     </div>
@@ -537,7 +613,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                                                     disabled={isMain}
                                                     onClick={() => toggleAltSchedule(sch.id)}
                                                     className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${isMain ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-gray-700 cursor-not-allowed' :
-                                                        isSelected ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800 hover:bg-blue-200 dark:hover:bg-blue-900/50' :
+                                                        isSelected ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-200 dark:hover:bg-emerald-900/50' :
                                                             'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
                                                         }`}
                                                 >
@@ -553,7 +629,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                             {/* Roles */}
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Roluri & Permisiuni</label>
-                                <div className="flex gap-4 flex-wrap bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800 transition-colors">
+                                <div className="flex gap-4 flex-wrap bg-emerald-50 dark:bg-emerald-900/20 p-3 rounded-lg border border-emerald-100 dark:border-emerald-800 transition-colors">
                                     {Object.values(Role).map(role => (
                                         <label key={role} className="flex items-center gap-2 cursor-pointer group">
                                             <input
@@ -565,9 +641,9 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
                                                         : [...editingUser.roles, role];
                                                     setEditingUser({ ...editingUser, roles: newRoles });
                                                 }}
-                                                className="w-4 h-4 text-blue-600 dark:text-blue-500 rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                                                className="w-4 h-4 text-emerald-600 dark:text-emerald-500 rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
                                             />
-                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{role}</span>
+                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{role}</span>
                                         </label>
                                     ))}
                                 </div>
@@ -577,7 +653,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({ users, compan
 
                         <div className="p-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-3 bg-gray-50 dark:bg-gray-800/80 transition-colors">
                             <button onClick={() => setEditingUser(null)} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-gray-700 rounded border border-transparent hover:border-gray-200 dark:hover:border-gray-600 transition-all">Anulează</button>
-                            <button onClick={() => { onUpdateUser(editingUser); setEditingUser(null); }} className="px-6 py-2 bg-blue-600 dark:bg-blue-700 text-white rounded font-bold hover:bg-blue-700 dark:hover:bg-blue-600 shadow-md transition-all">Salvează Modificările</button>
+                            <button onClick={() => { onUpdateUser(editingUser); setEditingUser(null); }} className="px-6 py-2 bg-emerald-600 dark:bg-emerald-700 text-white rounded font-bold hover:bg-emerald-700 dark:hover:bg-emerald-600 shadow-md transition-all">Salvează Modificările</button>
                         </div>
                     </div>
                 </div>

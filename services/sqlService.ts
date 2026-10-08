@@ -79,4 +79,6 @@ export const SQLService = {
 
     // User management
     upsertUser: (user: User) => post('/config/users', [user]),
+    loginPin: (email: string, pin: string) => post('/auth/login-pin', { email, pin }),
+    syncUsers: () => post('/auth/sync-users', {}),
 };

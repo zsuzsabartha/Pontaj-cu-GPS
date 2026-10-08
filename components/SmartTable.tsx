@@ -91,14 +91,14 @@ function SmartTable<T>({ data, columns, pageSize = 10, className = "" }: SmartTa
                 <th key={idx} className={`p-4 font-bold text-gray-600 dark:text-gray-400 uppercase text-xs align-top ${col.width || ''}`}>
                   <div className="flex flex-col gap-2">
                     <div
-                      className={`flex items-center gap-2 ${col.sortable ? 'cursor-pointer hover:text-blue-600 select-none' : ''}`}
+                      className={`flex items-center gap-2 ${col.sortable ? 'cursor-pointer hover:text-emerald-600 select-none' : ''}`}
                       onClick={() => col.sortable && handleSort(idx)}
                     >
                       {col.header}
                       {col.sortable && (
                         <span className="text-gray-400 dark:text-gray-600">
                           {sortConfig?.key === `col-${idx}` ? (
-                            sortConfig.direction === 'asc' ? <ArrowUp size={14} className="text-blue-600 dark:text-blue-400" /> : <ArrowDown size={14} className="text-blue-600 dark:text-blue-400" />
+                            sortConfig.direction === 'asc' ? <ArrowUp size={14} className="text-emerald-600 dark:text-emerald-400" /> : <ArrowDown size={14} className="text-emerald-600 dark:text-emerald-400" />
                           ) : (
                             <ArrowUpDown size={14} />
                           )}
@@ -113,7 +113,7 @@ function SmartTable<T>({ data, columns, pageSize = 10, className = "" }: SmartTa
                           placeholder="Filtru..."
                           value={filters[`col-${idx}`] || ''}
                           onChange={(e) => handleFilterChange(idx, e.target.value)}
-                          className="w-full pl-6 pr-2 py-1 text-xs border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                          className="w-full pl-6 pr-2 py-1 text-xs border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:ring-1 focus:ring-emerald-500 outline-none transition-all"
                         />
                       </div>
                     )}

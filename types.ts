@@ -3,7 +3,8 @@ export enum Role {
   EMPLOYEE = 'EMPLOYEE',
   MANAGER = 'MANAGER',
   HR = 'HR',
-  ADMIN = 'ADMIN'
+  ADMIN = 'ADMIN',
+  PONTATOR = 'PONTATOR'
 }
 
 // Deprecated Enums - kept for backward compatibility if needed, but UI uses Config objects now
@@ -58,10 +59,12 @@ export interface Holiday {
 
 export interface WorkSchedule {
   id: string;
+  erpId?: string;
   name: string; // e.g. "Program Standard", "Tura Noapte"
   startTime: string; // "09:00"
   endTime: string; // "17:00" or "06:00" (if next day)
   crossesMidnight: boolean; // True for night shifts
+  source?: 'ERP' | 'MANUAL';
 }
 
 export interface DailySchedule {
@@ -98,7 +101,8 @@ export interface Department {
   name: string;
   companyId: string;
   managerId?: string; // ID of the manager responsible for this department
-  emailNotifications: boolean; // NEW: Toggle for email alerts
+  emailNotifications?: boolean; // Toggles emails to manager for this dept
+  source?: 'ERP' | 'MANUAL';
 }
 
 export interface Office {
@@ -183,6 +187,11 @@ export interface User {
   id: string;
   erpId?: string; // ID from external ERP system
   name: string;
+  firstName?: string;
+  lastName?: string;
+  hireDate?: string; // YYYY-MM-DD
+  terminationDate?: string; // YYYY-MM-DD
+  source?: 'ERP' | 'MANUAL';
   roles: Role[]; // Changed from single role to array
   companyId: string;
   departmentId?: string;
@@ -203,6 +212,7 @@ export interface User {
   assignedOfficeId?: string; // If user works at a specific office
   lastLoginDate?: string; // ISO String
   employmentStatus?: 'ACTIVE' | 'SUSPENDED' | 'TERMINATED'; // New field for HR status sync
+  timekeeperId?: string; // ID of the PONTATOR responsible for this user
 }
 
 // Offline Action Queue Types

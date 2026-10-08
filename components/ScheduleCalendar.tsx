@@ -138,19 +138,19 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
             <div
                 key={day}
                 onClick={() => handleDayClick(day)}
-                className={`h-32 border p-1.5 relative transition group flex flex-col justify-between ${isManager ? 'hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer' : 'cursor-default'
+                className={`h-32 border p-1.5 relative transition group flex flex-col justify-between ${isManager ? 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20 cursor-pointer' : 'cursor-default'
                     } ${holiday
                         ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-900/40 shadow-inner'
-                        : (isToday ? 'bg-blue-50/30 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' : 'bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800')
+                        : (isToday ? 'bg-emerald-50/30 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' : 'bg-white dark:bg-gray-900 border-gray-100 dark:border-gray-800')
                     }`}
             >
                 {/* Header: Day & Holiday Icon */}
                 <div className="flex justify-between items-start mb-1">
-                    <span className={`text-sm font-bold ${isToday ? 'text-blue-600 dark:text-blue-400' : (holiday ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300')}`}>{day}</span>
+                    <span className={`text-sm font-bold ${isToday ? 'text-emerald-600 dark:text-emerald-400' : (holiday ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300')}`}>{day}</span>
                     {holiday && <PartyPopper size={14} className="text-red-500 animate-pulse" />}
                     {isManager && (
                         <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Edit size={14} className="text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400" />
+                            <Edit size={14} className="text-gray-400 dark:text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400" />
                         </div>
                     )}
                 </div>
@@ -201,10 +201,10 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
                 )}
 
                 {/* --- HOVER DETAILS CARD (Replaces overflowing content) --- */}
-                <div className="absolute left-0 bottom-full mb-1 w-[150%] min-w-[180px] bg-white dark:bg-gray-800 rounded-lg shadow-xl dark:shadow-2xl border border-blue-100 dark:border-blue-900 p-3 hidden group-hover:block z-50 pointer-events-none animate-in fade-in zoom-in-95 duration-100 transition-colors">
+                <div className="absolute left-0 bottom-full mb-1 w-[150%] min-w-[180px] bg-white dark:bg-gray-800 rounded-lg shadow-xl dark:shadow-2xl border border-emerald-100 dark:border-emerald-900 p-3 hidden group-hover:block z-50 pointer-events-none animate-in fade-in zoom-in-95 duration-100 transition-colors">
                     <div className="text-xs font-bold text-gray-800 dark:text-gray-100 border-b dark:border-gray-700 pb-1 mb-2 flex justify-between">
                         <span>{day} {monthName}</span>
-                        {isToday && <span className="text-blue-600 dark:text-blue-400">Azi</span>}
+                        {isToday && <span className="text-emerald-600 dark:text-emerald-400">Azi</span>}
                     </div>
 
                     <div className="space-y-2 text-xs">
@@ -229,7 +229,7 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
                             <p className="text-gray-500 dark:text-gray-400 uppercase text-[9px] font-bold mb-1">Planificat</p>
                             {schedule ? (
                                 <div className="flex items-center gap-2 text-gray-800 dark:text-gray-200">
-                                    <Clock size={12} className="text-blue-500 dark:text-blue-400" />
+                                    <Clock size={12} className="text-emerald-500 dark:text-emerald-400" />
                                     <span className="font-mono">{schedule.startTime} - {schedule.endTime}</span>
                                     <span className="text-[9px] text-gray-400 dark:text-gray-500">({schedule.name})</span>
                                 </div>
@@ -270,7 +270,7 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
                         <button onClick={nextMonth} className="p-1 hover:bg-white dark:hover:bg-gray-700 rounded shadow-sm transition-colors text-gray-600 dark:text-gray-300"><ChevronRight size={18} /></button>
                     </div>
                     <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 capitalize flex items-center gap-2">
-                        <CalendarClock size={20} className="text-blue-600 dark:text-blue-400" /> {monthName}
+                        <CalendarClock size={20} className="text-emerald-600 dark:text-emerald-400" /> {monthName}
                     </h2>
                 </div>
 
@@ -281,7 +281,7 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
                             <select
                                 value={selectedUser}
                                 onChange={(e) => setSelectedUser(e.target.value)}
-                                className="border border-gray-200 dark:border-gray-700 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 transition-colors"
+                                className="border border-gray-200 dark:border-gray-700 rounded-lg p-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 transition-colors"
                             >
                                 {teamUsers.map(u => (
                                     <option key={u.id} value={u.id}>{u.name}</option>
@@ -326,10 +326,10 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
             {selectionModal && targetUserObj && (
                 <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 transition-colors">
                     <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200 border dark:border-gray-800">
-                        <div className="bg-blue-600 dark:bg-blue-700 p-4 text-white flex justify-between items-center transition-colors">
+                        <div className="bg-emerald-600 dark:bg-emerald-700 p-4 text-white flex justify-between items-center transition-colors">
                             <div>
                                 <h3 className="font-bold text-lg">Modificare Program</h3>
-                                <p className="text-xs text-blue-100 dark:text-blue-200 opacity-90">
+                                <p className="text-xs text-emerald-100 dark:text-emerald-200 opacity-90">
                                     {targetUserObj.name} - {selectionModal.dateStr}
                                 </p>
                             </div>
@@ -417,7 +417,7 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
                                                 disabled={isDisabled}
                                                 className={`w-full flex items-center justify-between p-3 rounded-lg border transition-all ${isDisabled
                                                         ? 'bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed grayscale opacity-60'
-                                                        : (isActive ? 'bg-blue-50 dark:bg-blue-900/40 border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-200' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 hover:border-blue-300 dark:hover:border-blue-800 hover:bg-gray-50 dark:hover:bg-gray-700')
+                                                        : (isActive ? 'bg-emerald-50 dark:bg-emerald-900/40 border-emerald-200 dark:border-emerald-700 text-emerald-700 dark:text-emerald-200' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 hover:border-emerald-300 dark:hover:border-emerald-800 hover:bg-gray-50 dark:hover:bg-gray-700')
                                                     }`}
                                             >
                                                 <div className="flex items-center gap-3">
@@ -429,7 +429,7 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
                                                         <p className="text-xs opacity-70 font-mono">{schedule.startTime} - {schedule.endTime}</p>
                                                     </div>
                                                 </div>
-                                                {isActive && <Check size={18} className="text-blue-600 dark:text-blue-400" />}
+                                                {isActive && <Check size={18} className="text-emerald-600 dark:text-emerald-400" />}
                                                 {isDisabled && <span className="text-[10px] italic">Indisponibil</span>}
                                             </button>
                                         );

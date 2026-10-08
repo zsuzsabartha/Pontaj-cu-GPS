@@ -11,11 +11,12 @@ interface CompanyManagementProps {
     onAddCompany: (company: Company) => void;
     onUpdateCompany: (company: Company) => void;
     onDeleteCompany: (id: string) => void;
+    onNavigateToDepartments?: (companyId: string) => void;
 }
 
 const CompanyManagement: React.FC<CompanyManagementProps> = ({
     companies, users, departments, offices,
-    onAddCompany, onUpdateCompany, onDeleteCompany
+    onAddCompany, onUpdateCompany, onDeleteCompany, onNavigateToDepartments
 }) => {
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -88,14 +89,14 @@ const CompanyManagement: React.FC<CompanyManagementProps> = ({
         <div className="space-y-6">
             <div className="flex justify-between items-center transition-colors">
                 <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                    <Briefcase className="text-blue-600 dark:text-blue-400" />
+                    <Briefcase className="text-emerald-600 dark:text-emerald-400" />
                     Management Companii
                 </h2>
                 <div className="flex gap-2">
-                    {isSyncing && <span className="text-xs text-blue-500 dark:text-blue-400 flex items-center gap-1"><RefreshCw size={12} className="animate-spin" /> Syncing SQL...</span>}
+                    {isSyncing && <span className="text-xs text-emerald-500 dark:text-emerald-400 flex items-center gap-1"><RefreshCw size={12} className="animate-spin" /> Syncing SQL...</span>}
                     <button
                         onClick={() => setIsAdding(!isAdding)}
-                        className="bg-blue-600 dark:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 dark:hover:bg-blue-600 flex items-center gap-2 transition-colors shadow-sm"
+                        className="bg-emerald-600 dark:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 dark:hover:bg-emerald-600 flex items-center gap-2 transition-colors shadow-sm"
                     >
                         {isAdding ? 'Anulează' : <><Plus size={16} /> Adaugă Companie</>}
                     </button>
@@ -103,7 +104,7 @@ const CompanyManagement: React.FC<CompanyManagementProps> = ({
             </div>
 
             {isAdding && (
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-blue-100 dark:border-blue-900/30 animate-in fade-in slide-in-from-top-2 transition-colors">
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-emerald-100 dark:border-emerald-900/30 animate-in fade-in slide-in-from-top-2 transition-colors">
                     <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-4">Companie Nouă</h3>
                     <form onSubmit={handleAddSubmit} className="flex gap-4 items-end">
                         <div className="flex-1">
@@ -114,7 +115,7 @@ const CompanyManagement: React.FC<CompanyManagementProps> = ({
                                 type="text"
                                 value={formData.name}
                                 onChange={e => setFormData({ name: e.target.value })}
-                                className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                                 placeholder="Ex: Global Tech Industries"
                             />
                         </div>
@@ -125,59 +126,85 @@ const CompanyManagement: React.FC<CompanyManagementProps> = ({
                 </div>
             )}
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {companies.map(comp => {
-                    const employeeCount = users.filter(u => u.companyId === comp.id).length;
-                    const deptCount = departments.filter(d => d.companyId === comp.id).length;
-                    const isEditing = editingId === comp.id;
+            <div className="overflow-x-auto bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
+                <table className="w-full text-left border-collapse">
+                    <thead className="bg-gray-50 dark:bg-gray-800/50 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase border-b border-gray-200 dark:border-gray-800">
+                        <tr>
+                            <th className="p-3 w-16 text-center">Icon</th>
+                            <th className="p-3">Nume Companie</th>
+                            <th className="p-3">ID ERP</th>
+                            <th className="p-3 text-center">Angajați</th>
+                            <th className="p-3 text-center">Departamente</th>
+                            <th className="p-3 text-right">Acțiuni</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                        {companies.map(comp => {
+                            const employeeCount = users.filter(u => u.companyId === comp.id).length;
+                            const deptCount = departments.filter(d => d.companyId === comp.id).length;
+                            const isEditing = editingId === comp.id;
 
-                    return (
-                        <div key={comp.id} className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md dark:hover:border-gray-600 transition-all relative group">
-                            <div className="flex justify-between items-start mb-4">
-                                <div className="bg-blue-50 dark:bg-blue-900/30 p-3 rounded-lg text-blue-600 dark:text-blue-400 transition-colors">
-                                    <Briefcase size={24} />
-                                </div>
-                                <div className="flex gap-1">
-                                    {isEditing ? (
-                                        <>
-                                            <button onClick={() => saveEdit(comp.id)} className="p-1.5 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30 rounded transition-colors"><Save size={16} /></button>
-                                            <button onClick={() => setEditingId(null)} className="p-1.5 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"><X size={16} /></button>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <button onClick={() => startEdit(comp)} className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors"><Edit2 size={16} /></button>
-                                            <button onClick={() => handleDelete(comp.id)} className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"><Trash2 size={16} /></button>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-
-                            {isEditing ? (
-                                <input
-                                    type="text"
-                                    value={editData.name}
-                                    onChange={e => setEditData({ name: e.target.value })}
-                                    className="w-full p-1 border border-gray-200 dark:border-gray-700 rounded text-lg font-bold text-gray-800 dark:text-gray-100 mb-1 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                />
-                            ) : (
-                                <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1 transition-colors">{comp.name}</h3>
-                            )}
-
-                            <p className="text-xs text-gray-400 dark:text-gray-500 font-mono mb-4">ID: {comp.id}</p>
-
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 p-2 rounded transition-colors">
-                                    <span className="flex items-center gap-2"><Users size={14} className="text-blue-400 dark:text-blue-500" /> Angajați</span>
-                                    <span className="font-bold text-gray-800 dark:text-gray-200">{employeeCount}</span>
-                                </div>
-                                <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 p-2 rounded transition-colors">
-                                    <span className="flex items-center gap-2"><FolderTree size={14} className="text-orange-400 dark:text-orange-500" /> Departamente</span>
-                                    <span className="font-bold text-gray-800 dark:text-gray-200">{deptCount}</span>
-                                </div>
-                            </div>
-                        </div>
-                    )
-                })}
+                            return (
+                                <tr key={comp.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                    <td className="p-3 text-center">
+                                        <div className="bg-emerald-50 dark:bg-emerald-900/30 w-8 h-8 rounded flex items-center justify-center text-emerald-600 dark:text-emerald-400 mx-auto">
+                                            <Briefcase size={16} />
+                                        </div>
+                                    </td>
+                                    <td className="p-3">
+                                        {isEditing ? (
+                                            <input
+                                                type="text"
+                                                value={editData.name}
+                                                onChange={e => setEditData({ name: e.target.value })}
+                                                className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded text-sm font-bold text-gray-800 dark:text-gray-100 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                                            />
+                                        ) : (
+                                            <span className="font-bold text-gray-800 dark:text-gray-100">{comp.name}</span>
+                                        )}
+                                    </td>
+                                    <td className="p-3">
+                                        <span className="text-xs text-gray-500 font-mono bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">{comp.id}</span>
+                                    </td>
+                                    <td className="p-3 text-center">
+                                        <span className="inline-flex items-center gap-1 text-sm font-bold text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded">
+                                            <Users size={14} className="text-emerald-500" /> {employeeCount}
+                                        </span>
+                                    </td>
+                                    <td className="p-3 text-center">
+                                        <span className="inline-flex items-center gap-1 text-sm font-bold text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded">
+                                            <FolderTree size={14} className="text-orange-500" /> {deptCount}
+                                        </span>
+                                    </td>
+                                    <td className="p-3 text-right">
+                                        <div className="flex justify-end gap-1">
+                                            {onNavigateToDepartments && (
+                                                <button
+                                                    onClick={() => onNavigateToDepartments(comp.id)}
+                                                    className="p-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded transition-colors"
+                                                    title="Vezi Departamente"
+                                                >
+                                                    <FolderTree size={16} />
+                                                </button>
+                                            )}
+                                            {isEditing ? (
+                                                <>
+                                                    <button onClick={() => saveEdit(comp.id)} className="p-2 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30 rounded transition-colors"><Save size={16} /></button>
+                                                    <button onClick={() => setEditingId(null)} className="p-2 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"><X size={16} /></button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button onClick={() => startEdit(comp)} className="p-2 text-gray-400 dark:text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded transition-colors"><Edit2 size={16} /></button>
+                                                    <button onClick={() => handleDelete(comp.id)} className="p-2 text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"><Trash2 size={16} /></button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            )
+                        })}
+                    </tbody>
+                </table>
             </div>
         </div>
     );
