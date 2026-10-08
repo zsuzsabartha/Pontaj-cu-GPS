@@ -80,6 +80,7 @@ export default function App() {
         }
     };
 
+
     // --- Theme State ---
     const { theme, toggleTheme } = useTheme();
 

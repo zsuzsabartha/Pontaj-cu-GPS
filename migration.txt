@@ -1,0 +1,22 @@
+
+USE PontajSmart;
+GO
+
+-- 7. USERS (birth_date, share_birthday)
+IF EXISTS(SELECT * FROM sys.tables WHERE name = 'users')
+BEGIN
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'users') AND name = 'birth_date')
+    BEGIN
+        ALTER TABLE users ADD birth_date DATE;
+        PRINT 'Added column birth_date to table users.';
+    END
+    
+    IF NOT EXISTS(SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'users') AND name = 'share_birthday')
+    BEGIN
+        ALTER TABLE users ADD share_birthday BIT DEFAULT 0;
+        PRINT 'Added column share_birthday to table users.';
+    END
+END
+GO
+
+PRINT 'Database structure updated.';

@@ -5,6 +5,7 @@ import { z } from 'zod';
 import sql from 'mssql';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { connectDB } from './db.js';
 
@@ -30,14 +31,21 @@ app.use((req, res, next) => {
 const asyncHandler = (fn) => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 
-const toISODate = (d) =>
-  new Date(d).toISOString().split('T')[0];
+const toISODate = (d) => {
+  if (!d) return null;
+  return new Date(d).toISOString().split('T')[0];
+};
 
 /* -------------------- HEALTH -------------------- */
 
 app.get('/api/v1/health', asyncHandler(async (_, res) => {
-  await connectDB();
-  res.json({ status: 'ONLINE', version: '37' });
+  try {
+    const pool = await connectDB();
+    await pool.request().query('SELECT 1');
+    res.json({ status: 'ONLINE', db: 'CONNECTED', version: '37' });
+  } catch (e) {
+    res.status(503).json({ status: 'OFFLINE', error: e.message });
+  }
 }));
 
 app.get('/api/v1/ping', (_, res) => {
@@ -174,13 +182,14 @@ app.get('/api/v1/config/users', asyncHandler(async (req, res) => {
 app.post('/api/v1/config/users', asyncHandler(async (req, res) => {
     await handleConfigSync('users', req.body, (u) => ({
         query: `
-            INSERT INTO users (id, erp_id, company_id, department_id, assigned_office_id, main_schedule_id, name, email, auth_type, roles, contract_hours, is_validated, requires_gps, employment_status, timekeeper_id, first_name, last_name, hire_date, termination_date, source) 
-            VALUES (@id, @erpId, @cid, @did, @oid, @sid, @name, @email, @auth, @roles, @hours, @val, @gps, @status, @timekeeperId, @firstName, @lastName, @hireDate, @terminationDate, @source)
+            INSERT INTO users (id, erp_id, company_id, department_id, assigned_office_id, main_schedule_id, name, email, auth_type, roles, contract_hours, is_validated, requires_gps, employment_status, timekeeper_id, first_name, last_name, hire_date, termination_date, source, alternative_schedule_ids) 
+            VALUES (@id, @erpId, @cid, @did, @oid, @sid, @name, @email, @auth, @roles, @hours, @val, @gps, @status, @timekeeperId, @firstName, @lastName, @hireDate, @terminationDate, @source, @altSched)
         `,
         params: {
             id: u.id, erpId: u.erpId || null, cid: u.companyId || null, did: u.departmentId || null, oid: u.assignedOfficeId || null, sid: u.mainScheduleId || null,
             name: u.name, email: u.email, auth: u.authType, roles: JSON.stringify(u.roles), hours: u.contractHours, val: u.isValidated?1:0, gps: u.requiresGPS?1:0, status: u.employmentStatus, timekeeperId: u.timekeeperId || null,
-            firstName: u.firstName || null, lastName: u.lastName || null, hireDate: u.hireDate || null, terminationDate: u.terminationDate || null, source: u.source || 'MANUAL'
+            firstName: u.firstName || null, lastName: u.lastName || null, hireDate: u.hireDate || null, terminationDate: u.terminationDate || null, source: u.source || 'MANUAL',
+            altSched: JSON.stringify(u.alternativeScheduleIds || [])
         }
     }));
     res.json({ success: true });
@@ -270,7 +279,6 @@ app.get('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
         if (r.bid) {
             map.get(r.id).breaks.push({
                 id: r.bid, typeId: r.type_id, 
-                // Fallback to config name if available, else use saved snapshot, else default
                 typeName: r.config_name || r.type_name || 'Unknown Break',
                 startTime: r.bstart, endTime: r.bend, status: r.bstatus, managerNote: r.manager_note
             });
@@ -285,6 +293,16 @@ app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
     await transaction.begin();
     try {
         for (const t of req.body) {
+            const dupCheck = await transaction.request()
+                .input('uid', t.userId)
+                .input('date', t.date)
+                .input('id', t.id)
+                .query(`SELECT id FROM timesheets WHERE user_id = @uid AND date = @date AND id != @id`);
+
+            if (dupCheck.recordset.length > 0) {
+                 throw new Error(`Data Constraint Violation: User ${t.userId} already has a timesheet on ${t.date}`);
+            }
+
             await transaction.request().input('id', t.id).query('DELETE FROM timesheets WHERE id = @id');
             await transaction.request().input('id', t.id).query('DELETE FROM breaks WHERE timesheet_id = @id');
 
@@ -314,6 +332,9 @@ app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
         res.json({ success: true });
     } catch(e) {
         await transaction.rollback();
+        if (e.message.includes('Data Constraint Violation')) {
+            throw new Error(e.message); 
+        }
         throw e;
     }
 }));
@@ -387,7 +408,6 @@ app.delete('/api/v1/corrections/:id', asyncHandler(async (req, res) => {
 app.post('/api/v1/erp/process-queue', asyncHandler(async (req, res) => {
     const pool = await connectDB();
     
-    // Fetch pending from the Central Integration Database (Bioeel_Integration)
     const pendingReq = await pool.request().query(`
         SELECT * FROM Bioeel_Integration.dbo.Queue 
         WHERE status = 'pending' 
@@ -481,8 +501,6 @@ app.post('/api/v1/erp/queue', asyncHandler(async (req, res) => {
 
 /* -------------------- BIOEELAUTH INTEGRATION -------------------- */
 
-import os from 'os';
-
 // Disable SSL verification for internal proxy/self-signed certs
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
@@ -503,9 +521,8 @@ async function syncUsersWithBioeelAuth() {
         const employees = data.employees || [];
         console.log(`Fetched ${employees.length} employees from BioeelAuth.`);
 
-        // Sincronizează companiile și departamentele mai întâi
         const companies = new Set();
-        const departments = new Map(); // name -> companyCode
+        const departments = new Map();
 
         for (const emp of employees) {
             if (emp.CompanieCode) {
@@ -516,7 +533,6 @@ async function syncUsersWithBioeelAuth() {
             }
         }
 
-        // Asigură existența companiilor în baza de date
         for (const compCode of companies) {
             const check = await pool.request().input('id', compCode).query('SELECT 1 FROM companies WHERE id = @id');
             if (check.recordset.length === 0) {
@@ -527,7 +543,6 @@ async function syncUsersWithBioeelAuth() {
             }
         }
 
-        // Asigură existența departamentelor
         for (const [deptName, compCode] of departments.entries()) {
             const check = await pool.request().input('name', deptName).query('SELECT id FROM departments WHERE name = @name');
             let deptId;
@@ -541,12 +556,10 @@ async function syncUsersWithBioeelAuth() {
             }
         }
 
-        // Sincronizează utilizatorii
         for (const emp of employees) {
             const email = emp.Email ? emp.Email.toLowerCase().trim() : null;
-            if (!email) continue; // Email-ul este necesar pentru mapare/autentificare Microsoft
+            if (!email) continue;
 
-            // Verifică dacă utilizatorul există în baza de date locală (după email sau erp_id/Marca)
             const check = await pool.request()
                 .input('email', email)
                 .input('erpId', emp.Marca.toString())
@@ -556,13 +569,11 @@ async function syncUsersWithBioeelAuth() {
             const deptCheck = emp.Departament ? await pool.request().input('name', emp.Departament).query('SELECT id FROM departments WHERE name = @name') : null;
             const deptId = deptCheck && deptCheck.recordset.length > 0 ? deptCheck.recordset[0].id : null;
             
-            // Split name
             const nameParts = emp.NumePrenume ? emp.NumePrenume.trim().split(' ') : [];
             const lastName = nameParts[0] || '';
             const firstName = nameParts.slice(1).join(' ') || '';
 
             if (check.recordset.length > 0) {
-                // Update utilizator existent
                 const dbUser = check.recordset[0];
                 await pool.request()
                     .input('id', dbUser.id)
@@ -581,7 +592,6 @@ async function syncUsersWithBioeelAuth() {
                         WHERE id = @id
                     `);
             } else {
-                // Insert utilizator nou
                 const newId = `u-${emp.Marca}`;
                 const defaultRoles = JSON.stringify(['EMPLOYEE']);
                 await pool.request()
@@ -603,7 +613,6 @@ async function syncUsersWithBioeelAuth() {
             }
         }
 
-        // Marcare ca inactivi/terminați pentru cei care nu se mai regăsesc în API
         const activeMarcas = employees.map(emp => emp.Marca.toString());
         if (activeMarcas.length > 0) {
             const localUsers = await pool.request().query("SELECT id, erp_id FROM users WHERE source = 'ERP'");
@@ -633,12 +642,10 @@ app.post('/api/v1/auth/login-pin', asyncHandler(async (req, res) => {
 
     const pool = await connectDB();
     
-    // Căutăm utilizatorul în DB local
     let userResult = await pool.request()
         .input('email', email.toLowerCase().trim())
         .query('SELECT * FROM users WHERE email = @email');
 
-    // Dacă nu este găsit local, încercăm o sincronizare rapidă din BioeelAuth (în caz că e angajat nou)
     if (userResult.recordset.length === 0) {
         console.log(`User ${email} not found locally during PIN login. Triggering sync...`);
         const syncResult = await syncUsersWithBioeelAuth();
@@ -659,7 +666,6 @@ app.post('/api/v1/auth/login-pin', asyncHandler(async (req, res) => {
         return res.status(403).json({ success: false, error: 'Contul dumneavoastră este suspendat sau inactiv.' });
     }
 
-    // Validăm PIN-ul în BioeelAuth
     try {
         const response = await fetch(`${AUTH_API_BASE}/pontaj-check`, {
             method: 'POST',
@@ -673,7 +679,6 @@ app.post('/api/v1/auth/login-pin', asyncHandler(async (req, res) => {
         const data = await response.json();
         
         if (response.ok && data.success) {
-            // Mapează utilizatorul din DB local ca să aibă formatul complet de pe frontend
             const mappedUser = {
                 ...user,
                 roles: user.roles ? JSON.parse(user.roles) : [],
@@ -696,7 +701,6 @@ app.post('/api/v1/auth/login-pin', asyncHandler(async (req, res) => {
                 source: user.source
             };
 
-            // Dacă în BioeelAuth utilizatorul are alt status activ, ne asigurăm că e activ și la noi
             if (user.employment_status !== 'ACTIVE') {
                 await pool.request()
                     .input('id', user.id)
@@ -727,11 +731,9 @@ app.post('/api/v1/auth/sync-users', asyncHandler(async (req, res) => {
 /* -------------------- STATIC ASSETS & SPA ROUTING -------------------- */
 
 if (fs.existsSync(distDir)) {
-  // Suport asset-uri statice atât pe /pontaj cât și pe root
   app.use('/pontaj', express.static(distDir));
   app.use(express.static(distDir));
 
-  // Rutare universală SPA pentru orice pagină web (compatibil Express 4 și 5)
   app.use((req, res, next) => {
     if (req.method === 'GET' && !req.path.startsWith('/api')) {
       return res.sendFile(path.join(distDir, 'index.html'));
@@ -746,7 +748,10 @@ app.use((err, req, res, _) => {
   if (err instanceof z.ZodError) {
     return res.status(400).json({ error: 'Validation Error', details: err.errors });
   }
-  console.error(err);
+  console.error('Server Error:', err);
+  if (err.message && err.message.includes('Data Constraint Violation')) {
+      return res.status(409).json({ error: 'Duplicate Entry', message: err.message });
+  }
   res.status(500).json({ error: err.message, stack: err.stack });
 });
 
@@ -755,15 +760,11 @@ app.use((err, req, res, _) => {
 const PORT = process.env.PORT || 3005;
 app.listen(PORT, async () => {
     console.log(`Server running on ${PORT}`);
-    
-    // Rulare sincronizare la pornirea serverului
     try {
         await syncUsersWithBioeelAuth();
     } catch (err) {
         console.error("Initial users sync failed on startup:", err);
     }
-    
-    // Programare sincronizare periodică la fiecare 6 ore
     setInterval(async () => {
         try {
             await syncUsersWithBioeelAuth();
