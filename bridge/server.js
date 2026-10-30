@@ -24,7 +24,7 @@ const distDir = path.join(rootDir, 'dist');
 const app = express();
 app.set('trust proxy', 'loopback'); // Nginx runs on the same host; use X-Forwarded-For for req.ip
 const allowedOrigins = [process.env.FRONTEND_URL, 'https://apps.bioeel.ro', 'http://localhost:3000'].filter(Boolean);
-const isAllowedOrigin = (origin) => !origin || allowedOrigins.includes(origin) || /^https:\/\/[a-z0-9-]+\.msappproxy\.net$/i.test(origin);
+const isAllowedOrigin = (origin) => !origin || allowedOrigins.includes(origin) || /^https:\/\/[a-z0-9-]+\.(msappproxy\.net|trycloudflare\.com|cfargotunnel\.com|devtunnels\.ms|bioeel\.ro)$/i.test(origin);
 app.use(cors({ origin: (origin, cb) => cb(null, isAllowedOrigin(origin)), credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 

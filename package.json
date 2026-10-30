@@ -11,7 +11,8 @@
     "test": "node scripts/smoke_test.js",
     "test:auth": "node --test bridge/auth/policy.test.js",
     "test:e2e": "node scripts/e2e_auth_test.mjs",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "tunnel:mobile": "powershell -ExecutionPolicy Bypass -File scripts/start_mobile_tunnel.ps1"
   },
   "dependencies": {
     "@azure/msal-browser": "^5.11.0",

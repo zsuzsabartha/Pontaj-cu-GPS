@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { X, Printer, Copy, Check, Smartphone, ShieldCheck, QrCode } from 'lucide-react';
 import { generateQRMatrix } from '../utils/qr';
 import { showToast } from '../utils/toast';
+import { SQLService } from '../services/sqlService';
 
 interface MobileInstallQRModalProps {
     isOpen: boolean;
@@ -19,6 +20,18 @@ const MobileInstallQRModal: React.FC<MobileInstallQRModalProps> = ({ isOpen, onC
         return localStorage.getItem('pontaj_mobile_qr_url') || DEFAULT_MOBILE_URL;
     });
     const [copied, setCopied] = useState(false);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        SQLService.getSettings()
+            .then((s) => {
+                if (s?.mobileAppUrl) {
+                    setMobileUrl(s.mobileAppUrl);
+                    try { localStorage.setItem('pontaj_mobile_qr_url', s.mobileAppUrl); } catch { /* ignore */ }
+                }
+            })
+            .catch(() => { /* ignore */ });
+    }, [isOpen]);
 
     const matrix = useMemo(() => generateQRMatrix(mobileUrl.trim() || DEFAULT_MOBILE_URL), [mobileUrl]);
     const size = matrix.length;
