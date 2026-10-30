@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { Timesheet, LeaveConfig } from '../types';
+import { Timesheet, LeaveConfig, WorkSchedule } from '../types';
+import { showToast } from '../utils/toast';
 import { MOCK_SCHEDULES, isDateInLockedPeriod } from '../constants';
 import { toLocalDateISO } from '../utils/date';
 import { X, Clock, AlertCircle, CalendarClock, PlusCircle, Lock, Briefcase, Palmtree, Trash2 } from 'lucide-react';
@@ -12,6 +13,7 @@ interface TimesheetEditModalProps {
     isManager: boolean;
     lockedDate: string; // Dynamic locked date
     leaveConfigs?: LeaveConfig[]; // Needed for manager leave injection
+    workSchedules?: WorkSchedule[];
     onSave: (data: {
         tsId?: string,
         date: string,
@@ -51,7 +53,7 @@ const snapToNearestSlot = (isoString?: string): string => {
     return `${h.toString().padStart(2, '0')}:${roundedM}`;
 };
 
-const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose, timesheet, isManager, lockedDate, leaveConfigs = [], onSave, onDelete }) => {
+const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose, timesheet, isManager, lockedDate, leaveConfigs = [], workSchedules, onSave, onDelete }) => {
     const [activeTab, setActiveTab] = useState<'WORK' | 'LEAVE'>('WORK');
     const [date, setDate] = useState('');
 
@@ -104,7 +106,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
         if (isLocked) return;
 
         if (!isManager && !reason) {
-            alert("Motivul este obligatoriu pentru solicitările de corecție.");
+            showToast("Motivul este obligatoriu pentru solicitările de corecție.", 'warning');
             return;
         }
 
@@ -257,7 +259,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
                                         className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none disabled:bg-gray-100 dark:disabled:bg-gray-800/50 transition-all"
                                     >
                                         <option value="">-- Auto Detectat --</option>
-                                        {MOCK_SCHEDULES.map(sch => (
+                                        {(workSchedules && workSchedules.length > 0 ? workSchedules : MOCK_SCHEDULES).map(sch => (
                                             <option key={sch.id} value={sch.id}>{sch.name}</option>
                                         ))}
                                     </select>

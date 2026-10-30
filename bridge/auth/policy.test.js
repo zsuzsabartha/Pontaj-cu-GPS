@@ -144,3 +144,8 @@ test('server-side clock timestamps override client clock for employee punches, p
     assert.equal(mgrEdit.startTime, '2026-10-20T06:00:00.000Z');
     assert.equal(mgrEdit.endTime, '2026-10-20T14:00:00.000Z');
 });
+
+test('server local calendar date uses Europe/Bucharest timezone', () => {
+    // 2026-10-29T22:30:00.000Z is 2026-10-30 00:30 in Bucharest (UTC+2)
+    assert.equal(toServerLocalDateISO(new Date('2026-10-29T22:30:00.000Z')), '2026-10-30');
+});

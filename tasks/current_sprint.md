@@ -17,9 +17,7 @@
 ---
 
 ### ⏳ In Progress
-- [ ] **`UI-203`**: Modern floating toast notifications for clock actions & sync results (3 pts) — *Assignee: Frontend Agent*
-  - Files: `components/shared/`
-  - Status: Investigating toast libraries compatibilities
+*(Niciun task în desfășurare)*
 
 ---
 
@@ -29,6 +27,14 @@
 ---
 
 ### ✅ Done
+- [x] **`UI-203`**: Notificări flotante moderne (Toast) fără dependențe externe în locul `alert()` blocant pentru pontaj, concedii, corecții, nomenclatoare și sincronizare (3 pts) — *Completed 2026-10-30*
+  - Files: `utils/toast.ts`, `components/ToastContainer.tsx`, `App.tsx`, `hooks/useTimesheetManager.ts`, `components/TimesheetEditModal.tsx`, `components/RejectionModal.tsx`, `components/NomenclatorManagement.tsx`, `components/CompanyManagement.tsx`, `components/OfficeManagement.tsx`, `components/AdminUserManagement.tsx`
+- [x] **`FIX-004`**: Restaurare butoane de adăugare și salvare în SQL în `NomenclatorManagement.tsx` (Pauze, Concedii, Programe de Lucru, Zile Libere) și conectarea `workSchedules` reale în `TimesheetEditModal.tsx` (2 pts) — *Completed 2026-10-30*
+  - Files: `components/NomenclatorManagement.tsx`, `components/TimesheetEditModal.tsx`, `App.tsx`
+- [x] **`EMAIL-001`**: Fallback server-side automat pentru emailurile de concediu (`POST /api/v1/email/leave-request`) pentru angajații cu PIN sau fără sesiune Graph activă + formatare `DD.MM.YYYY` (2 pts) — *Completed 2026-10-30*
+  - Files: `services/graphService.ts`, `services/sqlService.ts`
+- [x] **`CLEAN-001`**: Eliminare PIN-uri plaintext și constante moarte din `constants.ts`, extindere sărbători legale RO pentru 2027–2028 și curățare importuri nefolosite (2 pts) — *Completed 2026-10-30*
+  - Files: `constants.ts`, `App.tsx`, `bridge/auth/policy.test.js`
 - [x] **`PERF-001`**: Paginare / filtrare pe interval de date (`?from=...&to=...&userId=...`) + indecși SQL pe `timesheets`, `leave_requests`, `schedule_plans` și `notifications` + fereastră implicită de 90 de zile la încărcare (3 pts) — *Completed 2026-10-30*
   - Files: `bridge/migration.sql`, `bridge/server.js`, `services/sqlService.ts`, `hooks/useAppData.ts`
 - [x] **`PERF-002`**: Eliminare interogări N+1 în `syncUsersWithBioeelAuth` prin pre-încărcarea în memorie a `companies`, `departments` și `users` + creșterea timeout-ului de citire la 15s (2 pts) — *Completed 2026-10-30*

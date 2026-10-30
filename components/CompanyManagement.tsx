@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Company, User, Department, Office } from '../types';
 import { Briefcase, Plus, Edit2, Trash2, Users, Building, FolderTree, Save, X, RefreshCw } from 'lucide-react';
 import { SQLService } from '../services/sqlService';
+import { showToast } from '../utils/toast';
 
 interface CompanyManagementProps {
     companies: Company[];
@@ -30,7 +31,7 @@ const CompanyManagement: React.FC<CompanyManagementProps> = ({
             await SQLService.saveConfigList('companies', updatedList);
         } catch (e) {
             console.error("Sync failed", e);
-            alert("Eroare la salvarea companiilor în baza de date.");
+            showToast("Eroare la salvarea companiilor în baza de date.", 'error');
         } finally {
             setIsSyncing(false);
         }

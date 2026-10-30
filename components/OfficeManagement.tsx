@@ -4,6 +4,7 @@ import { Office, Company, Department, User, Role } from '../types';
 import { Building, MapPin, Trash2, Plus, Navigation, FolderTree, Mail, BellOff, RefreshCw, Edit2, User as UserIcon, Briefcase } from 'lucide-react';
 import { getCurrentLocation } from '../services/geoService';
 import { SQLService } from '../services/sqlService';
+import { showToast } from '../utils/toast';
 
 interface OfficeManagementProps {
     offices: Office[];
@@ -54,7 +55,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({
             await SQLService.saveConfigList(endpoint, data);
         } catch (e) {
             console.error("Sync failed", e);
-            alert("Eroare la salvarea în baza de date.");
+            showToast("Eroare la salvarea în baza de date.", 'error');
         } finally {
             setIsSyncing(false);
         }
@@ -79,7 +80,7 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({
                     longitude: "26.1025"
                 }));
             } else {
-                alert("Vă rugăm să introduceți manual coordonatele sau să activați GPS-ul.");
+                showToast("Vă rugăm să introduceți manual coordonatele sau să activați GPS-ul.", 'warning');
             }
         } finally {
             setLocLoading(false);

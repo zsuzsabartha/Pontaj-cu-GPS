@@ -1,13 +1,30 @@
 import { msalInstance, loginRequest } from "../authConfig";
+import { SQLService } from "./sqlService";
+import { formatDateRO } from "../utils/date";
 
 export const sendLeaveEmailViaGraph = async (
-    managerEmail: string, 
-    employeeName: string, 
+    managerEmail: string,
+    employeeName: string,
     leaveReq: any
 ) => {
+    const startFormatted = formatDateRO(leaveReq.startDate);
+    const endFormatted = formatDateRO(leaveReq.endDate);
+
     try {
         const account = msalInstance.getAllAccounts()[0];
-        if (!account) throw new Error("No Microsoft account found for email sending.");
+        if (!account) {
+            // PIN user or no MSAL session: delegate to server-side email endpoint
+            await SQLService.sendLeaveEmail({
+                leaveId: leaveReq.id,
+                managerEmail,
+                employeeName,
+                typeName: leaveReq.typeName,
+                startDate: startFormatted,
+                endDate: endFormatted,
+                reason: leaveReq.reason
+            });
+            return true;
+        }
 
         const response = await msalInstance.acquireTokenSilent({
             ...loginRequest,
@@ -28,7 +45,7 @@ export const sendLeaveEmailViaGraph = async (
                             <p><strong>${employeeName}</strong> a solicitat un concediu.</p>
                             <ul>
                                 <li><strong>Tip:</strong> ${leaveReq.typeName}</li>
-                                <li><strong>Perioadă:</strong> ${leaveReq.startDate} - ${leaveReq.endDate}</li>
+                                <li><strong>Perioadă:</strong> ${startFormatted} - ${endFormatted}</li>
                                 <li><strong>Observații:</strong> ${leaveReq.reason || 'Niciun motiv specificat'}</li>
                             </ul>
                             <br/>
@@ -63,11 +80,23 @@ export const sendLeaveEmailViaGraph = async (
         if (!fetchResponse.ok) {
             throw new Error(`Graph API error: ${fetchResponse.statusText}`);
         }
-        
-        console.log("Email sent successfully via MSAL Graph API!");
+
         return true;
     } catch (e) {
-        console.error("Error sending email via MSAL:", e);
-        return false;
+        try {
+            await SQLService.sendLeaveEmail({
+                leaveId: leaveReq.id,
+                managerEmail,
+                employeeName,
+                typeName: leaveReq.typeName,
+                startDate: startFormatted,
+                endDate: endFormatted,
+                reason: leaveReq.reason
+            });
+            return true;
+        } catch (fallbackErr) {
+            console.error("Error sending leave notification email:", fallbackErr);
+            return false;
+        }
     }
 };

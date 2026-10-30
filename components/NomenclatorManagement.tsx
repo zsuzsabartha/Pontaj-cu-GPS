@@ -2,9 +2,12 @@
 import React, { useState } from 'react';
 import { BreakConfig, LeaveConfig, Holiday, WorkSchedule } from '../types';
 import { Plus, Trash2, Save, Coffee, FileText, Check, X, CalendarDays, PartyPopper, RefreshCw, Settings, Lock, CalendarClock, Sun, Moon } from 'lucide-react';
-import { API_CONFIG } from '../constants';
+// (SQLService imported below)
+import { toLocalDateISO, formatDateRO } from '../utils/date';
+import { showToast } from '../utils/toast';
 import { SQLService } from '../services/sqlService';
-import { toLocalDateISO } from '../utils/date';
+// (SQLService imported below)
+// (toLocalDateISO imported above)
 
 interface NomenclatorManagementProps {
   breakConfigs: BreakConfig[];
@@ -69,7 +72,7 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
   const saveBreaks = async () => {
     onUpdateBreaks(localBreaks);
     const synced = await saveToSQL('breaks', localBreaks);
-    alert(`Nomenclator Pauze actualizat! ${synced ? '(Sincronizat cu SQL Server)' : '(Doar Local - Bridge Offline)'}`);
+    showToast(`Nomenclator Pauze actualizat! ${synced ? '(Sincronizat cu SQL Server)' : '(Eroare salvare SQL)'}`, synced ? 'success' : 'error');
   };
 
   // --- Leave Handlers ---
@@ -94,7 +97,7 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
   const saveLeaves = async () => {
     onUpdateLeaves(localLeaves);
     const synced = await saveToSQL('leaves', localLeaves);
-    alert(`Nomenclator Concedii actualizat! ${synced ? '(Sincronizat cu SQL Server)' : '(Doar Local - Bridge Offline)'}`);
+    showToast(`Nomenclator Concedii actualizat! ${synced ? '(Sincronizat cu SQL Server)' : '(Eroare salvare SQL)'}`, synced ? 'success' : 'error');
   };
 
   // --- Schedule Handlers ---
@@ -133,7 +136,7 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
   const saveSchedules = async () => {
     onUpdateSchedules(localSchedules);
     const synced = await saveToSQL('schedules', localSchedules);
-    alert(`Programe de Lucru actualizate! ${synced ? '(Sincronizat cu SQL Server)' : '(Eroare salvare SQL)'}`);
+    showToast(`Programe de Lucru actualizate! ${synced ? '(Sincronizat cu SQL Server)' : '(Eroare salvare SQL)'}`, synced ? 'success' : 'error');
   }
 
   // --- Holiday Handlers ---
@@ -157,7 +160,7 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
   const saveHolidays = async () => {
     onUpdateHolidays(localHolidays);
     const synced = await saveToSQL('holidays', localHolidays);
-    alert(`Lista Zilelor Libere a fost actualizată! ${synced ? '(Sincronizat cu SQL Server)' : '(Doar Local - Bridge Offline)'}`);
+    showToast(`Lista Zilelor Libere a fost actualizată! ${synced ? '(Sincronizat cu SQL Server)' : '(Eroare salvare SQL)'}`, synced ? 'success' : 'error');
   };
 
   // --- General Settings Handlers ---
@@ -166,9 +169,9 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
     try {
       await SQLService.saveSettings({ lockedDate: localLockedDate });
       onUpdateLockedDate(localLockedDate);
-      alert(`Setări Generale Actualizate! Luna este închisă până la: ${localLockedDate}`);
+      showToast(`Setări Generale actualizate! Luna este închisă până la: ${formatDateRO(localLockedDate)}`, 'success');
     } catch (e) {
-      alert("Eroare la salvarea setărilor generale în baza de date.");
+      showToast("Eroare la salvarea setărilor generale în baza de date.", 'error');
     } finally {
       setIsSaving(false);
     }
@@ -210,6 +213,12 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
       </div>
 
       <div className="p-6">
+        {activeTab === 'breaks' && (
+          <div className="flex justify-between items-center mb-4">
+            <button onClick={addBreak} className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg text-sm font-bold transition-colors"><Plus size={16} /> Adaugă Tip Pauză</button>
+            <button onClick={saveBreaks} disabled={isSaving} className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold shadow-sm transition-colors disabled:opacity-50">{isSaving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />} Salvează Pauze</button>
+          </div>
+        )}
         {activeTab === 'breaks' && (
           <div className="space-y-4">
             <div className="overflow-x-auto bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
@@ -267,6 +276,12 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
         )}
 
         {activeTab === 'leaves' && (
+          <div className="flex justify-between items-center mb-4">
+            <button onClick={addLeave} className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg text-sm font-bold transition-colors"><Plus size={16} /> Adaugă Tip Concediu</button>
+            <button onClick={saveLeaves} disabled={isSaving} className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold shadow-sm transition-colors disabled:opacity-50">{isSaving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />} Salvează Concedii</button>
+          </div>
+        )}
+        {activeTab === 'leaves' && (
           <div className="space-y-4">
             <div className="overflow-x-auto bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
               <table className="w-full text-left border-collapse">
@@ -319,6 +334,12 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
         )}
 
         {/* SCHEDULES TAB */}
+        {activeTab === 'schedules' && (
+          <div className="flex justify-between items-center mb-4">
+            <button onClick={addSchedule} className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg text-sm font-bold transition-colors"><Plus size={16} /> Adaugă Program</button>
+            <button onClick={saveSchedules} disabled={isSaving} className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold shadow-sm transition-colors disabled:opacity-50">{isSaving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />} Salvează Programe</button>
+          </div>
+        )}
         {activeTab === 'schedules' && (
           <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
             <div className="overflow-x-auto bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800">
@@ -405,6 +426,12 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
           </div>
         )}
 
+        {activeTab === 'holidays' && (
+          <div className="flex justify-between items-center mb-4">
+            <button onClick={addHoliday} className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg text-sm font-bold transition-colors"><Plus size={16} /> Adaugă Zi Liberă</button>
+            <button onClick={saveHolidays} disabled={isSaving} className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold shadow-sm transition-colors disabled:opacity-50">{isSaving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />} Salvează Zile Libere</button>
+          </div>
+        )}
         {activeTab === 'holidays' && (
           <div className="space-y-4 animate-in fade-in slide-in-from-right-4">
             <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-lg border border-purple-100 dark:border-purple-800 transition-colors text-sm text-purple-800 dark:text-purple-300 flex items-center gap-2 mb-4">

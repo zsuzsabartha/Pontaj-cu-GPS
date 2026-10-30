@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, MessageSquareWarning } from 'lucide-react';
+import { showToast } from '../utils/toast';
 
 interface RejectionModalProps {
   isOpen: boolean;
@@ -15,7 +16,7 @@ const RejectionModal: React.FC<RejectionModalProps> = ({ isOpen, onClose, onSubm
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reason.trim()) return alert("Te rog să introduci un motiv pentru a continua.");
+    if (!reason.trim()) return showToast("Te rog să introduci un motiv pentru a continua.", 'warning');
     onSubmit(reason);
     setReason(''); // Reset
   };

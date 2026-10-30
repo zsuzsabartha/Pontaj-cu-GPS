@@ -1,5 +1,7 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import ToastContainer from './components/ToastContainer';
+import { showToast } from './utils/toast';
 import {
     INITIAL_BREAK_CONFIGS,
     INITIAL_LEAVE_CONFIGS,
@@ -42,15 +44,15 @@ import BackendControlPanel from './components/BackendControlPanel';
 import LoginScreen from './components/LoginScreen';
 import TimesheetEditModal from './components/TimesheetEditModal';
 import RejectionModal from './components/RejectionModal';
-import BirthdayWidget from './components/BirthdayWidget';
+// (BirthdayWidget unused in App.tsx)
 import ScheduleCalendar from './components/ScheduleCalendar';
 import CompanyManagement from './components/CompanyManagement';
 import ManagerDashboard from './components/ManagerDashboard';
 import LeaveCalendarReport from './components/LeaveCalendarReport';
 import SmartTable, { Column } from './components/SmartTable';
-import { Users, Settings, LogOut, CheckCircle, XCircle, Building, Clock, UserCog, Database, Server, CalendarRange, Bell, PlusCircle, Briefcase, LayoutList, Palmtree, Slash, Menu, X, Wifi, WifiOff, Mail, ShieldAlert, RefreshCw, AlertTriangle, PlugZap, Sun, Moon } from 'lucide-react';
+import { Users, LogOut, Building, Clock, UserCog, Database, Server, CalendarRange, Bell, PlusCircle, Briefcase, LayoutList, Palmtree, Menu, X, Mail, ShieldAlert, RefreshCw, PlugZap, Sun, Moon } from 'lucide-react';
 import { useMsal } from "@azure/msal-react";
-import { findNearestOffice } from './services/geoService';
+// (findNearestOffice unused in App.tsx)
 import { SQLService } from './services/sqlService';
 import { toLocalDateISO, countWorkingDays, formatDateRO } from './utils/date';
 
@@ -160,13 +162,13 @@ export default function App() {
                         if (canApprove) {
                             if (action === 'approveLeave') {
                                 handleApproveLeave(id);
-                                setTimeout(() => alert("Cererea a fost aprobată din link!"), 500);
+                                setTimeout(() => showToast("Cererea a fost aprobată din link!", 'success'), 500);
                             } else if (action === 'rejectLeave') {
                                 // Defer to let render finish before opening modal
                                 setTimeout(() => setRejectionModal({ isOpen: true, type: 'LEAVE', itemId: id }), 500);
                             }
                         } else {
-                            alert("Nu aveți permisiunea de a aproba/respinge această cerere.");
+                            showToast("Nu aveți permisiunea de a aproba/respinge această cerere.", 'error');
                         }
                     }
                     sessionStorage.removeItem('pontaj_pending_action');
@@ -597,8 +599,11 @@ export default function App() {
             </main>
 
             <LeaveModal isOpen={isLeaveModalOpen} onClose={() => setLeaveModalOpen(false)} leaveConfigs={leaveConfigs} holidays={holidays} lockedDate={lockedDate} onSubmit={handleLeaveSubmit} />
-            <TimesheetEditModal isOpen={editModalData.isOpen} onClose={() => setEditModalData({ isOpen: false, timesheet: null, targetUserId: null })} timesheet={editModalData.timesheet} isManager={hasRole(Role.MANAGER) || hasRole(Role.ADMIN)} lockedDate={lockedDate} leaveConfigs={leaveConfigs} onSave={(data) => handleTimesheetSave(data, editModalData.targetUserId)} onDelete={handleTimesheetDelete} />
+            <TimesheetEditModal isOpen={editModalData.isOpen} onClose={() => setEditModalData({ isOpen: false, timesheet: null, targetUserId: null })} timesheet={editModalData.timesheet} isManager={hasRole(Role.MANAGER) || hasRole(Role.ADMIN)} lockedDate={lockedDate} leaveConfigs={leaveConfigs} workSchedules={workSchedules} onSave={(data) => handleTimesheetSave(data, editModalData.targetUserId)} onDelete={handleTimesheetDelete} />
+// (RejectionModal rendered above)
             <RejectionModal isOpen={rejectionModal.isOpen} onClose={() => setRejectionModal({ ...rejectionModal, isOpen: false })} onSubmit={(reason) => handleConfirmRejection(rejectionModal, reason)} title={rejectionModal.type === 'LEAVE_CANCEL' ? 'Motiv Anulare' : 'Motiv Respingere'} />
+            <ToastContainer />
+// (RejectionModal rendered above)
         </div>
     );
 }

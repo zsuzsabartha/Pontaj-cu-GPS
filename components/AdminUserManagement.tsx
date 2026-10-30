@@ -6,6 +6,7 @@ import UserValidationModal from './UserValidationModal';
 import { API_CONFIG, HOLIDAYS_RO, INITIAL_LEAVE_CONFIGS } from '../constants';
 import SmartTable, { Column } from './SmartTable';
 import { SQLService } from '../services/sqlService';
+import { showToast } from '../utils/toast';
 
 interface AdminUserManagementProps {
     users: User[];
@@ -68,10 +69,10 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
         try {
             await fetch(`${API_CONFIG.BASE_URL}/config/users`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(users) });
             setDbStatus('connected');
-            alert("Sincronizare completă cu baza de date SQL efectuată.");
+            showToast("Sincronizare completă cu baza de date SQL efectuată.", 'success');
         } catch (e) {
             setDbStatus('error');
-            alert("Eroare la sincronizare.");
+            showToast("Eroare la sincronizare.", 'error');
         } finally { setIsDbSyncing(false); }
     };
 
@@ -427,15 +428,15 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                             try {
                                 const res = await SQLService.syncUsers();
                                 if (res.success) {
-                                    alert(`Sincronizare finalizată cu succes! S-au actualizat ${res.count} utilizatori.`);
+                                    showToast(`Sincronizare finalizată cu succes! S-au actualizat ${res.count} utilizatori.`, 'success');
                                     if (onRefreshData) {
                                         await onRefreshData();
                                     }
                                 } else {
-                                    alert("Eroare la sincronizare: " + res.error);
+                                    showToast("Eroare la sincronizare: " + res.error, 'error');
                                 }
                             } catch (e: any) {
-                                alert("Eroare de rețea la sincronizare: " + e.message);
+                                showToast("Eroare de rețea la sincronizare: " + e.message, 'error');
                             } finally {
                                 setIsDbSyncing(false);
                             }

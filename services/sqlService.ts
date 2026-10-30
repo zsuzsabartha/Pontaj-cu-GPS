@@ -106,6 +106,8 @@ export const SQLService = {
     
     upsertLeave: (leave: LeaveRequest) => post('/seed/leaves', [leave]),
     deleteLeave: (id: string) => remove(`/leaves/${id}`),
+    sendLeaveEmail: (payload: { leaveId: string; managerEmail: string; employeeName: string; typeName: string; startDate: string; endDate: string; reason?: string }) =>
+        post('/email/leave-request', payload),
     
     upsertCorrection: (req: CorrectionRequest) => post('/seed/corrections', [req]),
     deleteCorrection: (id: string) => remove(`/corrections/${id}`),

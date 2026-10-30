@@ -10,6 +10,7 @@ import {
 } from '../types';
 import { sendLeaveEmailViaGraph } from '../services/graphService';
 import { toLocalDateISO } from '../utils/date';
+import { showToast } from '../utils/toast';
 
 interface TimesheetManagerProps {
     currentUser: User | null;
@@ -67,7 +68,7 @@ export const useTimesheetManager = ({
                 }
             }
         } catch (e) {
-            alert("Eroare server: Nu s-a putut respinge solicitarea.");
+            showToast("Eroare server: Nu s-a putut respinge solicitarea.", 'error');
         } finally {
             setIsGlobalLoading(false);
         }
@@ -99,8 +100,9 @@ export const useTimesheetManager = ({
             const res = await SQLService.upsertTimesheet({ ...newTs, clockAction: 'CLOCK_IN' });
             const savedTs = res.timesheets?.[0] || newTs;
             setTimesheets(prev => [savedTs, ...prev]);
+            showToast("Pontaj început cu succes!", 'success');
         } catch (e) {
-            alert("Nu s-a putut efectua pontajul. Eroare comunicare server.");
+            showToast("Nu s-a putut efectua pontajul. Eroare comunicare server.", 'error');
         } finally {
             setIsGlobalLoading(false);
         }
@@ -115,10 +117,12 @@ export const useTimesheetManager = ({
                 ...activeTs, endTime: new Date().toISOString(), status: ShiftStatus.COMPLETED, endLocation: loc, endDistanceToOffice: endDist, notes: note || activeTs.notes
             };
             const res = await SQLService.upsertTimesheet({ ...updatedTs, clockAction: 'CLOCK_OUT' });
+            showToast("Pontaj încheiat cu succes!", 'success');
             const savedTs = res.timesheets?.[0] || updatedTs;
             setTimesheets(prev => prev.map(t => t.id === activeTs.id ? savedTs : t));
+            // State updated above
         } catch (e) {
-            alert("Eroare la oprirea pontajului.");
+            showToast("Eroare la oprirea pontajului.", 'error');
         } finally {
             setIsGlobalLoading(false);
         }
@@ -147,11 +151,13 @@ export const useTimesheetManager = ({
             }
             if (updatedTs) {
                 const res = await SQLService.upsertTimesheet({ ...updatedTs, clockAction });
+                showToast(clockAction === 'BREAK_START' ? "Pauză începută!" : "Pauză încheiată!", 'info');
                 const savedTs = res.timesheets?.[0] || updatedTs;
                 setTimesheets(prev => prev.map(t => t.id === activeTs.id ? savedTs : t));
+            // State updated above
             }
         } catch (e) {
-            alert("Eroare server la schimbarea stării pauzei.");
+            showToast("Eroare server la schimbarea stării pauzei.", 'error');
         } finally {
             setIsGlobalLoading(false);
         }
@@ -180,7 +186,7 @@ export const useTimesheetManager = ({
                 setTimesheets(prev => existingTs ? prev.map(t => t.id === existingTs.id ? newTs : t) : [newTs, ...prev]);
             }
         } catch (e) {
-            alert("Eroare server la aprobarea corecției.");
+            showToast("Eroare server la aprobarea corecției.", 'error');
         } finally {
             setIsGlobalLoading(false);
         }
@@ -195,6 +201,7 @@ export const useTimesheetManager = ({
             };
             await SQLService.upsertLeave(newLeave);
             setLeaves(prev => [newLeave, ...prev]);
+            showToast("Cererea de concediu a fost înregistrată!", 'success');
 
             // Try sending email to manager
             try {
@@ -215,7 +222,7 @@ export const useTimesheetManager = ({
             }
 
         } catch (e) {
-            alert("Nu s-a putut trimite cererea. Server offline?");
+            showToast("Nu s-a putut trimite cererea. Server offline?", 'error');
         } finally {
             setIsGlobalLoading(false);
         }
@@ -229,7 +236,7 @@ export const useTimesheetManager = ({
             setUsers(prev => [...prev, newUser]);
             // Local state updated above; no full reload needed.
         } catch (e) {
-            alert("Eroare la crearea utilizatorului.");
+            showToast("Eroare la crearea utilizatorului.", 'error');
         } finally {
             setIsGlobalLoading(false);
         }
@@ -241,7 +248,7 @@ export const useTimesheetManager = ({
             await SQLService.upsertUser(updatedUser);
             setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
         } catch (e) {
-            alert("Eroare la actualizarea utilizatorului.");
+            showToast("Eroare la actualizarea utilizatorului.", 'error');
         } finally {
             setIsGlobalLoading(false);
         }
@@ -254,7 +261,7 @@ export const useTimesheetManager = ({
             await SQLService.deleteTimesheet(id);
             setTimesheets(prev => prev.filter(t => t.id !== id));
         } catch (e) {
-            alert("Eroare server: Nu s-a putut șterge pontajul.");
+            showToast("Eroare server: Nu s-a putut șterge pontajul.", 'error');
         } finally {
             setIsGlobalLoading(false);
         }
@@ -268,7 +275,7 @@ export const useTimesheetManager = ({
         const ownerId = targetUserId;
 
         if (!ownerId) {
-            alert("Eroare internă: Nu s-a putut identifica utilizatorul țintă.");
+            showToast("Eroare internă: Nu s-a putut identifica utilizatorul țintă.", 'error');
             setIsGlobalLoading(false);
             return;
         }
@@ -321,7 +328,7 @@ export const useTimesheetManager = ({
                     };
                     await SQLService.upsertCorrection(req);
                     setCorrectionRequests(prev => [req, ...prev]);
-                    alert("Solicitarea de corecție a fost trimisă către manager!");
+                    showToast("Solicitarea de corecție a fost trimisă către manager!", 'success');
                 }
             } else {
                 const newLeave: LeaveRequest = {
@@ -338,6 +345,7 @@ export const useTimesheetManager = ({
 
                 await SQLService.upsertLeave(newLeave);
                 setLeaves(prev => [newLeave, ...prev]);
+            showToast("Cererea de concediu a fost înregistrată!", 'success');
 
                 if (isManager && data.tsId) {
                     await SQLService.deleteTimesheet(data.tsId);
@@ -345,7 +353,7 @@ export const useTimesheetManager = ({
                 }
             }
         } catch (e) {
-            alert("Eroare server: Salvarea a eșuat.");
+            showToast("Eroare server: Salvarea a eșuat.", 'error');
         } finally {
             setIsGlobalLoading(false);
         }
@@ -363,7 +371,7 @@ export const useTimesheetManager = ({
             await SQLService.upsertTimesheet(updatedTs);
             setTimesheets(prev => prev.map(ts => ts.id !== tsId ? ts : updatedTs));
         } catch (e) {
-            alert("Eroare server.");
+            showToast("Eroare server.", 'error');
         } finally {
             setIsGlobalLoading(false);
         }
@@ -379,7 +387,7 @@ export const useTimesheetManager = ({
                 setLeaves(prev => prev.map(l => l.id === reqId ? updated : l));
             }
         } catch (e) {
-            alert("Eroare server.");
+            showToast("Eroare server.", 'error');
         } finally {
             setIsGlobalLoading(false);
         }
@@ -400,7 +408,8 @@ export const useTimesheetManager = ({
         try {
             await SQLService.upsertSchedulePlan({ id: newId, userId, date, scheduleId });
         } catch (e) {
-            alert("Eroare la salvarea planificării în baza de date.");
+            showToast("Eroare la salvarea planificării în baza de date.", 'error');
+            await fetchAllData();
             // Local state updated above; no full reload needed.
         }
     }, [setSchedulePlans, fetchAllData]);
