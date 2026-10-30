@@ -39,13 +39,14 @@ if not exist "%SERVER_PATH%" (
 echo [OK] Connection to server verified.
 echo.
 
-:: 1. Copiere Frontend (dist -> dist)
+:: 1. Copiere Frontend (dist -> dist & dist\pontaj)
 echo 🚚 Copiere Frontend (Spre folderul 'dist' al Nginx)...
-robocopy "dist" "%SERVER_PATH%\dist" /E /R:5 /W:5 /TBD /NP /V /MT:16
+robocopy "dist" "%SERVER_PATH%\dist" /E /XD pontaj /R:5 /W:5 /TBD /NP /V /MT:16
+robocopy "dist" "%SERVER_PATH%\dist\pontaj" /E /XD pontaj /R:5 /W:5 /TBD /NP /V /MT:16
 
 :: 2. Copiere Backend (bridge -> bridge)
 echo 🚚 Copiere Backend (Spre folderul aplicatiei Node)...
-robocopy "bridge" "%SERVER_PATH%\bridge" /E /R:5 /W:5 /TBD /NP /V /MT:16
+robocopy "bridge" "%SERVER_PATH%\bridge" /E /XF *.sql *.json *.bak /R:5 /W:5 /TBD /NP /V /MT:16
 
 :: 3. Copiere fisiere baza
 echo 🚚 Copiere package.json...
