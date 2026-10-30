@@ -1,10 +1,13 @@
 // Server-side session handling: signed JWT in an httpOnly cookie, user + roles re-loaded from DB on every request.
+// Includes 2FA enrollment challenge + single-device binding (pontaj_device httpOnly cookie) for PIN logins.
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { connectDB } from '../db.js';
 
 export const SESSION_COOKIE = 'pontaj_session';
+export const DEVICE_COOKIE = 'pontaj_device';
 const SESSION_TTL_SECONDS = 12 * 60 * 60; // one shift plus margin
+const DEVICE_TTL_SECONDS = 365 * 24 * 60 * 60; // 1 year trusted device
 
 // AUTH_MODE=report  -> violations are logged but requests continue (rollout / safety net)
 // AUTH_MODE=enforce -> violations are rejected with 401/403
@@ -20,6 +23,7 @@ const PUBLIC_API_PATHS = new Set([
     '/api/v1/health',
     '/api/v1/ping',
     '/api/v1/auth/login-pin',
+    '/api/v1/auth/verify-2fa',
     '/api/v1/auth/login-microsoft',
     '/api/v1/auth/logout', // must work even with an expired session
 ]);
@@ -28,10 +32,10 @@ const safeJsonArray = (value) => {
     try { return value ? JSON.parse(value) : []; } catch { return []; }
 };
 
-/** Maps a `users` DB row to the API shape used by the frontend (never includes PIN data). */
+/** Maps a `users` DB row to the API shape used by the frontend (never includes PIN or device secret hashes). */
 export const mapUserRow = (u) => {
     // eslint-disable-next-line no-unused-vars
-    const { pin, pin_hash, ...rest } = u;
+    const { pin, pin_hash, trusted_device_hash, totp_secret, ...rest } = u;
     return {
         ...rest,
         roles: safeJsonArray(u.roles),
@@ -52,10 +56,15 @@ export const mapUserRow = (u) => {
         hireDate: u.hire_date,
         terminationDate: u.termination_date,
         source: u.source,
+        hasTrustedDevice: !!trusted_device_hash,
+        trustedDeviceLabel: u.trusted_device_label || undefined,
+        trustedDeviceEnrolledAt: u.trusted_device_enrolled_at instanceof Date
+            ? u.trusted_device_enrolled_at.toISOString()
+            : (u.trusted_device_enrolled_at || undefined),
     };
 };
 
-const parseCookies = (header = '') =>
+export const parseCookies = (header = '') =>
     Object.fromEntries(
         header.split(';')
             .map(p => p.trim())
@@ -71,7 +80,7 @@ export const issueSession = (req, res, userId) => {
     res.cookie(SESSION_COOKIE, token, {
         httpOnly: true,
         sameSite: 'lax',
-        secure: req.secure, // true behind Nginx/HTTPS when X-Forwarded-Proto is forwarded
+        secure: req.secure,
         path: '/',
         maxAge: SESSION_TTL_SECONDS * 1000,
     });
@@ -79,6 +88,63 @@ export const issueSession = (req, res, userId) => {
 
 export const clearSession = (req, res) => {
     res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: 'lax', secure: req.secure, path: '/' });
+};
+
+export const hashDeviceToken = (token) =>
+    crypto.createHash('sha256').update(String(token)).digest('hex');
+
+export const readDeviceCookie = (req) =>
+    parseCookies(req.headers?.cookie || '')[DEVICE_COOKIE] || null;
+
+export const issueDeviceCookie = (req, res) => {
+    const token = crypto.randomBytes(32).toString('hex');
+    const hash = hashDeviceToken(token);
+    res.cookie(DEVICE_COOKIE, token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: req.secure,
+        path: '/',
+        maxAge: DEVICE_TTL_SECONDS * 1000,
+    });
+    return { token, hash };
+};
+
+export const sign2FAChallenge = (userId) =>
+    jwt.sign({ sub: userId, purpose: '2fa_enroll' }, jwtSecret, { expiresIn: '10m' });
+
+export const verify2FAChallenge = (challengeToken) => {
+    const payload = jwt.verify(String(challengeToken || ''), jwtSecret);
+    if (payload.purpose !== '2fa_enroll' || !payload.sub) {
+        throw new Error('Invalid 2FA challenge token');
+    }
+    return payload.sub;
+};
+
+export const describeUserAgent = (ua = '', now = new Date()) => {
+    const os = /Android/i.test(ua)
+        ? 'Android'
+        : /iPhone|iPad|iOS/i.test(ua)
+        ? 'iOS'
+        : /Windows/i.test(ua)
+        ? 'Windows'
+        : /Mac OS/i.test(ua)
+        ? 'macOS'
+        : /Linux/i.test(ua)
+        ? 'Linux'
+        : 'Dispozitiv';
+    const browser = /Edg\//i.test(ua)
+        ? 'Edge'
+        : /Chrome\//i.test(ua)
+        ? 'Chrome'
+        : /Firefox\//i.test(ua)
+        ? 'Firefox'
+        : /Safari\//i.test(ua)
+        ? 'Safari'
+        : 'Browser';
+    const d = String(now.getDate()).padStart(2, '0');
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const y = now.getFullYear();
+    return `${os} • ${browser} (${d}.${m}.${y})`;
 };
 
 const loadActiveUser = async (userId) => {

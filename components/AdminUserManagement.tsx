@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { User, Role, Company, Department, Office, WorkSchedule, Timesheet, LeaveRequest, CorrectionRequest, ShiftStatus, LeaveStatus } from '../types';
-import { UserPlus, ShieldAlert, Database, RefreshCw, Mail, Eye, AlertTriangle, BellRing, Upload, Edit2, X, Save, Wand2, Users, FileText, Download, Briefcase, Building, Clock, MapPin, CalendarClock, DownloadCloud, UploadCloud, Layers } from 'lucide-react';
+import { UserPlus, ShieldAlert, Database, RefreshCw, Mail, Eye, AlertTriangle, BellRing, Upload, Edit2, X, Save, Wand2, Users, FileText, Download, Briefcase, Building, Clock, MapPin, CalendarClock, DownloadCloud, UploadCloud, Layers, Smartphone, KeyRound, RotateCcw } from 'lucide-react';
 import UserValidationModal from './UserValidationModal';
 import { API_CONFIG, HOLIDAYS_RO, INITIAL_LEAVE_CONFIGS } from '../constants';
 import SmartTable, { Column } from './SmartTable';
@@ -36,6 +36,30 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
     const [isGenerating, setIsGenerating] = useState(false);
     const [validationUser, setValidationUser] = useState<User | null>(null);
     const [editingUser, setEditingUser] = useState<User | null>(null);
+    const [activeDeviceCode, setActiveDeviceCode] = useState<{ userName: string; email: string; code: string } | null>(null);
+
+    const handleGenerateDeviceCode = async (user: User) => {
+        try {
+            const res = await SQLService.generateDeviceCode(user.id);
+            if (res.success && res.code) {
+                setActiveDeviceCode({ userName: user.name, email: user.email, code: res.code });
+                showToast(`Cod 2FA generat pentru ${user.name}: ${res.code} (valabil 10 min)`, 'success');
+            }
+        } catch (e: any) {
+            showToast(e.message || 'Eroare la generarea codului 2FA.', 'error');
+        }
+    };
+
+    const handleResetDevice = async (user: User) => {
+        if (!confirm(`Resetați telefonul asociat pentru ${user.name}?\nAngajatul va putea înrola un telefon nou la următoarea autentificare cu PIN.`)) return;
+        try {
+            await SQLService.resetUserDevice(user.id);
+            showToast(`Dispozitivul pentru ${user.name} a fost resetat.`, 'success');
+            if (onRefreshData) await onRefreshData();
+        } catch (e: any) {
+            showToast(e.message || 'Eroare la resetarea dispozitivului.', 'error');
+        }
+    };
     const [importText, setImportText] = useState('');
 
     // State to hold generated data for download
@@ -338,6 +362,39 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
         { header: 'ID ERP', accessor: 'erpId', render: (u) => <span className="font-mono text-xs bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-2 py-1 rounded transition-colors">{u.erpId || '-'}</span> },
         { header: 'Companie', accessor: (u) => <span className="text-gray-700 dark:text-gray-300 transition-colors">{companies.find(c => c.id === u.companyId)?.name || '-'}</span> },
         { header: 'Status', accessor: 'employmentStatus', render: (u) => getStatusLabel(u.employmentStatus) },
+        {
+            header: 'Dispozitiv (2FA)',
+            accessor: 'hasTrustedDevice',
+            render: (u) => (
+                <div className="flex items-center gap-2 flex-wrap">
+                    {u.hasTrustedDevice ? (
+                        <span className="inline-flex items-center gap-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded text-[11px] font-medium" title={u.trustedDeviceLabel}>
+                            <Smartphone size={12} /> {u.trustedDeviceLabel || 'Telefon înrolat'}
+                        </span>
+                    ) : (
+                        <span className="text-[11px] text-gray-400 dark:text-gray-500">Neînrolat</span>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => handleGenerateDeviceCode(u)}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-bold bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors"
+                        title="Generează cod 2FA (6 cifre) valabil 10 minute pentru înrolarea telefonului"
+                    >
+                        <KeyRound size={11} /> Cod 2FA
+                    </button>
+                    {u.hasTrustedDevice && (
+                        <button
+                            type="button"
+                            onClick={() => handleResetDevice(u)}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-bold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 transition-colors"
+                            title="Deblochează contul de pe vechiul telefon pentru a permite înrolarea unui telefon nou"
+                        >
+                            <RotateCcw size={11} /> Reset Telefon
+                        </button>
+                    )}
+                </div>
+            )
+        },
         { header: 'Acțiuni', accessor: 'id', render: (u) => <button onClick={() => setEditingUser(u)} className="text-gray-400 dark:text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400 p-2 transition-colors"><Edit2 size={16} /></button> }
     ];
 
@@ -386,6 +443,22 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
 
             {activeSubTab === 'pending' && (
                 <div className="space-y-4">
+                    {activeDeviceCode && (
+                        <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <KeyRound size={22} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                                <div>
+                                    <p className="text-xs font-bold text-blue-900 dark:text-blue-200">
+                                        Cod 2FA Înrolare Telefon pentru {activeDeviceCode.userName} ({activeDeviceCode.email})
+                                    </p>
+                                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-0.5">
+                                        Comunicați acest cod angajatului (valabil 10 minute): <span className="font-mono font-black text-base tracking-widest bg-white dark:bg-gray-900 px-2.5 py-0.5 rounded border border-blue-300 dark:border-blue-700 ml-1">{activeDeviceCode.code}</span>
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => setActiveDeviceCode(null)} className="text-blue-500 hover:text-blue-700 p-1"><X size={16} /></button>
+                        </div>
+                    )}
                     <SmartTable data={activeListUsers} columns={userColumns} pageSize={10} />
                     {pendingUsers.length > 0 && (
                         <div className="grid gap-4 mt-4 transition-colors">

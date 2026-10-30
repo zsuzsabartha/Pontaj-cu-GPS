@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
 import { User, Role, Company } from '../types';
-import { KeyRound, Lock, User as UserIcon, ArrowLeft, Loader2, Sparkles, MailQuestion, Shield, Users, Briefcase } from 'lucide-react';
+import { KeyRound, Lock, User as UserIcon, ArrowLeft, Loader2, Sparkles, MailQuestion, Shield, Users, Briefcase, Smartphone } from 'lucide-react';
+import { showToast } from '../utils/toast';
 import { useMsal } from "@azure/msal-react";
 import { loginRequest } from "../authConfig";
 import { SQLService } from '../services/sqlService';
@@ -19,7 +20,10 @@ interface LoginScreenProps {
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, onRequestPinReset, onCreateUser }) => {
     const { instance, accounts, inProgress } = useMsal();
-    const [view, setView] = useState<'main' | 'pin' | 'forgot'>('main');
+    const [view, setView] = useState<'main' | 'pin' | '2fa' | 'forgot'>('main');
+    const [challengeToken, setChallengeToken] = useState('');
+    const [twoFaCode, setTwoFaCode] = useState('');
+    const [twoFaMessage, setTwoFaMessage] = useState('');
     const [email, setEmail] = useState<string>('');
     const [pin, setPin] = useState('');
     const [resetEmail, setResetEmail] = useState('');
@@ -93,6 +97,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
 
         try {
             const response = await SQLService.loginPin(email, pin);
+            if (response.requires2FA && response.challengeToken) {
+                setChallengeToken(response.challengeToken);
+                setTwoFaMessage(response.message || 'Introduceți codul de verificare 2FA din 6 cifre pentru a înrola acest telefon.');
+                setTwoFaCode('');
+                setView('2fa');
+                setIsLoading(false);
+                return;
+            }
+
+
             if (response.success && response.user) {
                 onLogin(response.user);
             } else {
@@ -104,6 +118,25 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
             console.error(err);
             setError(err.message || "Eroare la autentificare.");
             setPin('');
+            setIsLoading(false);
+        }
+    };
+
+    const handleVerify2FA = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setIsLoading(true);
+        try {
+            const response = await SQLService.verify2FA(challengeToken, twoFaCode);
+            if (response.success && response.user) {
+                showToast('Telefonul a fost înrolat cu succes!', 'success');
+                onLogin(response.user);
+            } else {
+                setError(response.error || 'Cod 2FA incorect.');
+                setIsLoading(false);
+            }
+        } catch (err: any) {
+            setError(err.message || 'Cod 2FA incorect sau expirat.');
             setIsLoading(false);
         }
     };
@@ -299,6 +332,48 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                                 <p className="text-xs text-gray-400 dark:text-gray-500">Pentru demo, PIN-urile sunt: Elena (1234), Mihai (0000)</p>
                             </div>
                         )}
+                    </form>
+                )}
+
+                {view === '2fa' && (
+                    <form onSubmit={handleVerify2FA} className="space-y-4 animate-in fade-in slide-in-from-right-8">
+                        <button
+                            type="button"
+                            onClick={() => { setView('pin'); setError(''); setTwoFaCode(''); }}
+                            className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 flex items-center gap-1 text-sm mb-2 transition-colors"
+                        >
+                            <ArrowLeft size={16} /> Înapoi la PIN
+                        </button>
+
+                        <div className="text-center mb-3">
+                            <Smartphone size={44} className="mx-auto text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 p-2.5 rounded-full mb-2" />
+                            <h3 className="font-bold text-gray-800 dark:text-white text-base">Înrolare Telefon (2FA)</h3>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{twoFaMessage}</p>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cod Verificare (6 cifre)</label>
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                maxLength={6}
+                                required
+                                value={twoFaCode}
+                                onChange={(e) => setTwoFaCode(e.target.value.replace(/[^0-9]/g, ''))}
+                                className="w-full p-3 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 font-mono tracking-[0.5em] text-center text-xl font-bold transition-all"
+                                placeholder="000000"
+                            />
+                        </div>
+
+                        {error && <p className="text-red-500 dark:text-red-400 text-sm text-center font-medium bg-red-50 dark:bg-red-900/20 p-2 rounded">{error}</p>}
+
+                        <button
+                            type="submit"
+                            disabled={isLoading || twoFaCode.length !== 6}
+                            className="w-full bg-emerald-600 dark:bg-emerald-700 text-white p-3 rounded-lg font-medium hover:bg-emerald-700 dark:hover:bg-emerald-800 transition-all shadow-lg shadow-emerald-200 dark:shadow-emerald-900/20 mt-2 flex justify-center disabled:opacity-50"
+                        >
+                            {isLoading ? <Loader2 className="animate-spin" /> : 'Verifică & Asociază Telefonul'}
+                        </button>
                     </form>
                 )}
 

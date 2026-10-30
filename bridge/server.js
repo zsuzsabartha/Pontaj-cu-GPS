@@ -8,7 +8,8 @@ import fs from 'fs';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import { connectDB } from './db.js';
-import { sessionMiddleware, issueSession, clearSession, deny, mapUserRow, AUTH_MODE } from './auth/session.js';
+import crypto from 'crypto';
+import { sessionMiddleware, issueSession, clearSession, deny, mapUserRow, AUTH_MODE, hashDeviceToken, readDeviceCookie, issueDeviceCookie, sign2FAChallenge, verify2FAChallenge, describeUserAgent } from './auth/session.js';
 import { verifyMicrosoftIdToken } from './auth/microsoft.js';
 import {
   canSeeUser, canManageTimesheetsOf, canAssignSchedule, canAccessNotification, canDecideLeavesOf, canManageUsers, canEditConfig, canRunIntegrations,
@@ -1215,6 +1216,65 @@ const registerFailedLogin = (key) => {
 const ON_DEMAND_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 let lastOnDemandSyncAt = 0;
 
+// 2FA Enrollment OTP Challenges: userId -> { code, expiresAt, attempts }
+const OTP_TTL_MS = 10 * 60 * 1000;
+const pending2faCodes = new Map();
+
+const getOrCreate2FACode = (userId, forceNew = false) => {
+    const now = Date.now();
+    const existing = pending2faCodes.get(userId);
+    if (!forceNew && existing && now < existing.expiresAt && existing.attempts < 5) {
+        return existing.code;
+    }
+    const code = String(crypto.randomInt(100000, 1000000));
+    pending2faCodes.set(userId, { code, expiresAt: now + OTP_TTL_MS, attempts: 0 });
+    return code;
+};
+
+const handlePinDeviceAnd2FA = async (req, res, pool, user) => {
+    const deviceToken = readDeviceCookie(req);
+    const deviceHash = deviceToken ? hashDeviceToken(deviceToken) : null;
+
+    if (user.employment_status !== 'ACTIVE') {
+        await pool.request().input('id', user.id).query("UPDATE users SET employment_status = 'ACTIVE' WHERE id = @id");
+        user.employment_status = 'ACTIVE';
+    }
+
+    // Case 1: User already has an enrolled phone and the cookie matches -> instant daily login
+    if (user.trusted_device_hash && deviceHash === user.trusted_device_hash) {
+        issueSession(req, res, user.id);
+        return res.json({ success: true, user: mapUserRow(user) });
+    }
+
+    // Case 2 (Option C): User already has an enrolled phone, but login comes from ANOTHER phone/browser -> block
+    if (user.trusted_device_hash && deviceHash !== user.trusted_device_hash) {
+        return res.status(403).json({
+            success: false,
+            deviceLocked: true,
+            error: `Contul este deja asociat cu un alt dispozitiv (${user.trusted_device_label || 'Telefon înrolat'}). Pentru schimbarea telefonului, solicitați resetarea dispozitivului la HR / Administrator.`
+        });
+    }
+
+    // Case 3 (Option B): First login (no device enrolled yet, or reset by HR) -> require 2FA code to bind this phone
+    const code = getOrCreate2FACode(user.id, false);
+    const challengeToken = sign2FAChallenge(user.id);
+    console.log(`\n🔐 [2FA ÎNROLARE DISPOZITIV] Utilizator: ${user.name} (${user.email}) | Cod 2FA (10 min): ${code}\n`);
+    await createNotification(pool, {
+        userId: user.id,
+        title: 'Cod 2FA înrolare telefon',
+        message: `Codul de verificare pentru înrolarea telefonului este: ${code} (valabil 10 minute).`,
+        type: 'INFO'
+    });
+
+    return res.json({
+        success: false,
+        requires2FA: true,
+        challengeToken,
+        email: user.email,
+        message: 'Introduceți codul de verificare 2FA din 6 cifre (trimis pe email / disponibil la HR) pentru a asocia acest telefon cu contul dumneavoastră.'
+    });
+};
+
 // Endpoint de login securizat cu PIN (BioeelAuth)
 app.post('/api/v1/auth/login-pin', asyncHandler(async (req, res) => {
     const { email, pin } = req.body;
@@ -1298,6 +1358,7 @@ app.post('/api/v1/auth/login-pin', asyncHandler(async (req, res) => {
             }
 
             loginAttempts.delete(attemptKey);
+            return await handlePinDeviceAnd2FA(req, res, pool, user);
             issueSession(req, res, user.id);
             res.json({ success: true, user: mappedUser });
         } else {
@@ -1308,6 +1369,85 @@ app.post('/api/v1/auth/login-pin', asyncHandler(async (req, res) => {
         console.error('Error calling BioeelAuth check API:', err);
         res.status(502).json({ success: false, error: 'Eroare la conectarea cu serverul central de autentificare (BioeelAuth).' });
     }
+}));
+
+// Verificare cod 2FA și înrolare dispozitiv (1 angajat = 1 telefon înrolat)
+app.post('/api/v1/auth/verify-2fa', asyncHandler(async (req, res) => {
+    const { challengeToken, code } = req.body || {};
+    if (!challengeToken || !code) {
+        return res.status(400).json({ success: false, error: 'Lipsesc datele pentru verificarea 2FA.' });
+    }
+    let userId;
+    try {
+        userId = verify2FAChallenge(challengeToken);
+    } catch {
+        return res.status(401).json({ success: false, error: 'Sesiunea de verificare 2FA a expirat. Reintroduceți PIN-ul.' });
+    }
+
+    const entry = pending2faCodes.get(userId);
+    if (!entry || Date.now() > entry.expiresAt) {
+        pending2faCodes.delete(userId);
+        return res.status(401).json({ success: false, error: 'Codul 2FA a expirat. Reintroduceți PIN-ul pentru un cod nou.' });
+    }
+
+    if (entry.code !== String(code).trim()) {
+        entry.attempts++;
+        if (entry.attempts >= 5) pending2faCodes.delete(userId);
+        return res.status(401).json({ success: false, error: 'Cod 2FA incorect.' });
+    }
+
+    pending2faCodes.delete(userId);
+    const pool = await connectDB();
+    const userRes = await pool.request().input('id', userId).query('SELECT * FROM users WHERE id = @id');
+    const user = userRes.recordset[0];
+    if (!user || user.employment_status === 'SUSPENDED' || user.employment_status === 'TERMINATED') {
+        return res.status(403).json({ success: false, error: 'Contul este inactiv sau suspendat.' });
+    }
+
+    // Dacă între timp alt dispozitiv a fost înrolat, blocăm suprascrierea neautorizată
+    if (user.trusted_device_hash) {
+        return res.status(403).json({ success: false, error: 'Contul are deja un dispozitiv înrolat. Solicitați resetarea la HR.' });
+    }
+
+    const { hash } = issueDeviceCookie(req, res);
+    const label = describeUserAgent(req.headers['user-agent'] || '');
+    await pool.request()
+        .input('id', user.id)
+        .input('hash', hash)
+        .input('label', label)
+        .query('UPDATE users SET trusted_device_hash = @hash, trusted_device_label = @label, trusted_device_enrolled_at = SYSDATETIME() WHERE id = @id');
+
+    const updatedRes = await pool.request().input('id', user.id).query('SELECT * FROM users WHERE id = @id');
+    issueSession(req, res, user.id);
+    res.json({ success: true, user: mapUserRow(updatedRes.recordset[0]) });
+}));
+
+// Generare cod 2FA de înrolare de către HR / Admin pentru un angajat
+app.post('/api/v1/auth/device-code', asyncHandler(async (req, res) => {
+    if (forbid(req, res, canManageUsers(req.user), 'only ADMIN/HR can generate 2FA enrollment codes')) return;
+    const { userId } = req.body || {};
+    if (!userId) return res.status(400).json({ error: 'Missing userId' });
+    const code = getOrCreate2FACode(userId, true);
+    res.json({ success: true, code, expiresInMinutes: 10 });
+}));
+
+// Resetare telefon asociat (Device Binding) de către HR / Admin (ex. când angajatul își schimbă telefonul)
+app.post('/api/v1/auth/device-reset', asyncHandler(async (req, res) => {
+    if (forbid(req, res, canManageUsers(req.user), 'only ADMIN/HR can reset bound devices')) return;
+    const { userId } = req.body || {};
+    if (!userId) return res.status(400).json({ error: 'Missing userId' });
+    const pool = await connectDB();
+    await pool.request()
+        .input('id', userId)
+        .query('UPDATE users SET trusted_device_hash = NULL, trusted_device_label = NULL, trusted_device_enrolled_at = NULL WHERE id = @id');
+    pending2faCodes.delete(userId);
+    await createNotification(pool, {
+        userId,
+        title: 'Dispozitiv resetat',
+        message: 'Dispozitivul asociat contului tău a fost resetat de HR. La următoarea autentificare cu PIN poți înrola noul telefon.',
+        type: 'INFO'
+    });
+    res.json({ success: true });
 }));
 
 // Login Microsoft: ID token-ul obținut de MSAL este validat pe server, apoi se emite sesiunea.

@@ -16,7 +16,7 @@ export class ApiError extends Error {
 }
 
 // Login endpoints legitimately answer 401/403 (wrong PIN, unknown account): they must not trigger a global logout.
-const isAuthEndpoint = (endpoint: string) => endpoint.startsWith('/auth/login') || endpoint === '/auth/me';
+const isAuthEndpoint = (endpoint: string) => endpoint.startsWith('/auth/login') || endpoint === '/auth/verify-2fa' || endpoint === '/auth/me';
 
 const handleErrorResponse = async (endpoint: string, response: Response): Promise<never> => {
     const errData = await response.json().catch(() => ({}));
@@ -118,6 +118,9 @@ export const SQLService = {
 
     // --- SESSION (server-side, httpOnly cookie) ---
     loginPin: (email: string, pin: string) => post('/auth/login-pin', { email, pin }),
+    verify2FA: (challengeToken: string, code: string) => post('/auth/verify-2fa', { challengeToken, code }),
+    generateDeviceCode: (userId: string): Promise<{ success: boolean; code: string; expiresInMinutes: number }> => post('/auth/device-code', { userId }),
+    resetUserDevice: (userId: string): Promise<{ success: boolean }> => post('/auth/device-reset', { userId }),
     loginMicrosoft: (idToken: string) => post('/auth/login-microsoft', { idToken }),
     me: (): Promise<{ success: boolean; user: User }> => get('/auth/me'),
     logout: () => post('/auth/logout', {}),

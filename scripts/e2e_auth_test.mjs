@@ -191,6 +191,26 @@ try {
     check('POST /notifications/read marks notification as read', readRes.status === 200 && updatedNotif?.isRead === true);
   }
 
+  // --- 2FA Device Enrollment + Single-Device Binding (Option B + C) ---
+  await call('POST', '/auth/device-reset', { cookie: C.admin, body: { userId: employee.id } });
+  check('employee cannot generate 2FA enrollment code -> 403', (await call('POST', '/auth/device-code', { cookie: C.employee, body: { userId: employee.id } })).status === 403);
+  const devCodeRes = await call('POST', '/auth/device-code', { cookie: C.admin, body: { userId: employee.id } });
+  check('admin/HR can generate 6-digit 2FA enrollment code -> 200', devCodeRes.status === 200 && /^\d{6}$/.test(devCodeRes.data?.code || ''));
+  const challengeToken = jwt.sign({ sub: employee.id, purpose: '2fa_enroll' }, env.JWT_SECRET, { expiresIn: '10m' });
+  const badVerify = await call('POST', '/auth/verify-2fa', { body: { challengeToken, code: '000000' } });
+  check('POST /auth/verify-2fa rejects wrong 2FA code -> 401', badVerify.status === 401);
+  const goodVerify = await call('POST', '/auth/verify-2fa', { body: { challengeToken, code: devCodeRes.data.code } });
+  const verifySetCookie = goodVerify.headers.get('set-cookie') || '';
+  check('POST /auth/verify-2fa binds phone, sets pontaj_device cookie and marks hasTrustedDevice=true',
+    goodVerify.status === 200 && goodVerify.data?.user?.hasTrustedDevice === true && /pontaj_device=/.test(verifySetCookie));
+  const secondCodeRes = await call('POST', '/auth/device-code', { cookie: C.admin, body: { userId: employee.id } });
+  const secondVerify = await call('POST', '/auth/verify-2fa', { body: { challengeToken, code: secondCodeRes.data.code } });
+  check('Single-device binding blocks enrolling a second phone until HR resets -> 403', secondVerify.status === 403);
+  check('employee cannot reset own bound device -> 403', (await call('POST', '/auth/device-reset', { cookie: C.employee, body: { userId: employee.id } })).status === 403);
+  const resetDevRes = await call('POST', '/auth/device-reset', { cookie: C.admin, body: { userId: employee.id } });
+  const meAfterReset = await call('GET', '/auth/me', { cookie: C.employee });
+  check('admin/HR can reset bound device -> hasTrustedDevice=false', resetDevRes.status === 200 && meAfterReset.data?.user?.hasTrustedDevice === false);
+
   check('admin can delete test timesheet', (await call('DELETE', '/timesheets/test-auth-ts-emp', { cookie: C.admin })).status === 200);
   check('admin can delete test leave', (await call('DELETE', '/leaves/test-auth-lv-1', { cookie: C.admin })).status === 200);
 

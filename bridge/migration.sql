@@ -94,3 +94,18 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_leave_requests_user_da
     CREATE INDEX IX_leave_requests_user_dates ON leave_requests(user_id, start_date, end_date);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON notifications TO PontajAppUser;
+
+-- ============================================================
+-- 7. 2FA & DEVICE BINDING (B + C: 2FA Enrollment + 1 Trusted Device per PIN User)
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'users' AND COLUMN_NAME = 'trusted_device_hash')
+    ALTER TABLE users ADD trusted_device_hash NVARCHAR(128) NULL;
+
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'users' AND COLUMN_NAME = 'trusted_device_label')
+    ALTER TABLE users ADD trusted_device_label NVARCHAR(255) NULL;
+
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'users' AND COLUMN_NAME = 'trusted_device_enrolled_at')
+    ALTER TABLE users ADD trusted_device_enrolled_at DATETIME2 NULL;
+
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'users' AND COLUMN_NAME = 'totp_secret')
+    ALTER TABLE users ADD totp_secret NVARCHAR(64) NULL;

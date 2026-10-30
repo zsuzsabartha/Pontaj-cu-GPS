@@ -6,6 +6,7 @@ import {
     checkRoleAssignment, checkOwnTimesheetBreaks, checkOwnLeave, checkOwnCorrection,
     resolveTimesheetTimestamps, toServerLocalDateISO, STATUS,
 } from './policy.js';
+import { hashDeviceToken, sign2FAChallenge, verify2FAChallenge, describeUserAgent } from './session.js';
 
 const user = (id, roles, companyId = 'C1', extra = {}) => ({ id, roles, companyId, ...extra });
 
@@ -148,4 +149,18 @@ test('server-side clock timestamps override client clock for employee punches, p
 test('server local calendar date uses Europe/Bucharest timezone', () => {
     // 2026-10-29T22:30:00.000Z is 2026-10-30 00:30 in Bucharest (UTC+2)
     assert.equal(toServerLocalDateISO(new Date('2026-10-29T22:30:00.000Z')), '2026-10-30');
+});
+
+test('2FA challenge token and single-device cryptographic binding helpers', () => {
+    const ch = sign2FAChallenge('user-123');
+    assert.equal(verify2FAChallenge(ch), 'user-123');
+    const h1 = hashDeviceToken('token-abc');
+    const h2 = hashDeviceToken('token-abc');
+    const h3 = hashDeviceToken('token-xyz');
+    assert.equal(h1, h2);
+    assert.notEqual(h1, h3);
+    assert.equal(h1.length, 64);
+    const label = describeUserAgent('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36');
+    assert.ok(label.includes('Android'));
+    assert.ok(label.includes('Chrome'));
 });

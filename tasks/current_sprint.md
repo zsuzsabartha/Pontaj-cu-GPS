@@ -27,6 +27,8 @@
 ---
 
 ### ✅ Done
+- [x] **`SEC-005`**: Securitate PIN cu 2FA la înrolare telefon + Device Binding (`1 Angajat = 1 Telefon Înrolat`): cookie criptografic `pontaj_device` (1 an, `httpOnly`, SHA-256 în `users.trusted_device_hash`), verificare cod 2FA din 6 cifre la primul login (`POST /api/v1/auth/verify-2fa`), blocare automată a oricărui alt telefon și gestiune HR (`Cod 2FA` + `Reset Telefon` în `AdminUserManagement.tsx`) (5 pts) — *Completed 2026-10-30*
+  - Files: `bridge/migration.sql`, `bridge/auth/session.js`, `bridge/auth/policy.test.js`, `bridge/server.js`, `types.ts`, `services/sqlService.ts`, `components/LoginScreen.tsx`, `components/AdminUserManagement.tsx`, `scripts/e2e_auth_test.mjs`
 - [x] **`MOB-001`**: Aplicație Android PWA instalabilă („Mod Mobil – Doar Pontare”): ecran dedicat `MobileClockScreen.tsx` (exclusiv Login + `ClockWidget`), banner de instalare rapidă pe Android (`beforeinstallprompt`), `start_url: /pontaj/?mode=mobile` și protecție împotriva locației simulate în producție (3 pts) — *Completed 2026-10-30*
   - Files: `components/MobileClockScreen.tsx`, `components/ClockWidget.tsx`, `App.tsx`, `vite.config.ts`, `index.html`
 - [x] **`UI-203`**: Notificări flotante moderne (Toast) fără dependențe externe în locul `alert()` blocant pentru pontaj, concedii, corecții, nomenclatoare și sincronizare (3 pts) — *Completed 2026-10-30*

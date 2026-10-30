@@ -213,6 +213,9 @@ export interface User {
   lastLoginDate?: string; // ISO String
   employmentStatus?: 'ACTIVE' | 'SUSPENDED' | 'TERMINATED'; // New field for HR status sync
   timekeeperId?: string; // ID of the PONTATOR responsible for this user
+  hasTrustedDevice?: boolean;
+  trustedDeviceLabel?: string;
+  trustedDeviceEnrolledAt?: string;
 }
 
 // Offline Action Queue Types
