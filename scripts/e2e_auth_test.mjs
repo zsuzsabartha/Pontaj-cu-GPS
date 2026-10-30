@@ -41,6 +41,7 @@ const dbConfig = {
 };
 
 const cleanup = async (pool) => {
+  await pool.request().query("IF OBJECT_ID('notifications', 'U') IS NOT NULL DELETE FROM notifications WHERE id LIKE 'test-auth-%' OR message LIKE '%test auth%' OR message LIKE '%01.02.2099%' OR message LIKE '%2099-01-01%'");
   await pool.request().query("IF OBJECT_ID('timesheet_logs', 'U') IS NOT NULL DELETE FROM timesheet_logs WHERE timesheet_id LIKE 'test-auth-%' OR id LIKE 'test-auth-%'");
   await pool.request().query("IF OBJECT_ID('schedule_plans', 'U') IS NOT NULL DELETE FROM schedule_plans WHERE id LIKE 'test-auth-%' OR date >= '2099-01-01'");
   await pool.request().query("DELETE FROM breaks WHERE timesheet_id LIKE 'test-auth-%' OR id LIKE 'test-auth-%'");
@@ -170,6 +171,25 @@ try {
   check('correction is stored with requested times', !!mine && !!mine.requestedStartTime && !!mine.requestedEndTime, JSON.stringify(mine));
   const resave = await call('POST', '/seed/timesheets', { cookie: C.employee, body: [{ ...ownTs, endTime: '2099-01-01T16:00:00.000Z' }] });
   check('timesheet with a pending correction can still be saved', resave.status === 200, `status ${resave.status} ${JSON.stringify(resave.data)}`);
+
+  // --- Phase 2: Date-range filtering, Zod validation & Server notifications ---
+  const filteredTs = await call('GET', '/seed/timesheets?from=2099-01-02&to=2099-01-02', { cookie: C.manager });
+  check('GET /seed/timesheets?from=2099-01-02&to=2099-01-02 filters by date range',
+    filteredTs.status === 200 && filteredTs.data?.some(t => t.id === 'test-auth-ts-col') && filteredTs.data?.every(t => (t.date >= '2099-01-02' && t.date <= '2099-01-02') || t.status === 'WORKING' || t.status === 'ON_BREAK'),
+    `${filteredTs.data?.length} rows`);
+
+  const invalidPayload = await call('POST', '/seed/timesheets', { cookie: C.employee, body: [{}] });
+  check('Zod validation rejects invalid timesheet payload -> 400', invalidPayload.status === 400, `status ${invalidPayload.status}`);
+
+  const empNotifs = await call('GET', '/notifications', { cookie: C.employee });
+  const leaveApprovedNotif = empNotifs.data?.find(n => n.userId === employee.id && n.title === 'Concediu aprobat' && n.message.includes('01.02.2099'));
+  check('server generates persistent notification on leave approval', empNotifs.status === 200 && !!leaveApprovedNotif && leaveApprovedNotif.isRead === false, JSON.stringify(leaveApprovedNotif));
+  if (leaveApprovedNotif) {
+    const readRes = await call('POST', '/notifications/read', { cookie: C.employee, body: { id: leaveApprovedNotif.id } });
+    const empNotifsAfter = await call('GET', '/notifications', { cookie: C.employee });
+    const updatedNotif = empNotifsAfter.data?.find(n => n.id === leaveApprovedNotif.id);
+    check('POST /notifications/read marks notification as read', readRes.status === 200 && updatedNotif?.isRead === true);
+  }
 
   check('admin can delete test timesheet', (await call('DELETE', '/timesheets/test-auth-ts-emp', { cookie: C.admin })).status === 200);
   check('admin can delete test leave', (await call('DELETE', '/leaves/test-auth-lv-1', { cookie: C.admin })).status === 200);

@@ -29,6 +29,16 @@
 ---
 
 ### ✅ Done
+- [x] **`PERF-001`**: Paginare / filtrare pe interval de date (`?from=...&to=...&userId=...`) + indecși SQL pe `timesheets`, `leave_requests`, `schedule_plans` și `notifications` + fereastră implicită de 90 de zile la încărcare (3 pts) — *Completed 2026-10-30*
+  - Files: `bridge/migration.sql`, `bridge/server.js`, `services/sqlService.ts`, `hooks/useAppData.ts`
+- [x] **`PERF-002`**: Eliminare interogări N+1 în `syncUsersWithBioeelAuth` prin pre-încărcarea în memorie a `companies`, `departments` și `users` + creșterea timeout-ului de citire la 15s (2 pts) — *Completed 2026-10-30*
+  - Files: `bridge/server.js`, `services/sqlService.ts`
+- [x] **`PERF-003`**: Eliminare reîncărcări redundante `fetchAllData()` după aprobare corecție și creare utilizator (actualizare chirurgicală a stării locale) (1 pt) — *Completed 2026-10-30*
+  - Files: `hooks/useTimesheetManager.ts`
+- [x] **`DATA-009`**: Sistem complet de notificări persistente pe server (`notifications`, `GET /api/v1/notifications`, `POST /api/v1/notifications/read`) generat automat la creare/aprobare/respingere concedii și corecții (pentru toți utilizatorii, inclusiv PIN) (3 pts) — *Completed 2026-10-30*
+  - Files: `bridge/migration.sql`, `bridge/auth/policy.js`, `bridge/auth/policy.test.js`, `bridge/server.js`, `services/sqlService.ts`, `hooks/useAppData.ts`, `App.tsx`
+- [x] **`SEC-004`**: Validare strictă de schemă cu `zod` pe endpoint-urile de scriere (`POST /seed/timesheets`, `POST /seed/leaves`, `POST /seed/corrections`, `POST /schedule-plans`) (2 pts) — *Completed 2026-10-30*
+  - Files: `bridge/server.js`, `scripts/e2e_auth_test.mjs`
 - [x] **`SEC-003`**: Autentificare și autorizare pe server (`AUTH_MODE=enforce`): sesiune JWT în cookie httpOnly, login Microsoft validat pe server, reguli de acces pe roluri și companie, filtrarea datelor pe server (8 pts) — *Completed 2026-10-30*
   - Files: `bridge/auth/session.js`, `bridge/auth/policy.js`, `bridge/auth/microsoft.js`, `bridge/auth/policy.test.js`, `bridge/server.js`, `hooks/useAuth.ts`, `hooks/useAppData.ts`, `services/sqlService.ts`, `components/LoginScreen.tsx`, `App.tsx`, `constants.ts`
 - [x] **`DATA-002`**: Timestamp server-side (`Europe/Bucharest`) la Clock-In, Clock-Out și Pauze pentru prevenirea manipulării ceasului de pe dispozitiv (3 pts) — *Completed 2026-10-30*

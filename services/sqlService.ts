@@ -1,6 +1,6 @@
 
 import { API_CONFIG } from '../constants';
-import { Timesheet, LeaveRequest, CorrectionRequest, User, DailySchedule } from '../types';
+import { Timesheet, LeaveRequest, CorrectionRequest, User, DailySchedule, Notification } from '../types';
 
 export type ClockAction = 'CLOCK_IN' | 'CLOCK_OUT' | 'BREAK_START' | 'BREAK_END';
 
@@ -30,7 +30,7 @@ const handleErrorResponse = async (endpoint: string, response: Response): Promis
 // so the httpOnly session cookie is sent automatically.
 const get = async (endpoint: string) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     try {
         const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
             signal: controller.signal,
@@ -84,9 +84,19 @@ export const SQLService = {
     getSchedulePlans: (): Promise<DailySchedule[]> => get('/schedule-plans'),
     upsertSchedulePlan: (plan: { id?: string; userId: string; date: string; scheduleId: string }) =>
         post('/schedule-plans', plan),
-    getTimesheets: () => get('/seed/timesheets'), 
+    getTimesheets: (params?: { from?: string; to?: string; userId?: string }) => {
+        const qs = new URLSearchParams();
+        if (params?.from) qs.set('from', params.from);
+        if (params?.to) qs.set('to', params.to);
+        if (params?.userId) qs.set('userId', params.userId);
+        const query = qs.toString();
+        return get(`/seed/timesheets${query ? `?${query}` : ''}`);
+    },
     getLeaveRequests: () => get('/seed/leaves'),
     getCorrectionRequests: () => get('/seed/corrections'),
+    getNotifications: (): Promise<Notification[]> => get('/notifications'),
+    markNotificationRead: (id?: string, all?: boolean) =>
+        post('/notifications/read', all ? { all: true } : { id }),
 
     // --- REAL TIME TRANSACTION METHODS ---
     

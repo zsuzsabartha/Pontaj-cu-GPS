@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    canSeeUser, canManageTimesheetsOf, canAssignSchedule, canDecideLeavesOf, canManageUsers, canEditConfig,
+    canSeeUser, canManageTimesheetsOf, canAssignSchedule, canAccessNotification, canDecideLeavesOf, canManageUsers, canEditConfig,
     checkRoleAssignment, checkOwnTimesheetBreaks, checkOwnLeave, checkOwnCorrection,
     resolveTimesheetTimestamps, toServerLocalDateISO, STATUS,
 } from './policy.js';
@@ -91,6 +91,13 @@ test('schedule assignment follows timesheet management scope', () => {
     assert.equal(canAssignSchedule(manager, otherCompany), false);
     assert.equal(canAssignSchedule(pontator, timekept), true);
     assert.equal(canAssignSchedule(employee, employee), false);
+});
+
+test('notifications are strictly personal to the recipient', () => {
+    assert.equal(canAccessNotification(employee, employee.id), true);
+    assert.equal(canAccessNotification(employee, colleague.id), false);
+    assert.equal(canAccessNotification(admin, employee.id), false);
+    assert.equal(canAccessNotification(null, employee.id), false);
 });
 
 test('server-side clock timestamps override client clock for employee punches, preserve manager manual edits', () => {

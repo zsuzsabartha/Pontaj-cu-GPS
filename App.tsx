@@ -255,6 +255,7 @@ export default function App() {
 
     const markAsRead = (id: string) => {
         setNotifications((prev: Notification[]) => prev.map((n: Notification) => n.id === id ? { ...n, isRead: true } : n));
+        SQLService.markNotificationRead(id).catch(err => console.error('Failed to mark notification read:', err));
     };
 
     if (!authChecked) {
@@ -550,7 +551,7 @@ export default function App() {
                                     <div className="flex-1">
                                         <div className="flex justify-between items-start">
                                             <h4 className={`font-bold text-sm ${n.isRead ? 'text-gray-700 dark:text-gray-300' : 'text-gray-900 dark:text-white'}`}>{n.title}</h4>
-                                            <span className="text-[10px] text-gray-400 dark:text-gray-500">{new Date(n.date).toLocaleDateString()} {new Date(n.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                            <span className="text-[10px] text-gray-400 dark:text-gray-500">{formatDateRO(n.date)} {new Date(n.date).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })}</span>
                                         </div>
                                         <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{n.message}</p>
                                         {!n.isRead && (

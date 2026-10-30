@@ -70,3 +70,27 @@ END;
 GRANT SELECT, INSERT, UPDATE, DELETE ON timesheet_logs TO PontajAppUser;
 GRANT SELECT, INSERT, UPDATE, DELETE ON schedule_plans TO PontajAppUser;
 GRANT SELECT, INSERT, UPDATE, DELETE ON app_settings TO PontajAppUser;
+
+-- Phase 2: Notifications table & Performance Indexes (Idempotent)
+
+IF OBJECT_ID('notifications', 'U') IS NULL
+BEGIN
+    CREATE TABLE notifications (
+        id NVARCHAR(50) NOT NULL PRIMARY KEY,
+        user_id NVARCHAR(50) NOT NULL,
+        title NVARCHAR(255) NOT NULL,
+        message NVARCHAR(MAX) NOT NULL,
+        date DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+        is_read BIT NOT NULL DEFAULT 0,
+        type NVARCHAR(20) NOT NULL DEFAULT 'INFO'
+    );
+    CREATE INDEX IX_notifications_user_date ON notifications(user_id, is_read, date DESC);
+END;
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_timesheets_user_date' AND object_id = OBJECT_ID('timesheets'))
+    CREATE INDEX IX_timesheets_user_date ON timesheets(user_id, date DESC);
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_leave_requests_user_dates' AND object_id = OBJECT_ID('leave_requests'))
+    CREATE INDEX IX_leave_requests_user_dates ON leave_requests(user_id, start_date, end_date);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON notifications TO PontajAppUser;

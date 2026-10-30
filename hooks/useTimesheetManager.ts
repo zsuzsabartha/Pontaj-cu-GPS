@@ -176,14 +176,15 @@ export const useTimesheetManager = ({
                     logs: [...(existingTs?.logs || []), { id: `log-${Date.now()}`, changedByUserId: currentUser!.id, changeDate: new Date().toISOString(), details: `Correction Approved: ${target.reason}` }]
                 };
                 await SQLService.upsertTimesheet(newTs);
-                await fetchAllData();
+                setCorrectionRequests(prev => prev.map(c => c.id === reqId ? updatedReq : c));
+                setTimesheets(prev => existingTs ? prev.map(t => t.id === existingTs.id ? newTs : t) : [newTs, ...prev]);
             }
         } catch (e) {
             alert("Eroare server la aprobarea corecției.");
         } finally {
             setIsGlobalLoading(false);
         }
-    }, [correctionRequests, timesheets, currentUser, fetchAllData, setIsGlobalLoading]);
+    }, [correctionRequests, timesheets, currentUser, setCorrectionRequests, setTimesheets, setIsGlobalLoading]);
 
     const handleLeaveSubmit = useCallback(async (req: any) => {
         if (!currentUser) return;
@@ -225,13 +226,14 @@ export const useTimesheetManager = ({
         setIsGlobalLoading(true);
         try {
             await SQLService.upsertUser(newUser);
-            await fetchAllData();
+            setUsers(prev => [...prev, newUser]);
+            // Local state updated above; no full reload needed.
         } catch (e) {
             alert("Eroare la crearea utilizatorului.");
         } finally {
             setIsGlobalLoading(false);
         }
-    }, [fetchAllData, setIsGlobalLoading]);
+    }, [setUsers, setIsGlobalLoading]);
 
     const handleUpdateUser = useCallback(async (updatedUser: User) => {
         setIsGlobalLoading(true);
@@ -399,7 +401,7 @@ export const useTimesheetManager = ({
             await SQLService.upsertSchedulePlan({ id: newId, userId, date, scheduleId });
         } catch (e) {
             alert("Eroare la salvarea planificării în baza de date.");
-            await fetchAllData();
+            // Local state updated above; no full reload needed.
         }
     }, [setSchedulePlans, fetchAllData]);
 

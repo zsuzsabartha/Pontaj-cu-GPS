@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SQLService, ApiError } from '../services/sqlService';
 import { getDefaultLockedDate } from '../constants';
+import { toLocalDateISO } from '../utils/date';
 import {
     User, Company, Department, Office, BreakConfig, LeaveConfig,
     WorkSchedule, Holiday, Timesheet, LeaveRequest, CorrectionRequest,
@@ -62,9 +63,10 @@ export const useAppData = (isAuthenticated: boolean) => {
         }
 
         try {
+            const defaultFrom = toLocalDateISO(new Date(Date.now() - 90 * 86400_000));
             const [
                 dbUsers, dbCompanies, dbDepts, dbOffices, dbBreaks, dbLeaves, dbHolidays, dbSchedules,
-                dbTimesheets, dbLeaveReqs, dbCorrections, dbSchedulePlans, dbSettings
+                dbTimesheets, dbLeaveReqs, dbCorrections, dbSchedulePlans, dbSettings, dbNotifications
             ] = await Promise.all([
                 SQLService.getUsers(),
                 SQLService.getCompanies(),
@@ -74,11 +76,12 @@ export const useAppData = (isAuthenticated: boolean) => {
                 SQLService.getLeaves(),
                 SQLService.getHolidays(),
                 SQLService.getWorkSchedules(),
-                SQLService.getTimesheets(),
+                SQLService.getTimesheets({ from: defaultFrom }),
                 SQLService.getLeaveRequests(),
                 SQLService.getCorrectionRequests(),
                 SQLService.getSchedulePlans(),
-                SQLService.getSettings()
+                SQLService.getSettings(),
+                SQLService.getNotifications()
             ]);
 
             setUsers(dbUsers);
@@ -93,6 +96,7 @@ export const useAppData = (isAuthenticated: boolean) => {
             setLeaves(dbLeaveReqs);
             setCorrectionRequests(dbCorrections);
             setSchedulePlans(dbSchedulePlans);
+            setNotifications(dbNotifications || []);
             if (dbSettings?.lockedDate) {
                 setLockedDate(dbSettings.lockedDate);
             }

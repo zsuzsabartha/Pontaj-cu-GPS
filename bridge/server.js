@@ -11,7 +11,7 @@ import { connectDB } from './db.js';
 import { sessionMiddleware, issueSession, clearSession, deny, mapUserRow, AUTH_MODE } from './auth/session.js';
 import { verifyMicrosoftIdToken } from './auth/microsoft.js';
 import {
-  canSeeUser, canManageTimesheetsOf, canAssignSchedule, canDecideLeavesOf, canManageUsers, canEditConfig, canRunIntegrations,
+  canSeeUser, canManageTimesheetsOf, canAssignSchedule, canAccessNotification, canDecideLeavesOf, canManageUsers, canEditConfig, canRunIntegrations,
   checkRoleAssignment, checkOwnTimesheetBreaks, checkOwnLeave, checkOwnCorrection, resolveTimesheetTimestamps
 } from './auth/policy.js';
 
@@ -121,6 +121,17 @@ const ensurePhase1Schema = () => {
             setting_value NVARCHAR(MAX) NULL,
             updated_at DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
             updated_by NVARCHAR(50) NULL
+          );
+
+        IF OBJECT_ID('notifications', 'U') IS NULL
+          CREATE TABLE notifications (
+            id NVARCHAR(50) NOT NULL PRIMARY KEY,
+            user_id NVARCHAR(50) NOT NULL,
+            title NVARCHAR(255) NOT NULL,
+            message NVARCHAR(MAX) NOT NULL,
+            date DATETIME2 NOT NULL DEFAULT SYSDATETIME(),
+            is_read BIT NOT NULL DEFAULT 0,
+            type NVARCHAR(20) NOT NULL DEFAULT 'INFO'
           );
       `);
     })().catch(err => {
@@ -407,6 +418,107 @@ app.post('/api/v1/config/settings', asyncHandler(async (req, res) => {
     res.json({ success: true });
 }));
 
+/* -------------------- ZOD PAYLOAD SCHEMAS & NOTIFICATION HELPERS -------------------- */
+
+const TimesheetItemSchema = z.object({
+    id: z.string().min(1),
+    userId: z.string().min(1),
+    status: z.string().min(1),
+    date: z.string().optional().nullable(),
+    startTime: z.any().optional().nullable(),
+    endTime: z.any().optional().nullable(),
+}).passthrough();
+
+const LeaveItemSchema = z.object({
+    id: z.string().min(1),
+    userId: z.string().min(1),
+    typeId: z.string().min(1),
+    startDate: z.string().min(1),
+    endDate: z.string().min(1),
+    status: z.string().min(1),
+}).passthrough();
+
+const CorrectionItemSchema = z.object({
+    id: z.string().min(1),
+    userId: z.string().min(1),
+    status: z.string().min(1),
+}).passthrough();
+
+const SchedulePlanItemSchema = z.object({
+    userId: z.string().min(1),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    scheduleId: z.string(),
+    id: z.string().optional(),
+});
+
+const formatDateRO = (iso) => (typeof iso === 'string' && /^\d{4}-\d{2}-\d{2}/.test(iso)) ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : (iso || '');
+const createNotification = async (pool, { userId, title, message, type = 'INFO' }) => {
+    if (!userId) return;
+    const id = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    await pool.request()
+        .input('id', id)
+        .input('uid', userId)
+        .input('title', title)
+        .input('msg', message)
+        .input('type', type)
+        .query('INSERT INTO notifications (id, user_id, title, message, date, is_read, type) VALUES (@id, @uid, @title, @msg, SYSDATETIME(), 0, @type)');
+};
+
+const notifyDepartmentManager = async (pool, employeeUserId, title, message, type = 'INFO') => {
+    const empRes = await pool.request().input('uid', employeeUserId).query(`
+        SELECT u.name, u.company_id, d.manager_id
+        FROM users u
+        LEFT JOIN departments d ON d.id = u.department_id
+        WHERE u.id = @uid
+    `);
+    const emp = empRes.recordset[0];
+    if (!emp) return;
+    let targetManagerId = emp.manager_id;
+    if (!targetManagerId && emp.company_id) {
+        const mgrRes = await pool.request().input('cid', emp.company_id).query(`
+            SELECT TOP 1 id FROM users WHERE company_id = @cid AND roles LIKE '%MANAGER%' AND id != @cid
+        `);
+        targetManagerId = mgrRes.recordset[0]?.id;
+    }
+    if (targetManagerId && targetManagerId !== employeeUserId) {
+        await createNotification(pool, { userId: targetManagerId, title, message, type });
+    }
+};
+
+// NOTIFICATIONS ENDPOINTS
+app.get('/api/v1/notifications', asyncHandler(async (req, res) => {
+    if (!req.user) return res.json([]);
+    const pool = await connectDB();
+    const result = await pool.request()
+        .input('uid', req.user.id)
+        .query('SELECT TOP 100 id, user_id, title, message, date, is_read, type FROM notifications WHERE user_id = @uid ORDER BY date DESC');
+    res.json(result.recordset.map(n => ({
+        id: n.id,
+        userId: n.user_id,
+        title: n.title,
+        message: n.message,
+        date: n.date instanceof Date ? n.date.toISOString() : n.date,
+        isRead: !!n.is_read,
+        type: n.type || 'INFO'
+    })));
+}));
+
+app.post('/api/v1/notifications/read', asyncHandler(async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: 'Neautentificat.' });
+    const pool = await connectDB();
+    const { id, all } = req.body || {};
+    if (all) {
+        await pool.request().input('uid', req.user.id).query('UPDATE notifications SET is_read = 1 WHERE user_id = @uid');
+        return res.json({ success: true });
+    }
+    if (!id) return res.status(400).json({ error: 'Missing notification id' });
+    const existing = await pool.request().input('id', id).query('SELECT user_id FROM notifications WHERE id = @id');
+    const ownerId = existing.recordset[0]?.user_id;
+    if (ownerId && forbid(req, res, canAccessNotification(req.user, ownerId), `cannot mark notification ${id} as read`)) return;
+    await pool.request().input('id', id).query('UPDATE notifications SET is_read = 1 WHERE id = @id');
+    res.json({ success: true });
+}));
+
 // SCHEDULE PLANS (DailySchedule calendar allocations)
 app.get('/api/v1/schedule-plans', asyncHandler(async (req, res) => {
     const pool = await connectDB();
@@ -422,7 +534,8 @@ app.get('/api/v1/schedule-plans', asyncHandler(async (req, res) => {
 
 app.post('/api/v1/schedule-plans', asyncHandler(async (req, res) => {
     const pool = await connectDB();
-    const items = Array.isArray(req.body) ? req.body : [req.body];
+    const rawItems = Array.isArray(req.body) ? req.body : [req.body];
+    const items = z.array(SchedulePlanItemSchema).parse(rawItems);
     if (req.user) {
         const directory = await loadUserDirectory();
         for (const item of items) {
@@ -455,10 +568,28 @@ app.post('/api/v1/schedule-plans', asyncHandler(async (req, res) => {
 
 /* -------------------- SEED ENDPOINTS -------------------- */
 
-// TIMESHEETS
-app.get('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
+// TIMESHEETS (supports ?from=YYYY-MM-DD&to=YYYY-MM-DD&userId=... while always keeping active shifts)
+const handleGetTimesheets = asyncHandler(async (req, res) => {
     const pool = await connectDB();
-    const { recordset } = await pool.request().query(`
+    const from = typeof req.query.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : null;
+    const to = typeof req.query.to === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to) ? req.query.to : null;
+    const filterUserId = typeof req.query.userId === 'string' && req.query.userId ? req.query.userId : null;
+
+    const tsReq = pool.request()
+        .input('from', from)
+        .input('to', to)
+        .input('uid', filterUserId);
+
+    const whereClause = `
+        WHERE (@uid IS NULL OR t.user_id = @uid)
+          AND (
+            (@from IS NULL AND @to IS NULL)
+            OR t.status IN ('WORKING', 'ON_BREAK')
+            OR ((@from IS NULL OR t.date >= @from) AND (@to IS NULL OR t.date <= @to))
+          )
+    `;
+
+    const { recordset } = await tsReq.query(`
         SELECT t.*, b.id as bid, b.type_id, b.type_name, b.start_time as bstart, b.end_time as bend,
                b.status as bstatus, b.manager_note, b.start_lat as b_slat, b.start_long as b_slong,
                b.end_lat as b_elat, b.end_long as b_elong, b.start_distance_to_office as b_sdist,
@@ -466,8 +597,20 @@ app.get('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
         FROM timesheets t
         LEFT JOIN breaks b ON b.timesheet_id = t.id
         LEFT JOIN break_configs bc ON bc.id = b.type_id
+        ${whereClause}
     `);
-    const logsRes = await pool.request().query('SELECT id, timesheet_id, changed_by_user_id, change_date, details FROM timesheet_logs ORDER BY change_date ASC');
+
+    const logsRes = await pool.request()
+        .input('from', from)
+        .input('to', to)
+        .input('uid', filterUserId)
+        .query(`
+            SELECT l.id, l.timesheet_id, l.changed_by_user_id, l.change_date, l.details
+            FROM timesheet_logs l
+            INNER JOIN timesheets t ON t.id = l.timesheet_id
+            ${whereClause}
+            ORDER BY l.change_date ASC
+        `);
     const logsByTs = new Map();
     for (const l of logsRes.recordset) {
         if (!logsByTs.has(l.timesheet_id)) logsByTs.set(l.timesheet_id, []);
@@ -509,15 +652,19 @@ app.get('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
         }
     });
     res.json(await visibleOnly(req, [...map.values()], t => t.userId));
-}));
+});
+
+app.get('/api/v1/seed/timesheets', handleGetTimesheets);
+app.get('/api/v1/timesheets', handleGetTimesheets);
 
 app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
+    const items = z.array(TimesheetItemSchema).parse(req.body);
     const pool = await connectDB();
     const directory = await loadUserDirectory();
     const existingMap = new Map();
     const existingBreaksMap = new Map();
 
-    for (const t of req.body) {
+    for (const t of items) {
         const existing = await pool.request().input('id', t.id).query('SELECT id, user_id, date, start_time, end_time FROM timesheets WHERE id = @id');
         const existingRow = existing.recordset[0] || null;
         existingMap.set(t.id, existingRow);
@@ -543,7 +690,7 @@ app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
     await transaction.begin();
     const savedTimesheets = [];
     try {
-        for (const t of req.body) {
+        for (const t of items) {
             const existingRow = existingMap.get(t.id);
             const existingBreaks = existingBreaksMap.get(t.id) || [];
             const resolved = resolveTimesheetTimestamps(req.user, directory.get(t.userId), existingRow, existingBreaks, t);
@@ -678,12 +825,15 @@ app.get('/api/v1/seed/leaves', asyncHandler(async (req, res) => {
 }));
 
 app.post('/api/v1/seed/leaves', asyncHandler(async (req, res) => {
-    if (req.user) {
-        const pool = await connectDB();
-        const directory = await loadUserDirectory();
-        for (const l of req.body) {
-            const existingRes = await pool.request().input('id', l.id).query('SELECT user_id, status FROM leave_requests WHERE id = @id');
-            const existing = existingRes.recordset[0] || null;
+    const items = z.array(LeaveItemSchema).parse(req.body);
+    const pool = await connectDB();
+    const existingLeaves = new Map();
+    const directory = req.user ? await loadUserDirectory() : new Map();
+    for (const l of items) {
+        const existingRes = await pool.request().input('id', l.id).query('SELECT user_id, status FROM leave_requests WHERE id = @id');
+        const existing = existingRes.recordset[0] || null;
+        existingLeaves.set(l.id, existing);
+        if (req.user) {
             const owners = [l.userId, existing?.user_id].filter(Boolean);
             if (owners.every(id => canDecideLeavesOf(req.user, directory.get(id)))) continue;
             const reason = owners.every(id => id === req.user.id)
@@ -692,10 +842,24 @@ app.post('/api/v1/seed/leaves', asyncHandler(async (req, res) => {
             if (reason && deny(req, res, 403, reason)) return;
         }
     }
-    await handleConfigSync('leave_requests', req.body, (l) => ({
+    await handleConfigSync('leave_requests', items, (l) => ({
         query: 'INSERT INTO leave_requests (id, user_id, type_id, start_date, end_date, reason, status, manager_comment, cancellation_reason, created_at) VALUES (@id, @uid, @tid, @start, @end, @reason, @status, @comm, @cancel, @cat)',
         params: { id: l.id, uid: l.userId, tid: l.typeId, start: l.startDate, end: l.endDate, reason: l.reason, status: l.status, comm: l.managerComment, cancel: l.cancellationReason || null, cat: l.createdAt || new Date().toISOString() }
     }));
+
+    // Server-side notifications (works for both PIN and Microsoft users)
+    for (const l of items) {
+        const prevStatus = existingLeaves.get(l.id)?.status;
+        if (!prevStatus && l.status === 'Pending') {
+            await notifyDepartmentManager(pool, l.userId, 'Cerere nouă de concediu', `Perioadă: ${formatDateRO(l.startDate)} – ${formatDateRO(l.endDate)}${l.reason ? ` (${l.reason})` : ''}`, 'INFO');
+        } else if (prevStatus && prevStatus !== l.status) {
+            if (l.status === 'Approved') {
+                await createNotification(pool, { userId: l.userId, title: 'Concediu aprobat', message: `Cererea ta de concediu (${formatDateRO(l.startDate)} – ${formatDateRO(l.endDate)}) a fost aprobată.`, type: 'INFO' });
+            } else if (l.status === 'Rejected') {
+                await createNotification(pool, { userId: l.userId, title: 'Concediu respins', message: `Cererea ta de concediu (${formatDateRO(l.startDate)} – ${formatDateRO(l.endDate)}) a fost respinsă.${l.managerComment ? ` Motiv: ${l.managerComment}` : ''}`, type: 'ALERT' });
+            }
+        }
+    }
     res.json({ success: true });
 }));
 
@@ -727,12 +891,15 @@ app.get('/api/v1/seed/corrections', asyncHandler(async (req, res) => {
 }));
 
 app.post('/api/v1/seed/corrections', asyncHandler(async (req, res) => {
-    if (req.user) {
-        const pool = await connectDB();
-        const directory = await loadUserDirectory();
-        for (const c of req.body) {
-            const existingRes = await pool.request().input('id', c.id).query('SELECT user_id, status FROM correction_requests WHERE id = @id');
-            const existing = existingRes.recordset[0] || null;
+    const items = z.array(CorrectionItemSchema).parse(req.body);
+    const pool = await connectDB();
+    const existingCorrections = new Map();
+    const directory = req.user ? await loadUserDirectory() : new Map();
+    for (const c of items) {
+        const existingRes = await pool.request().input('id', c.id).query('SELECT user_id, status FROM correction_requests WHERE id = @id');
+        const existing = existingRes.recordset[0] || null;
+        existingCorrections.set(c.id, existing);
+        if (req.user) {
             const owners = [c.userId, existing?.user_id].filter(Boolean);
             if (owners.every(id => canManageTimesheetsOf(req.user, directory.get(id)))) continue;
             const reason = owners.every(id => id === req.user.id)
@@ -741,10 +908,23 @@ app.post('/api/v1/seed/corrections', asyncHandler(async (req, res) => {
             if (reason && deny(req, res, 403, reason)) return;
         }
     }
-    await handleConfigSync('correction_requests', req.body, (c) => ({
+    await handleConfigSync('correction_requests', items, (c) => ({
         query: 'INSERT INTO correction_requests (id, user_id, timesheet_id, requested_date, requested_start, requested_end, reason, status, manager_note) VALUES (@id, @uid, @tid, @date, @start, @end, @reason, @status, @note)',
         params: { id: c.id, uid: c.userId, tid: c.timesheetId, date: c.requestedDate, start: c.requestedStartTime, end: c.requestedEndTime, reason: c.reason, status: c.status, note: c.managerNote }
     }));
+
+    for (const c of items) {
+        const prevStatus = existingCorrections.get(c.id)?.status;
+        if (!prevStatus && c.status === 'PENDING') {
+            await notifyDepartmentManager(pool, c.userId, 'Solicitare corecție pontaj', `Dată: ${formatDateRO(c.requestedDate) || '-'}${c.reason ? ` (${c.reason})` : ''}`, 'INFO');
+        } else if (prevStatus && prevStatus !== c.status) {
+            if (c.status === 'APPROVED') {
+                await createNotification(pool, { userId: c.userId, title: 'Corecție pontaj aprobată', message: `Solicitarea ta de corecție pentru ${formatDateRO(c.requestedDate) || 'pontaj'} a fost aprobată.`, type: 'INFO' });
+            } else if (c.status === 'REJECTED') {
+                await createNotification(pool, { userId: c.userId, title: 'Corecție pontaj respinsă', message: `Solicitarea ta de corecție pentru ${formatDateRO(c.requestedDate) || 'pontaj'} a fost respinsă.${c.managerNote ? ` Motiv: ${c.managerNote}` : ''}`, type: 'ALERT' });
+            }
+        }
+    }
     res.json({ success: true });
 }));
 
@@ -898,26 +1078,40 @@ async function syncUsersWithBioeelAuth() {
             }
         }
 
+        // Batch-preload existing companies, departments, and users in 3 queries instead of 2-3 queries per employee (eliminates N+1)
+        const [compRows, deptRows, userRows] = await Promise.all([
+            pool.request().query('SELECT id FROM companies'),
+            pool.request().query('SELECT id, name FROM departments'),
+            pool.request().query('SELECT id, email, erp_id, source, employment_status FROM users')
+        ]);
+        const existingCompanies = new Set(compRows.recordset.map(c => c.id));
+        const deptIdByName = new Map(deptRows.recordset.map(d => [d.name, d.id]));
+        const userByEmail = new Map();
+        const userByErpId = new Map();
+        for (const u of userRows.recordset) {
+            if (u.email) userByEmail.set(u.email.toLowerCase().trim(), u);
+            if (u.erp_id) userByErpId.set(String(u.erp_id), u);
+        }
+
         for (const compCode of companies) {
-            const check = await pool.request().input('id', compCode).query('SELECT 1 FROM companies WHERE id = @id');
-            if (check.recordset.length === 0) {
+            if (!existingCompanies.has(compCode)) {
                 await pool.request()
                     .input('id', compCode)
                     .input('name', compCode === 'BIOEEL' ? 'Bioeel SRL' : compCode)
                     .query('INSERT INTO companies (id, name) VALUES (@id, @name)');
+                existingCompanies.add(compCode);
             }
         }
 
         for (const [deptName, compCode] of departments.entries()) {
-            const check = await pool.request().input('name', deptName).query('SELECT id FROM departments WHERE name = @name');
-            let deptId;
-            if (check.recordset.length === 0) {
-                deptId = `dep-${deptName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+            if (!deptIdByName.has(deptName)) {
+                const deptId = `dep-${deptName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
                 await pool.request()
                     .input('id', deptId)
                     .input('name', deptName)
                     .input('cid', compCode)
                     .query('INSERT INTO departments (id, name, company_id, manager_id, email_notifications) VALUES (@id, @name, @cid, NULL, 0)');
+                deptIdByName.set(deptName, deptId);
             }
         }
 
@@ -925,24 +1119,20 @@ async function syncUsersWithBioeelAuth() {
             const email = emp.Email ? emp.Email.toLowerCase().trim() : null;
             if (!email) continue;
 
-            const check = await pool.request()
-                .input('email', email)
-                .input('erpId', emp.Marca.toString())
-                .query('SELECT id, roles, requires_gps, main_schedule_id, contract_hours, is_validated, employment_status FROM users WHERE email = @email OR erp_id = @erpId');
+            const erpIdStr = String(emp.Marca);
+            const dbUser = userByEmail.get(email) || userByErpId.get(erpIdStr) || null;
 
             const status = emp.EsteActiv ? 'ACTIVE' : 'TERMINATED';
-            const deptCheck = emp.Departament ? await pool.request().input('name', emp.Departament).query('SELECT id FROM departments WHERE name = @name') : null;
-            const deptId = deptCheck && deptCheck.recordset.length > 0 ? deptCheck.recordset[0].id : null;
+            const deptId = emp.Departament ? (deptIdByName.get(emp.Departament) || null) : null;
             
             const nameParts = emp.NumePrenume ? emp.NumePrenume.trim().split(' ') : [];
             const lastName = nameParts[0] || '';
             const firstName = nameParts.slice(1).join(' ') || '';
 
-            if (check.recordset.length > 0) {
-                const dbUser = check.recordset[0];
+            if (dbUser) {
                 await pool.request()
                     .input('id', dbUser.id)
-                    .input('erpId', emp.Marca.toString())
+                    .input('erpId', erpIdStr)
                     .input('name', emp.NumePrenume)
                     .input('email', email)
                     .input('cid', emp.CompanieCode || null)
@@ -961,7 +1151,7 @@ async function syncUsersWithBioeelAuth() {
                 const defaultRoles = JSON.stringify(['EMPLOYEE']);
                 await pool.request()
                     .input('id', newId)
-                    .input('erpId', emp.Marca.toString())
+                    .input('erpId', erpIdStr)
                     .input('name', emp.NumePrenume)
                     .input('email', email)
                     .input('cid', emp.CompanieCode || null)
@@ -978,11 +1168,10 @@ async function syncUsersWithBioeelAuth() {
             }
         }
 
-        const activeMarcas = employees.map(emp => emp.Marca.toString());
-        if (activeMarcas.length > 0) {
-            const localUsers = await pool.request().query("SELECT id, erp_id FROM users WHERE source = 'ERP'");
-            for (const lu of localUsers.recordset) {
-                if (lu.erp_id && !activeMarcas.includes(lu.erp_id)) {
+        const activeMarcas = new Set(employees.map(emp => String(emp.Marca)));
+        if (activeMarcas.size > 0) {
+            for (const lu of userRows.recordset) {
+                if (lu.source === 'ERP' && lu.erp_id && !activeMarcas.has(String(lu.erp_id)) && lu.employment_status !== 'TERMINATED') {
                     await pool.request()
                         .input('id', lu.id)
                         .query("UPDATE users SET employment_status = 'TERMINATED' WHERE id = @id");

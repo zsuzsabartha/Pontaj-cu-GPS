@@ -49,6 +49,10 @@ export const canManageTimesheetsOf = (actor, target) =>
 /** Can the actor assign or clear daily work schedules in the calendar for this user? */
 export const canAssignSchedule = (actor, target) => canManageTimesheetsOf(actor, target);
 
+/** Can the actor read or mark as read notifications belonging to `ownerUserId`? */
+export const canAccessNotification = (actor, ownerUserId) =>
+    !!actor && !!ownerUserId && actor.id === ownerUserId;
+
 /** Can the actor approve/reject/delete leave requests for this user? */
 export const canDecideLeavesOf = (actor, target) =>
     hasRole(actor, ROLE.ADMIN, ROLE.HR, ROLE.MANAGER) && canSeeUser(actor, target);
