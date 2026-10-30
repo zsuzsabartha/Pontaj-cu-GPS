@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import ToastContainer from './components/ToastContainer';
+import MobileClockScreen from './components/MobileClockScreen';
 import { showToast } from './utils/toast';
 import {
     INITIAL_BREAK_CONFIGS,
@@ -50,7 +51,7 @@ import CompanyManagement from './components/CompanyManagement';
 import ManagerDashboard from './components/ManagerDashboard';
 import LeaveCalendarReport from './components/LeaveCalendarReport';
 import SmartTable, { Column } from './components/SmartTable';
-import { Users, LogOut, Building, Clock, UserCog, Database, Server, CalendarRange, Bell, PlusCircle, Briefcase, LayoutList, Palmtree, Menu, X, Mail, ShieldAlert, RefreshCw, PlugZap, Sun, Moon } from 'lucide-react';
+import { Users, LogOut, Building, Clock, UserCog, Database, Server, CalendarRange, Bell, PlusCircle, Briefcase, LayoutList, Palmtree, Menu, X, Mail, ShieldAlert, RefreshCw, PlugZap, Sun, Moon, Smartphone } from 'lucide-react';
 import { useMsal } from "@azure/msal-react";
 // (findNearestOffice unused in App.tsx)
 import { SQLService } from './services/sqlService';
@@ -94,6 +95,14 @@ export default function App() {
     const [dashboardView, setDashboardView] = useState<'clock' | 'history'>('clock');
     const [isLeaveModalOpen, setLeaveModalOpen] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isMobileClockMode, setIsMobileClockMode] = useState<boolean>(() => {
+        if (typeof window === 'undefined') return false;
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('mode') === 'mobile') return true;
+        if (params.get('mode') === 'full') return false;
+        if (window.matchMedia('(display-mode: standalone)').matches) return true;
+        return window.innerWidth < 768;
+    });
 
     // Navigation filters for drill-down (Company -> Dept -> User)
     const [navFilterCompanyId, setNavFilterCompanyId] = useState<string | null>(null);
@@ -277,6 +286,36 @@ export default function App() {
     const unreadCount = notifications.filter((n: Notification) => n.userId === currentUser.id && !n.isRead).length;
     const myNotifications = notifications.filter((n: Notification) => n.userId === currentUser.id).sort((a: Notification, b: Notification) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+    if (isMobileClockMode) {
+        return (
+            <>
+                <MobileClockScreen
+                    user={currentUser}
+                    companyName={companies.find(c => c.id === currentUser.companyId)?.name}
+                    offices={offices}
+                    breakConfigs={breakConfigs}
+                    holidays={holidays}
+                    activeLeaveRequest={activeLeaveRequest}
+                    shiftStartTime={activeOrTodayTimesheet?.startTime}
+                    shiftEndTime={activeOrTodayTimesheet?.endTime}
+                    accumulatedBreakTime={shiftStats.accumulatedPauseMs}
+                    activeBreakStartTime={shiftStats.activeBreakStart}
+                    currentStatus={activeOrTodayTimesheet?.status || ShiftStatus.NOT_STARTED}
+                    theme={theme}
+                    isGlobalLoading={isGlobalLoading}
+                    onClockIn={handleClockIn}
+                    onClockOut={(loc, note) => handleClockOut(loc, activeOrTodayTimesheet, note)}
+                    onToggleBreak={(cfg, loc) => handleToggleBreak(activeOrTodayTimesheet, cfg, loc)}
+                    onRefresh={fetchAllData}
+                    onToggleTheme={toggleTheme}
+                    onLogout={handleFullLogout}
+                    onSwitchToFullApp={() => setIsMobileClockMode(false)}
+                />
+                <ToastContainer />
+            </>
+        );
+    }
+
     // Define Columns for My Leaves Table with SmartGrid features
     const myLeaveColumns: Column<LeaveRequest>[] = [
         {
@@ -393,6 +432,7 @@ export default function App() {
                     <div className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Personal</div>
                     <div className="space-y-1 mb-6">
                         <button onClick={() => setActiveTab('dashboard')} className={getTabClass('dashboard')}><Clock size={18} /> Pontaj</button>
+                        <button onClick={() => setIsMobileClockMode(true)} className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-xs font-bold bg-emerald-600/10 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-600/20 transition-colors"><Smartphone size={16} /> Mod Mobil (Doar Pontare)</button>
                         <button onClick={() => setActiveTab('calendar')} className={getTabClass('calendar')}><CalendarRange size={18} /> Program</button>
                         <button onClick={() => setActiveTab('leaves')} className={getTabClass('leaves')}><Palmtree size={18} /> Concedii</button>
                         <button onClick={() => setActiveTab('notifications')} className={getTabClass('notifications')}>

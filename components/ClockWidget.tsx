@@ -4,6 +4,7 @@ import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satel
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
 import { ShiftStatus, Coordinates, Office, User, BreakConfig, Holiday, LeaveRequest, LeaveStatus } from '../types';
 import { toLocalDateISO } from '../utils/date';
+import { showToast } from '../utils/toast';
 
 interface ClockWidgetProps {
     user: User;
@@ -174,8 +175,13 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
 
         } catch (err: any) {
             console.error("GPS Error:", err);
-            setError(err.message || 'Eroare localizare');
-            setShowMockOption(true);
+            if (!user.requiresGPS) {
+                onClockIn({ latitude: 0, longitude: 0 }, null, 0);
+                return;
+            }
+            setError(err.message || 'Eroare localizare. Activați GPS-ul pe telefon.');
+            setShowMockOption(import.meta.env.DEV);
+            // (showMockOption handled above)
         } finally {
             if (!confirmData) setLoading(false);
         }
@@ -218,7 +224,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
                     return;
                 }
                 if (userNote.trim() === "") {
-                    alert("Notița este obligatorie pentru un pontaj atât de scurt!");
+                    showToast("Notița este obligatorie pentru un pontaj atât de scurt!", 'warning');
                     setLoading(false);
                     return;
                 }

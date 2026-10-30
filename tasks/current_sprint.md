@@ -27,6 +27,8 @@
 ---
 
 ### ✅ Done
+- [x] **`MOB-001`**: Aplicație Android PWA instalabilă („Mod Mobil – Doar Pontare”): ecran dedicat `MobileClockScreen.tsx` (exclusiv Login + `ClockWidget`), banner de instalare rapidă pe Android (`beforeinstallprompt`), `start_url: /pontaj/?mode=mobile` și protecție împotriva locației simulate în producție (3 pts) — *Completed 2026-10-30*
+  - Files: `components/MobileClockScreen.tsx`, `components/ClockWidget.tsx`, `App.tsx`, `vite.config.ts`, `index.html`
 - [x] **`UI-203`**: Notificări flotante moderne (Toast) fără dependențe externe în locul `alert()` blocant pentru pontaj, concedii, corecții, nomenclatoare și sincronizare (3 pts) — *Completed 2026-10-30*
   - Files: `utils/toast.ts`, `components/ToastContainer.tsx`, `App.tsx`, `hooks/useTimesheetManager.ts`, `components/TimesheetEditModal.tsx`, `components/RejectionModal.tsx`, `components/NomenclatorManagement.tsx`, `components/CompanyManagement.tsx`, `components/OfficeManagement.tsx`, `components/AdminUserManagement.tsx`
 - [x] **`FIX-004`**: Restaurare butoane de adăugare și salvare în SQL în `NomenclatorManagement.tsx` (Pauze, Concedii, Programe de Lucru, Zile Libere) și conectarea `workSchedules` reale în `TimesheetEditModal.tsx` (2 pts) — *Completed 2026-10-30*
