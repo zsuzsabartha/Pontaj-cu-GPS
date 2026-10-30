@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import { Timesheet, ShiftStatus, BreakStatus, Office, User, BreakConfig, Company, CorrectionRequest } from '../types';
 import { MapPin, CheckSquare, Edit2, AlertCircle, CloudOff, Info, User as UserIcon, Bot, Clock, UserCog, FileQuestion, Hourglass } from 'lucide-react';
 import SmartTable, { Column } from './SmartTable';
+import { formatDateRO } from '../utils/date';
 
 interface TimesheetListProps {
     timesheets: Timesheet[];
@@ -66,7 +67,7 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
         const unpaidBreakDuration = ts.breaks.reduce((acc, b) => {
             const config = breakConfigs.find(bc => bc.id === b.typeId);
             // Assuming breaks without end time are ignored for calculation or handled elsewhere
-            if (config && !config.isPaid && b.endTime) {
+            if ((!config?.isPaid || b.status === BreakStatus.REJECTED) && b.endTime) {
                 const bStart = new Date(b.startTime).getTime();
                 const bEnd = new Date(b.endTime).getTime();
                 return acc + (bEnd - bStart);
@@ -130,7 +131,8 @@ const TimesheetList: React.FC<TimesheetListProps> = ({ timesheets, offices = [],
             accessor: 'date',
             sortable: true,
             filterable: true,
-            width: 'w-24'
+            width: 'w-24',
+            render: (ts: Timesheet) => <span className="font-mono text-xs">{formatDateRO(ts.date)}</span>
         },
 
         // 3. Interval Column

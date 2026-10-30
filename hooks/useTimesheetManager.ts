@@ -170,7 +170,7 @@ export const useTimesheetManager = ({
             if (target) {
                 const updatedReq = { ...target, status: 'APPROVED' as const };
                 await SQLService.upsertCorrection(updatedReq);
-                let existingTs = timesheets.find(t => t.id === target.timesheetId);
+                let existingTs = timesheets.find(t => t.id === target.timesheetId || (t.userId === target.userId && t.date === target.requestedDate));
                 const newTs: Timesheet = {
                     id: existingTs ? existingTs.id : `ts-corr-${Date.now()}`,
                     userId: target.userId,
@@ -271,7 +271,7 @@ export const useTimesheetManager = ({
         if (!currentUser) return;
         setIsGlobalLoading(true);
 
-        const isManager = currentUser.roles.includes(Role.MANAGER) || currentUser.roles.includes(Role.ADMIN);
+        const isManager = currentUser.roles.includes(Role.MANAGER) || currentUser.roles.includes(Role.ADMIN) || currentUser.roles.includes(Role.HR) || currentUser.roles.includes(Role.PONTATOR);
         const ownerId = targetUserId;
 
         if (!ownerId) {
@@ -284,6 +284,10 @@ export const useTimesheetManager = ({
             if (data.type === 'WORK') {
                 if (isManager) {
                     let newTs: Timesheet;
+                    if (!data.tsId) {
+                        const sameDay = timesheets.find(t => t.userId === ownerId && t.date === data.date);
+                        if (sameDay) data.tsId = sameDay.id;
+                    }
                     if (data.tsId) {
                         const existing = timesheets.find(t => t.id === data.tsId);
                         if (!existing) throw new Error("Timesheet not found");

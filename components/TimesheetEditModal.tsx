@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Timesheet, LeaveConfig, WorkSchedule } from '../types';
 import { showToast } from '../utils/toast';
 import { MOCK_SCHEDULES, isDateInLockedPeriod } from '../constants';
-import { toLocalDateISO } from '../utils/date';
+import { toLocalDateISO, formatDateRO } from '../utils/date';
 import { X, Clock, AlertCircle, CalendarClock, PlusCircle, Lock, Briefcase, Palmtree, Trash2 } from 'lucide-react';
 
 interface TimesheetEditModalProps {
@@ -112,8 +112,17 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
 
         // Construct Payload
         if (activeTab === 'WORK') {
-            const startISO = `${date}T${startTime}:00`;
-            const endISO = endTime ? `${date}T${endTime}:00` : undefined;
+            const startDateObj = new Date(`${date}T${startTime}:00`);
+            const startISO = startDateObj.toISOString();
+            let endISO: string | undefined = undefined;
+            if (endTime) {
+                const endDateObj = new Date(`${date}T${endTime}:00`);
+                if (endDateObj.getTime() <= startDateObj.getTime()) {
+                    endDateObj.setDate(endDateObj.getDate() + 1);
+                }
+                endISO = endDateObj.toISOString();
+            }
+
             onSave({
                 tsId: timesheet?.id,
                 date: date,
@@ -204,7 +213,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
                                 className={`w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all ${isLocked ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-600' : ''}`}
                             />
                         ) : (
-                            <div className="font-semibold text-gray-800 dark:text-gray-100">{date}</div>
+                            <div className="font-semibold text-gray-800 dark:text-gray-100">{formatDateRO(date)}</div>
                         )}
                     </div>
 
@@ -282,7 +291,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
                                 ))}
                             </select>
                             <p className="text-xs text-purple-700 dark:text-purple-400 mt-2 italic">
-                                Acest concediu va fi aprobat automat și va înlocui orice pontaj existent pentru data de <strong>{date}</strong>.
+                                Acest concediu va fi aprobat automat și va înlocui orice pontaj existent pentru data de <strong>{formatDateRO(date)}</strong>.
                             </p>
                         </div>
                     )}

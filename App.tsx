@@ -208,11 +208,13 @@ export default function App() {
             if (b.endTime && b.startTime) {
                 const start = new Date(b.startTime).getTime();
                 const end = new Date(b.endTime).getTime();
-                if (!isNaN(start) && !isNaN(end) && end > start) accumulatedPauseMs += (end - start);
+                const cfg = breakConfigs.find((bc: BreakConfig) => bc.id === b.typeId);
+                const isUnpaid = !cfg?.isPaid || b.status === BreakStatus.REJECTED;
+                if (!isNaN(start) && !isNaN(end) && end > start && isUnpaid) accumulatedPauseMs += (end - start);
             } else if (b.startTime && !b.endTime) activeBreakStart = b.startTime;
         });
         return { accumulatedPauseMs, activeBreakStart };
-    }, [activeOrTodayTimesheet]);
+    }, [activeOrTodayTimesheet, breakConfigs]);
 
     // --- SERVER OFFLINE GUARD ---
     if (serverStatus === 'OFFLINE' || serverStatus === 'CONNECTING') {
@@ -646,7 +648,7 @@ export default function App() {
             </main>
 
             <LeaveModal isOpen={isLeaveModalOpen} onClose={() => setLeaveModalOpen(false)} leaveConfigs={leaveConfigs} holidays={holidays} lockedDate={lockedDate} onSubmit={handleLeaveSubmit} />
-            <TimesheetEditModal isOpen={editModalData.isOpen} onClose={() => setEditModalData({ isOpen: false, timesheet: null, targetUserId: null })} timesheet={editModalData.timesheet} isManager={hasRole(Role.MANAGER) || hasRole(Role.ADMIN)} lockedDate={lockedDate} leaveConfigs={leaveConfigs} workSchedules={workSchedules} onSave={(data) => handleTimesheetSave(data, editModalData.targetUserId)} onDelete={handleTimesheetDelete} />
+            <TimesheetEditModal isOpen={editModalData.isOpen} onClose={() => setEditModalData({ isOpen: false, timesheet: null, targetUserId: null })} timesheet={editModalData.timesheet} isManager={canViewTeam || isAdmin} lockedDate={lockedDate} leaveConfigs={leaveConfigs} workSchedules={workSchedules} onSave={(data) => handleTimesheetSave(data, editModalData.targetUserId)} onDelete={handleTimesheetDelete} />
 
             <RejectionModal isOpen={rejectionModal.isOpen} onClose={() => setRejectionModal({ ...rejectionModal, isOpen: false })} onSubmit={(reason) => handleConfirmRejection(rejectionModal, reason)} title={rejectionModal.type === 'LEAVE_CANCEL' ? 'Motiv Anulare' : 'Motiv Respingere'} />
             <ToastContainer />

@@ -226,7 +226,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                     // Subtract Unpaid Breaks
                     const unpaidBreaksMs = timesheet.breaks.reduce((acc, b) => {
                         const bConfig = breakConfigs.find(bc => bc.id === b.typeId);
-                        if (bConfig && !bConfig.isPaid && b.endTime && b.startTime) {
+                        if ((!bConfig?.isPaid || b.status === BreakStatus.REJECTED) && b.endTime && b.startTime) {
                             return acc + (new Date(b.endTime).getTime() - new Date(b.startTime).getTime());
                         }
                         return acc;

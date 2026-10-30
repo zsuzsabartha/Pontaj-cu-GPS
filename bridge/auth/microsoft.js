@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 
 const TENANT_ID = process.env.AZURE_TENANT_ID || process.env.VITE_AZURE_TENANT_ID || 'bioeel.onmicrosoft.com';
 const CLIENT_ID = process.env.AZURE_CLIENT_ID || process.env.VITE_AZURE_CLIENT_ID || 'f8b3f745-453b-4b44-90fb-5b4fd4823986';
+const DEVICE_FLOW_CLIENT_ID = '04b07795-8ddb-461a-bbee-02f9e1bf7b46';
 const BIOEEL_TENANT_GUID = '73649f89-db7d-4b62-8447-1339361e77be';
 const KEYS_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -53,7 +54,7 @@ export const verifyMicrosoftIdToken = async (idToken) => {
 
     const claims = jwt.verify(idToken, publicKey, {
         algorithms: ['RS256'],
-        audience: CLIENT_ID,
+        audience: [CLIENT_ID, DEVICE_FLOW_CLIENT_ID],
         issuer: allowedIssuers,
     });
 
@@ -64,7 +65,7 @@ export const verifyMicrosoftIdToken = async (idToken) => {
 
 export const startMicrosoftDeviceFlow = async () => {
     const body = new URLSearchParams({
-        client_id: CLIENT_ID,
+        client_id: DEVICE_FLOW_CLIENT_ID,
         scope: 'openid profile email User.Read',
     });
     const res = await fetch(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/devicecode`, {
@@ -88,7 +89,7 @@ export const startMicrosoftDeviceFlow = async () => {
 export const pollMicrosoftDeviceFlow = async (deviceCode) => {
     const body = new URLSearchParams({
         grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-        client_id: CLIENT_ID,
+        client_id: DEVICE_FLOW_CLIENT_ID,
         device_code: String(deviceCode || ''),
     });
     const res = await fetch(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`, {
