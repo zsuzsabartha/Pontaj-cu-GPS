@@ -1,6 +1,8 @@
 
 import { API_CONFIG } from '../constants';
-import { Timesheet, LeaveRequest, CorrectionRequest, User } from '../types';
+import { Timesheet, LeaveRequest, CorrectionRequest, User, DailySchedule } from '../types';
+
+export type ClockAction = 'CLOCK_IN' | 'CLOCK_OUT' | 'BREAK_START' | 'BREAK_END';
 
 // Fired when the server rejects a request because the session is missing or expired.
 export const UNAUTHORIZED_EVENT = 'pontaj:unauthorized';
@@ -75,13 +77,21 @@ export const SQLService = {
     getLeaves: () => get('/config/leaves'),
     getHolidays: () => get('/config/holidays'),
     getWorkSchedules: () => get('/config/schedules'),
+    getSettings: (): Promise<{ lockedDate?: string }> => get('/config/settings'),
+    saveSettings: (settings: { lockedDate?: string }) => post('/config/settings', settings),
+    saveConfigList: (endpoint: 'companies' | 'departments' | 'offices' | 'breaks' | 'leaves' | 'schedules' | 'holidays', data: any[]) =>
+        post(`/config/${endpoint}?replace=1`, data),
+    getSchedulePlans: (): Promise<DailySchedule[]> => get('/schedule-plans'),
+    upsertSchedulePlan: (plan: { id?: string; userId: string; date: string; scheduleId: string }) =>
+        post('/schedule-plans', plan),
     getTimesheets: () => get('/seed/timesheets'), 
     getLeaveRequests: () => get('/seed/leaves'),
     getCorrectionRequests: () => get('/seed/corrections'),
 
     // --- REAL TIME TRANSACTION METHODS ---
     
-    upsertTimesheet: (ts: Timesheet) => post('/seed/timesheets', [ts]),
+    upsertTimesheet: (ts: Timesheet & { clockAction?: ClockAction }): Promise<{ success: boolean; timesheets?: Timesheet[] }> =>
+        post('/seed/timesheets', [ts]),
     deleteTimesheet: (id: string) => remove(`/timesheets/${id}`),
     
     upsertLeave: (leave: LeaveRequest) => post('/seed/leaves', [leave]),

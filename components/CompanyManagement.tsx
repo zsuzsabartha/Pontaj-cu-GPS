@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Company, User, Department, Office } from '../types';
 import { Briefcase, Plus, Edit2, Trash2, Users, Building, FolderTree, Save, X, RefreshCw } from 'lucide-react';
-import { API_CONFIG } from '../constants';
+import { SQLService } from '../services/sqlService';
 
 interface CompanyManagementProps {
     companies: Company[];
@@ -27,13 +27,10 @@ const CompanyManagement: React.FC<CompanyManagementProps> = ({
     const syncToSQL = async (updatedList: Company[]) => {
         setIsSyncing(true);
         try {
-            await fetch(`${API_CONFIG.BASE_URL}/config/companies`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updatedList)
-            });
+            await SQLService.saveConfigList('companies', updatedList);
         } catch (e) {
             console.error("Sync failed", e);
+            alert("Eroare la salvarea companiilor în baza de date.");
         } finally {
             setIsSyncing(false);
         }
@@ -81,7 +78,9 @@ const CompanyManagement: React.FC<CompanyManagementProps> = ({
         }
 
         if (confirm('Sunteți sigur că doriți să ștergeți această companie?')) {
+            const updatedList = companies.filter(c => c.id !== id);
             onDeleteCompany(id);
+            syncToSQL(updatedList);
         }
     };
 

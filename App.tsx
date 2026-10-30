@@ -52,7 +52,7 @@ import { Users, Settings, LogOut, CheckCircle, XCircle, Building, Clock, UserCog
 import { useMsal } from "@azure/msal-react";
 import { findNearestOffice } from './services/geoService';
 import { SQLService } from './services/sqlService';
-import { toLocalDateISO } from './utils/date';
+import { toLocalDateISO, countWorkingDays, formatDateRO } from './utils/date';
 
 import { useAuth } from './hooks/useAuth';
 import { useAppData } from './hooks/useAppData';
@@ -293,7 +293,7 @@ export default function App() {
             render: (l) => (
                 <div className="flex flex-col">
                     <div className="text-sm font-medium text-gray-700">
-                        {new Date(l.startDate).toLocaleDateString('ro-RO')} - {new Date(l.endDate).toLocaleDateString('ro-RO')}
+                        {formatDateRO(l.startDate)} - {formatDateRO(l.endDate)}
                     </div>
                 </div>
             )
@@ -302,11 +302,8 @@ export default function App() {
             header: 'Zile',
             accessor: 'id',
             render: (l) => {
-                const start = new Date(l.startDate);
-                const end = new Date(l.endDate);
-                // Rough calculation including weekends for display
-                const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                return <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">{days} zile</span>
+                const days = countWorkingDays(l.startDate, l.endDate, holidays);
+                return <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">{days} zile lucrătoare</span>
             }
         },
         {
@@ -598,7 +595,7 @@ export default function App() {
                 {activeTab === 'backend' && <BackendControlPanel />}
             </main>
 
-            <LeaveModal isOpen={isLeaveModalOpen} onClose={() => setLeaveModalOpen(false)} leaveConfigs={leaveConfigs} lockedDate={lockedDate} onSubmit={handleLeaveSubmit} />
+            <LeaveModal isOpen={isLeaveModalOpen} onClose={() => setLeaveModalOpen(false)} leaveConfigs={leaveConfigs} holidays={holidays} lockedDate={lockedDate} onSubmit={handleLeaveSubmit} />
             <TimesheetEditModal isOpen={editModalData.isOpen} onClose={() => setEditModalData({ isOpen: false, timesheet: null, targetUserId: null })} timesheet={editModalData.timesheet} isManager={hasRole(Role.MANAGER) || hasRole(Role.ADMIN)} lockedDate={lockedDate} leaveConfigs={leaveConfigs} onSave={(data) => handleTimesheetSave(data, editModalData.targetUserId)} onDelete={handleTimesheetDelete} />
             <RejectionModal isOpen={rejectionModal.isOpen} onClose={() => setRejectionModal({ ...rejectionModal, isOpen: false })} onSubmit={(reason) => handleConfirmRejection(rejectionModal, reason)} title={rejectionModal.type === 'LEAVE_CANCEL' ? 'Motiv Anulare' : 'Motiv Respingere'} />
         </div>

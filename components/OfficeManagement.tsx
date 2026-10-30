@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Office, Company, Department, User, Role } from '../types';
 import { Building, MapPin, Trash2, Plus, Navigation, FolderTree, Mail, BellOff, RefreshCw, Edit2, User as UserIcon, Briefcase } from 'lucide-react';
 import { getCurrentLocation } from '../services/geoService';
-import { API_CONFIG } from '../constants';
+import { SQLService } from '../services/sqlService';
 
 interface OfficeManagementProps {
     offices: Office[];
@@ -51,13 +51,10 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({
     const syncToSQL = async (endpoint: 'offices' | 'departments', data: any[]) => {
         setIsSyncing(true);
         try {
-            await fetch(`${API_CONFIG.BASE_URL}/config/${endpoint}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
+            await SQLService.saveConfigList(endpoint, data);
         } catch (e) {
             console.error("Sync failed", e);
+            alert("Eroare la salvarea în baza de date.");
         } finally {
             setIsSyncing(false);
         }
@@ -132,7 +129,9 @@ const OfficeManagement: React.FC<OfficeManagementProps> = ({
             return;
         }
         if (confirm('Ștergeți acest sediu?')) {
+            const updated = offices.filter(o => o.id !== id);
             onDeleteOffice(id);
+            syncToSQL('offices', updated);
         }
     }
 

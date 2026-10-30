@@ -1,4 +1,4 @@
-﻿// End-to-end authorization test for PontajSmart (dev database).
+// End-to-end authorization test for PontajSmart (dev database).
 // Starts the bridge in AUTH_MODE=enforce on a temp port, creates sessions for real users with different roles
 // (tokens signed with the app's JWT_SECRET), checks each rule, and removes all test data (ids "test-auth-*").
 import { spawn } from 'child_process';
@@ -41,6 +41,8 @@ const dbConfig = {
 };
 
 const cleanup = async (pool) => {
+  await pool.request().query("IF OBJECT_ID('timesheet_logs', 'U') IS NOT NULL DELETE FROM timesheet_logs WHERE timesheet_id LIKE 'test-auth-%' OR id LIKE 'test-auth-%'");
+  await pool.request().query("IF OBJECT_ID('schedule_plans', 'U') IS NOT NULL DELETE FROM schedule_plans WHERE id LIKE 'test-auth-%' OR date >= '2099-01-01'");
   await pool.request().query("DELETE FROM breaks WHERE timesheet_id LIKE 'test-auth-%' OR id LIKE 'test-auth-%'");
   await pool.request().query("DELETE FROM timesheets WHERE id LIKE 'test-auth-%'");
   await pool.request().query("DELETE FROM leave_requests WHERE id LIKE 'test-auth-%'");
@@ -111,22 +113,53 @@ try {
   const ownTs = { id: 'test-auth-ts-emp', userId: employee.id, date: '2099-01-01', startTime: '2099-01-01T07:00:00.000Z', endTime: '2099-01-01T15:00:00.000Z', status: 'COMPLETED', breaks: [] };
   const r1 = await call('POST', '/seed/timesheets', { cookie: C.employee, body: [ownTs] });
   check('employee can save own timesheet', r1.status === 200, `status ${r1.status} ${JSON.stringify(r1.data)}`);
+  check('server overrides client clock on employee timesheet punch', r1.data?.timesheets?.[0]?.startTime !== '2099-01-01T07:00:00.000Z' && r1.data?.timesheets?.[0]?.date !== '2099-01-01', `got ${r1.data?.timesheets?.[0]?.startTime}`);
   const withApprovedBreak = { ...ownTs, breaks: [{ id: 'test-auth-br-1', typeId: null, typeName: 'Test', startTime: '2099-01-01T10:00:00.000Z', endTime: '2099-01-01T10:15:00.000Z', status: 'Approved' }] };
   check('employee cannot approve own break', (await call('POST', '/seed/timesheets', { cookie: C.employee, body: [withApprovedBreak] })).status === 403);
-  const colleagueTs = { ...ownTs, id: 'test-auth-ts-col', userId: colleague.id, date: '2099-01-02' };
+  const colleagueTs = {
+    ...ownTs,
+    id: 'test-auth-ts-col',
+    userId: colleague.id,
+    date: '2099-01-02',
+    notes: 'Tură verificată',
+    distanceToOffice: 42,
+    endLocation: { latitude: 46.5425, longitude: 24.5575 },
+    logs: [{ id: 'test-auth-log-1', changedByUserId: manager.id, changeDate: '2099-01-02T16:00:00.000Z', details: 'Manager Created' }],
+  };
   check("employee cannot write a colleague's timesheet", (await call('POST', '/seed/timesheets', { cookie: C.employee, body: [colleagueTs] })).status === 403);
   check('employee cannot delete timesheets', (await call('DELETE', '/timesheets/test-auth-ts-emp', { cookie: C.employee })).status === 403);
   const r2 = await call('POST', '/seed/timesheets', { cookie: C.manager, body: [colleagueTs] });
   check("manager can write a timesheet in own company", r2.status === 200, `status ${r2.status} ${JSON.stringify(r2.data)}`);
+  const tsCheckMgr = await call('GET', '/seed/timesheets', { cookie: C.manager });
+  const savedColTs = tsCheckMgr.data?.find(t => t.id === 'test-auth-ts-col');
+  check('timesheet persists notes, distanceToOffice, endLocation, and audit logs',
+    savedColTs?.notes === 'Tură verificată' && savedColTs?.distanceToOffice === 42 && Math.abs((savedColTs?.endLocation?.latitude || 0) - 46.5425) < 0.001 && savedColTs?.logs?.length === 1,
+    JSON.stringify(savedColTs));
 
-  const leave = { id: 'test-auth-lv-1', userId: employee.id, typeId: leaveTypeId, startDate: '2099-02-01', endDate: '2099-02-02', reason: 'test auth', status: 'Pending' };
+  const leave = { id: 'test-auth-lv-1', userId: employee.id, typeId: leaveTypeId, startDate: '2099-02-01', endDate: '2099-02-02', reason: 'test auth', status: 'Pending', createdAt: '2099-01-15T10:00:00.000Z' };
   const r3 = await call('POST', '/seed/leaves', { cookie: C.employee, body: [leave] });
   check('employee can request leave (Pending)', r3.status === 200, `status ${r3.status} ${JSON.stringify(r3.data)}`);
   check('employee cannot approve own leave', (await call('POST', '/seed/leaves', { cookie: C.employee, body: [{ ...leave, status: 'Approved' }] })).status === 403);
   const r4 = await call('POST', '/seed/leaves', { cookie: C.manager, body: [{ ...leave, status: 'Approved' }] });
   check('manager can approve leave in own company', r4.status === 200, `status ${r4.status} ${JSON.stringify(r4.data)}`);
-  const r5 = await call('POST', '/seed/leaves', { cookie: C.employee, body: [{ ...leave, status: 'Cancelled' }] });
+  const r5 = await call('POST', '/seed/leaves', { cookie: C.employee, body: [{ ...leave, status: 'Cancelled', cancellationReason: 'Anulat pentru test' }] });
   check('employee can cancel own approved leave', r5.status === 200, `status ${r5.status}`);
+  const lvAfterCancel = await call('GET', '/seed/leaves', { cookie: C.employee });
+  const cancelledLv = lvAfterCancel.data?.find(l => l.id === 'test-auth-lv-1');
+  check('leave persists cancellationReason and createdAt', cancelledLv?.cancellationReason === 'Anulat pentru test' && !!cancelledLv?.createdAt, JSON.stringify(cancelledLv));
+
+  // --- Schedule plans & App settings (Phase 1 D4) ---
+  check('employee cannot assign schedule plan', (await call('POST', '/schedule-plans', { cookie: C.employee, body: { id: 'test-auth-sp-1', userId: employee.id, date: '2099-03-01', scheduleId: 'sch-1' } })).status === 403);
+  const spSave = await call('POST', '/schedule-plans', { cookie: C.manager, body: { id: 'test-auth-sp-1', userId: colleague.id, date: '2099-03-01', scheduleId: 'sch-1' } });
+  check('manager can assign schedule plan in own company', spSave.status === 200);
+  const spList = await call('GET', '/schedule-plans', { cookie: C.manager });
+  check('schedule plan is persisted and returned by GET /schedule-plans', spList.status === 200 && spList.data?.some(p => p.userId === colleague.id && p.date === '2099-03-01' && p.scheduleId === 'sch-1'));
+
+  check('manager cannot edit global settings (lockedDate)', (await call('POST', '/config/settings', { cookie: C.manager, body: { lockedDate: '2026-09-30' } })).status === 403);
+  const prevSettings = await call('GET', '/config/settings', { cookie: C.admin });
+  const setRes = await call('POST', '/config/settings', { cookie: C.admin, body: { lockedDate: prevSettings.data?.lockedDate || '2026-09-30' } });
+  const afterSettings = await call('GET', '/config/settings', { cookie: C.employee });
+  check('admin can persist lockedDate in app_settings and employee can read it', setRes.status === 200 && afterSettings.status === 200 && !!afterSettings.data?.lockedDate);
 
   const corr = { id: 'test-auth-cr-1', userId: employee.id, timesheetId: 'test-auth-ts-emp', requestedDate: '2099-01-01', requestedStartTime: '2099-01-01T06:00:00.000Z', requestedEndTime: '2099-01-01T15:00:00.000Z', reason: 'test auth', status: 'PENDING' };
   const rc = await call('POST', '/seed/corrections', { cookie: C.employee, body: [corr] });

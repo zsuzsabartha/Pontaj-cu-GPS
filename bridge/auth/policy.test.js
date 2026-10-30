@@ -2,8 +2,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    canSeeUser, canManageTimesheetsOf, canDecideLeavesOf, canManageUsers, canEditConfig,
-    checkRoleAssignment, checkOwnTimesheetBreaks, checkOwnLeave, checkOwnCorrection, STATUS,
+    canSeeUser, canManageTimesheetsOf, canAssignSchedule, canDecideLeavesOf, canManageUsers, canEditConfig,
+    checkRoleAssignment, checkOwnTimesheetBreaks, checkOwnLeave, checkOwnCorrection,
+    resolveTimesheetTimestamps, toServerLocalDateISO, STATUS,
 } from './policy.js';
 
 const user = (id, roles, companyId = 'C1', extra = {}) => ({ id, roles, companyId, ...extra });
@@ -83,4 +84,56 @@ test('employee correction: create pending, cannot approve', () => {
     assert.equal(checkOwnCorrection(null, { status: 'PENDING' }), null);
     assert.notEqual(checkOwnCorrection(null, { status: 'APPROVED' }), null);
     assert.notEqual(checkOwnCorrection({ status: 'PENDING' }, { status: 'APPROVED' }), null);
+});
+
+test('schedule assignment follows timesheet management scope', () => {
+    assert.equal(canAssignSchedule(manager, colleague), true);
+    assert.equal(canAssignSchedule(manager, otherCompany), false);
+    assert.equal(canAssignSchedule(pontator, timekept), true);
+    assert.equal(canAssignSchedule(employee, employee), false);
+});
+
+test('server-side clock timestamps override client clock for employee punches, preserve manager manual edits', () => {
+    const serverNow = new Date('2026-10-30T08:15:00.000Z');
+    // 1. Employee tries to backdate clock-in to 05:00
+    const clockIn = resolveTimesheetTimestamps(employee, employee, null, [], {
+        date: '2026-10-29',
+        startTime: '2026-10-30T05:00:00.000Z',
+        breaks: [],
+    }, serverNow);
+    assert.equal(clockIn.date, toServerLocalDateISO(serverNow));
+    assert.equal(clockIn.startTime, serverNow.toISOString());
+    assert.equal(clockIn.endTime, null);
+
+    // 2. Employee clocks out later and tries to tamper with startTime
+    const laterNow = new Date('2026-10-30T16:30:00.000Z');
+    const clockOut = resolveTimesheetTimestamps(
+        employee,
+        employee,
+        { date: new Date('2026-10-30T00:00:00.000Z'), start_time: new Date('2026-10-30T08:15:00.000Z'), end_time: null },
+        [{ id: 'br-1', start_time: '2026-10-30T12:00:00.000Z', end_time: null }],
+        {
+            date: '2026-10-01',
+            startTime: '2026-10-30T04:00:00.000Z',
+            endTime: '2026-10-30T18:00:00.000Z',
+            breaks: [{ id: 'br-1', startTime: '2026-10-30T01:00:00.000Z', endTime: '2026-10-30T01:05:00.000Z' }],
+        },
+        laterNow
+    );
+    assert.equal(clockOut.date, '2026-10-30');
+    assert.equal(clockOut.startTime, '2026-10-30T08:15:00.000Z');
+    assert.equal(clockOut.endTime, laterNow.toISOString());
+    assert.equal(clockOut.breaks[0].startTime, '2026-10-30T12:00:00.000Z');
+    assert.equal(clockOut.breaks[0].endTime, laterNow.toISOString());
+
+    // 3. Manager manual edit without clockAction preserves explicit times
+    const mgrEdit = resolveTimesheetTimestamps(manager, colleague, null, [], {
+        date: '2026-10-20',
+        startTime: '2026-10-20T06:00:00.000Z',
+        endTime: '2026-10-20T14:00:00.000Z',
+        breaks: [],
+    }, serverNow);
+    assert.equal(mgrEdit.date, '2026-10-20');
+    assert.equal(mgrEdit.startTime, '2026-10-20T06:00:00.000Z');
+    assert.equal(mgrEdit.endTime, '2026-10-20T14:00:00.000Z');
 });

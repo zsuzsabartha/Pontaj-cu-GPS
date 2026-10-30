@@ -46,6 +46,9 @@ export const canSeeUser = (actor, target) => {
 export const canManageTimesheetsOf = (actor, target) =>
     hasRole(actor, ROLE.ADMIN, ROLE.HR, ROLE.MANAGER, ROLE.PONTATOR) && canSeeUser(actor, target);
 
+/** Can the actor assign or clear daily work schedules in the calendar for this user? */
+export const canAssignSchedule = (actor, target) => canManageTimesheetsOf(actor, target);
+
 /** Can the actor approve/reject/delete leave requests for this user? */
 export const canDecideLeavesOf = (actor, target) =>
     hasRole(actor, ROLE.ADMIN, ROLE.HR, ROLE.MANAGER) && canSeeUser(actor, target);
@@ -98,4 +101,58 @@ export const checkOwnCorrection = (existing, incoming) => {
         return incoming.status === CORRECTION_STATUS.PENDING ? null : `new correction must be ${CORRECTION_STATUS.PENDING}`;
     }
     return incoming.status === existing.status ? null : `employee cannot change correction status to ${incoming.status}`;
+};
+
+/** Returns `YYYY-MM-DD` in the Europe/Bucharest timezone for a given Date. */
+export const toServerLocalDateISO = (d = new Date()) =>
+    new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Bucharest',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(d);
+
+const toISOOrKeep = (val) => (val instanceof Date ? val.toISOString() : val);
+const toDateISO = (val) => (val instanceof Date ? val.toISOString().slice(0, 10) : String(val).slice(0, 10));
+
+/**
+ * Computes authoritative timestamps (`date`, `startTime`, `endTime`, and break `startTime`/`endTime`)
+ * for a timesheet write.
+ * - Live punches (`incoming.clockAction` set) OR non-manager self-service writes always use `now` (server clock)
+ *   and preserve already-recorded DB timestamps.
+ * - Manager manual edits / approved corrections without `clockAction` keep the explicit timestamps sent.
+ */
+export const resolveTimesheetTimestamps = (actor, target, existingTs, existingBreaks = [], incoming = {}, now = new Date()) => {
+    const isManagerEdit = !incoming.clockAction && canManageTimesheetsOf(actor, target);
+    if (isManagerEdit) {
+        return {
+            date: incoming.date,
+            startTime: incoming.startTime,
+            endTime: incoming.endTime || null,
+            breaks: (incoming.breaks || []).map(b => ({
+                ...b,
+                startTime: b.startTime,
+                endTime: b.endTime || null,
+            })),
+        };
+    }
+
+    const nowISO = now.toISOString();
+    const todayISO = toServerLocalDateISO(now);
+    const prevBreakMap = new Map(existingBreaks.map(b => [b.id, b]));
+
+    const date = existingTs?.date ? toDateISO(existingTs.date) : todayISO;
+    const startTime = existingTs?.start_time ? toISOOrKeep(existingTs.start_time) : nowISO;
+    const existingEnd = existingTs?.end_time ? toISOOrKeep(existingTs.end_time) : null;
+    const endTime = existingEnd || ((incoming.endTime || incoming.clockAction === 'CLOCK_OUT') ? nowISO : null);
+
+    const breaks = (incoming.breaks || []).map(b => {
+        const prev = prevBreakMap.get(b.id);
+        const bStart = prev?.start_time ? toISOOrKeep(prev.start_time) : nowISO;
+        const prevEnd = prev?.end_time ? toISOOrKeep(prev.end_time) : null;
+        const bEnd = prevEnd || (b.endTime ? nowISO : null);
+        return { ...b, startTime: bStart, endTime: bEnd };
+    });
+
+    return { date, startTime, endTime, breaks };
 };

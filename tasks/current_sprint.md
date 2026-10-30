@@ -24,13 +24,23 @@
 ---
 
 ### 🔍 In Review / QA
-- [ ] **`SEC-003`**: Autentificare și autorizare pe server: sesiune JWT în cookie httpOnly, login Microsoft validat pe server, reguli de acces pe roluri și companie, filtrarea datelor pe server (8 pts) — *Assignee: Fullstack Agent*
-  - Files: `bridge/auth/session.js`, `bridge/auth/policy.js`, `bridge/auth/microsoft.js`, `bridge/auth/policy.test.js`, `bridge/server.js`, `hooks/useAuth.ts`, `hooks/useAppData.ts`, `services/sqlService.ts`, `components/LoginScreen.tsx`, `App.tsx`, `constants.ts`
-  - Verification: 10/10 teste de politică (`npm run test:auth`), 29/29 teste end-to-end pe SQL dev în `AUTH_MODE=enforce` (`npm run test:e2e`), lint 0 erori, build OK. Urmează: deploy în `AUTH_MODE=report`, analiză log `[AUTHZ-VIOLATION]`, apoi `AUTH_MODE=enforce`.
+*(Niciun task în așteptare)*
 
 ---
 
 ### ✅ Done
+- [x] **`SEC-003`**: Autentificare și autorizare pe server (`AUTH_MODE=enforce`): sesiune JWT în cookie httpOnly, login Microsoft validat pe server, reguli de acces pe roluri și companie, filtrarea datelor pe server (8 pts) — *Completed 2026-10-30*
+  - Files: `bridge/auth/session.js`, `bridge/auth/policy.js`, `bridge/auth/microsoft.js`, `bridge/auth/policy.test.js`, `bridge/server.js`, `hooks/useAuth.ts`, `hooks/useAppData.ts`, `services/sqlService.ts`, `components/LoginScreen.tsx`, `App.tsx`, `constants.ts`
+- [x] **`DATA-002`**: Timestamp server-side (`Europe/Bucharest`) la Clock-In, Clock-Out și Pauze pentru prevenirea manipulării ceasului de pe dispozitiv (3 pts) — *Completed 2026-10-30*
+  - Files: `bridge/auth/policy.js`, `bridge/auth/policy.test.js`, `bridge/server.js`, `hooks/useTimesheetManager.ts`, `services/sqlService.ts`
+- [x] **`DATA-003`**: Persistență completă în SQL Server pentru `timesheet_logs` (audit), `notes`, `endLocation`, `distanceToOffice`, `cancellationReason`, `createdAt` (3 pts) — *Completed 2026-10-30*
+  - Files: `bridge/migration.sql`, `bridge/server.js`
+- [x] **`DATA-004`**: Persistență în SQL Server pentru planificarea programului (`schedule_plans`) și luna închisă (`app_settings.lockedDate`) (3 pts) — *Completed 2026-10-30*
+  - Files: `bridge/migration.sql`, `bridge/server.js`, `services/sqlService.ts`, `hooks/useAppData.ts`, `hooks/useTimesheetManager.ts`, `components/NomenclatorManagement.tsx`
+- [x] **`DATA-005`**: Persistența ștergerilor în nomenclatoare (`?replace=1`) și salvarea programelor de lucru în SQL (2 pts) — *Completed 2026-10-30*
+  - Files: `bridge/server.js`, `components/NomenclatorManagement.tsx`, `components/CompanyManagement.tsx`, `components/OfficeManagement.tsx`
+- [x] **`DATA-008`**: Calcul zile lucrătoare la concedii (fără weekend și sărbători legale) și formatare `DD.MM.YYYY` (2 pts) — *Completed 2026-10-30*
+  - Files: `utils/date.ts`, `App.tsx`, `components/LeaveModal.tsx`, `components/ManagerDashboard.tsx`
 - [x] **`SEC-001`**: Butoanele demo, SSO-ul simulat și PIN-urile demo ascunse în build-ul de producție (1 pt) — *Completed 2026-10-30*
   - Files: `components/LoginScreen.tsx`
 - [x] **`SEC-002`**: Stack trace eliminat din răspunsurile API; limitare încercări PIN (5 / 15 min); sincronizarea la cerere limitată la 1 / 5 min (2 pts) — *Completed 2026-10-30*

@@ -96,8 +96,9 @@ export const useTimesheetManager = ({
                 detectedScheduleName: schedName
             };
 
-            await SQLService.upsertTimesheet(newTs);
-            setTimesheets(prev => [newTs, ...prev]);
+            const res = await SQLService.upsertTimesheet({ ...newTs, clockAction: 'CLOCK_IN' });
+            const savedTs = res.timesheets?.[0] || newTs;
+            setTimesheets(prev => [savedTs, ...prev]);
         } catch (e) {
             alert("Nu s-a putut efectua pontajul. Eroare comunicare server.");
         } finally {
@@ -113,8 +114,9 @@ export const useTimesheetManager = ({
             const updatedTs: Timesheet = {
                 ...activeTs, endTime: new Date().toISOString(), status: ShiftStatus.COMPLETED, endLocation: loc, endDistanceToOffice: endDist, notes: note || activeTs.notes
             };
-            await SQLService.upsertTimesheet(updatedTs);
-            setTimesheets(prev => prev.map(t => t.id === activeTs.id ? updatedTs : t));
+            const res = await SQLService.upsertTimesheet({ ...updatedTs, clockAction: 'CLOCK_OUT' });
+            const savedTs = res.timesheets?.[0] || updatedTs;
+            setTimesheets(prev => prev.map(t => t.id === activeTs.id ? savedTs : t));
         } catch (e) {
             alert("Eroare la oprirea pontajului.");
         } finally {
@@ -127,29 +129,33 @@ export const useTimesheetManager = ({
         setIsGlobalLoading(true);
         try {
             let updatedTs: Timesheet | null = null;
+            let clockAction: 'BREAK_START' | 'BREAK_END' = 'BREAK_START';
+            const dist = loc ? findNearestOffice(loc, offices).distance : undefined;
             if (activeTs.status === ShiftStatus.ON_BREAK) {
+                clockAction = 'BREAK_END';
                 const idx = activeTs.breaks.findIndex(b => !b.endTime);
                 if (idx === -1) return;
-                const updatedBreak = { ...activeTs.breaks[idx], endTime: new Date().toISOString(), endLocation: loc, status: BreakStatus.PENDING };
+                const updatedBreak = { ...activeTs.breaks[idx], endTime: new Date().toISOString(), endLocation: loc, endDistanceToOffice: dist, status: BreakStatus.PENDING };
                 const updatedBreaks = [...activeTs.breaks]; updatedBreaks[idx] = updatedBreak;
                 updatedTs = { ...activeTs, status: ShiftStatus.WORKING, breaks: updatedBreaks };
             } else {
                 if (!config) return;
                 const newBreak: Break = {
-                    id: `br-${Date.now()}`, typeId: config.id, typeName: config.name, startTime: new Date().toISOString(), status: BreakStatus.PENDING, startLocation: loc
+                    id: `br-${Date.now()}`, typeId: config.id, typeName: config.name, startTime: new Date().toISOString(), status: BreakStatus.PENDING, startLocation: loc, startDistanceToOffice: dist
                 };
                 updatedTs = { ...activeTs, status: ShiftStatus.ON_BREAK, breaks: [...activeTs.breaks, newBreak] };
             }
             if (updatedTs) {
-                await SQLService.upsertTimesheet(updatedTs);
-                setTimesheets(prev => prev.map(t => t.id === activeTs.id ? updatedTs! : t));
+                const res = await SQLService.upsertTimesheet({ ...updatedTs, clockAction });
+                const savedTs = res.timesheets?.[0] || updatedTs;
+                setTimesheets(prev => prev.map(t => t.id === activeTs.id ? savedTs : t));
             }
         } catch (e) {
             alert("Eroare server la schimbarea stării pauzei.");
         } finally {
             setIsGlobalLoading(false);
         }
-    }, [currentUser, setTimesheets, setIsGlobalLoading]);
+    }, [currentUser, offices, setTimesheets, setIsGlobalLoading]);
 
     const handleApproveCorrection = useCallback(async (reqId: string) => {
         setIsGlobalLoading(true);
@@ -377,18 +383,25 @@ export const useTimesheetManager = ({
         }
     }, [leaves, setLeaves, setIsGlobalLoading]);
 
-    const handleAssignSchedule = useCallback((userId: string, date: string, scheduleId: string) => {
+    const handleAssignSchedule = useCallback(async (userId: string, date: string, scheduleId: string) => {
+        const newId = `ds-${userId}-${date}`;
         setSchedulePlans(prev => {
             const existing = prev.find(s => s.userId === userId && s.date === date);
             if (existing) {
                 if (scheduleId === "") return prev.filter(s => s.id !== existing.id);
                 else return prev.map(s => s.id === existing.id ? { ...s, scheduleId } : s);
             } else if (scheduleId !== "") {
-                return [...prev, { id: `ds-${Date.now()}`, userId, date, scheduleId }];
+                return [...prev, { id: newId, userId, date, scheduleId }];
             }
             return prev;
         });
-    }, [setSchedulePlans]);
+        try {
+            await SQLService.upsertSchedulePlan({ id: newId, userId, date, scheduleId });
+        } catch (e) {
+            alert("Eroare la salvarea planificării în baza de date.");
+            await fetchAllData();
+        }
+    }, [setSchedulePlans, fetchAllData]);
 
     return {
         handleConfirmRejection,

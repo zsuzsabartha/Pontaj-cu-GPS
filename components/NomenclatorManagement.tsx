@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { BreakConfig, LeaveConfig, Holiday, WorkSchedule } from '../types';
 import { Plus, Trash2, Save, Coffee, FileText, Check, X, CalendarDays, PartyPopper, RefreshCw, Settings, Lock, CalendarClock, Sun, Moon } from 'lucide-react';
 import { API_CONFIG } from '../constants';
+import { SQLService } from '../services/sqlService';
 import { toLocalDateISO } from '../utils/date';
 
 interface NomenclatorManagementProps {
@@ -32,25 +33,12 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
   const [localHolidays, setLocalHolidays] = useState(holidays);
   const [localLockedDate, setLocalLockedDate] = useState(currentLockedDate);
 
-  // Helper to save to backend
-  const saveToSQL = async (endpoint: string, data: any[]) => {
+  // Helper to save to backend (replace=1 prunes deleted items from the config table)
+  const saveToSQL = async (endpoint: 'breaks' | 'leaves' | 'schedules' | 'holidays', data: any[]) => {
     setIsSaving(true);
     try {
-      // Attempt to save to backend (if running)
-      const response = await fetch(`${API_CONFIG.BASE_URL}/config/${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      }).catch(() => null); // Catch network errors silently to fallback
-
-      if (response && response.ok) {
-        const res = await response.json();
-        console.log("SQL Sync Success:", res);
-        return true;
-      } else {
-        console.warn("SQL Bridge not connected or error. Saving locally only.");
-        return false;
-      }
+      await SQLService.saveConfigList(endpoint, data);
+      return true;
     } catch (e) {
       console.error("Save error:", e);
       return false;
@@ -144,8 +132,8 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
 
   const saveSchedules = async () => {
     onUpdateSchedules(localSchedules);
-    // await saveToSQL('schedules', localSchedules); // Assuming backend support exists or handled locally
-    alert("Programe de Lucru actualizate!");
+    const synced = await saveToSQL('schedules', localSchedules);
+    alert(`Programe de Lucru actualizate! ${synced ? '(Sincronizat cu SQL Server)' : '(Eroare salvare SQL)'}`);
   }
 
   // --- Holiday Handlers ---
@@ -173,9 +161,17 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
   };
 
   // --- General Settings Handlers ---
-  const saveGeneralSettings = () => {
-    onUpdateLockedDate(localLockedDate);
-    alert(`Setări Generale Actualizate! Luna este închisă până la: ${localLockedDate}`);
+  const saveGeneralSettings = async () => {
+    setIsSaving(true);
+    try {
+      await SQLService.saveSettings({ lockedDate: localLockedDate });
+      onUpdateLockedDate(localLockedDate);
+      alert(`Setări Generale Actualizate! Luna este închisă până la: ${localLockedDate}`);
+    } catch (e) {
+      alert("Eroare la salvarea setărilor generale în baza de date.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

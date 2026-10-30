@@ -63,7 +63,8 @@ export const useAppData = (isAuthenticated: boolean) => {
 
         try {
             const [
-                dbUsers, dbCompanies, dbDepts, dbOffices, dbBreaks, dbLeaves, dbHolidays, dbSchedules, dbTimesheets, dbLeaveReqs, dbCorrections
+                dbUsers, dbCompanies, dbDepts, dbOffices, dbBreaks, dbLeaves, dbHolidays, dbSchedules,
+                dbTimesheets, dbLeaveReqs, dbCorrections, dbSchedulePlans, dbSettings
             ] = await Promise.all([
                 SQLService.getUsers(),
                 SQLService.getCompanies(),
@@ -75,7 +76,9 @@ export const useAppData = (isAuthenticated: boolean) => {
                 SQLService.getWorkSchedules(),
                 SQLService.getTimesheets(),
                 SQLService.getLeaveRequests(),
-                SQLService.getCorrectionRequests()
+                SQLService.getCorrectionRequests(),
+                SQLService.getSchedulePlans(),
+                SQLService.getSettings()
             ]);
 
             setUsers(dbUsers);
@@ -89,6 +92,10 @@ export const useAppData = (isAuthenticated: boolean) => {
             setTimesheets(dbTimesheets);
             setLeaves(dbLeaveReqs);
             setCorrectionRequests(dbCorrections);
+            setSchedulePlans(dbSchedulePlans);
+            if (dbSettings?.lockedDate) {
+                setLockedDate(dbSettings.lockedDate);
+            }
 
         } catch (e) {
             console.error("Data load error:", e);

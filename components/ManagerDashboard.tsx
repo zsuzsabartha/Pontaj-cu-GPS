@@ -4,7 +4,7 @@ import { User, Timesheet, LeaveRequest, CorrectionRequest, BreakStatus, LeaveSta
 import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight, Slash, LogIn, LogOut, PartyPopper, Moon, Sun, XCircle, History, Download, BarChart3, Search } from 'lucide-react';
 import TimesheetList from './TimesheetList';
 import LeaveCalendarReport from './LeaveCalendarReport';
-import { toLocalDateISO, toLocalMonthISO, parseLocalDate } from '../utils/date';
+import { toLocalDateISO, toLocalMonthISO, parseLocalDate, countWorkingDays, formatDateRO } from '../utils/date';
 
 interface ManagerDashboardProps {
     users: User[];
@@ -607,9 +607,15 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                             </span>
                                         </div>
                                         <div className="bg-gray-50 dark:bg-gray-800/80 p-3 rounded-lg text-xs space-y-2 transition-colors">
-                                            <div className="font-bold text-gray-800 dark:text-gray-200">{req.typeName}</div>
-                                            <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400"><Calendar size={12} /> {new Date(req.startDate).toLocaleDateString()} - {new Date(req.endDate).toLocaleDateString()}</div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-bold text-gray-800 dark:text-gray-200">{req.typeName}</span>
+                                                <span className="font-mono text-[10px] bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded font-bold">
+                                                    {countWorkingDays(req.startDate, req.endDate, holidays)} zile lucr.
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400"><Calendar size={12} /> {formatDateRO(req.startDate)} - {formatDateRO(req.endDate)}</div>
                                             {req.reason && <div className="italic text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-700 pt-2 mt-2 transition-colors">"{req.reason}"</div>}
+                                            {req.cancellationReason && <div className="text-red-500 dark:text-red-400 font-bold border-t border-gray-100 dark:border-gray-700 pt-1">Motiv anulare: {req.cancellationReason}</div>}
                                         </div>
                                     </div>
 

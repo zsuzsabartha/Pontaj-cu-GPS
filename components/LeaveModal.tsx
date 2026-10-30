@@ -1,19 +1,21 @@
 
 import React, { useState } from 'react';
-import { LeaveRequest, LeaveConfig } from '../types';
+import { LeaveRequest, LeaveConfig, Holiday } from '../types';
 import { X, CheckSquare, Lock } from 'lucide-react';
 import { checkComplianceAI } from '../services/geminiService';
 import { isDateInLockedPeriod } from '../constants';
+import { countWorkingDays } from '../utils/date';
 
 interface LeaveModalProps {
   isOpen: boolean;
   onClose: () => void;
   leaveConfigs: LeaveConfig[];
+  holidays?: Holiday[];
   lockedDate: string; // Dynamic locked date
   onSubmit: (req: Omit<LeaveRequest, 'id' | 'status' | 'userId'>) => void;
 }
 
-const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, lockedDate, onSubmit }) => {
+const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, holidays = [], lockedDate, onSubmit }) => {
   const [typeId, setTypeId] = useState<string>(leaveConfigs[0]?.id || '');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -99,6 +101,12 @@ const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, 
               />
             </div>
           </div>
+
+          {startDate && endDate && (
+            <div className="text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 rounded-lg border border-emerald-100 dark:border-emerald-800">
+              Durată calculată: <span className="font-bold">{countWorkingDays(startDate, endDate, holidays)} zile lucrătoare</span> (fără weekend și sărbători legale)
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Motiv / Comentarii</label>
