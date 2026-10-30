@@ -7,7 +7,7 @@ export const msalConfig: Configuration = {
     redirectUri: typeof window !== "undefined" ? `${window.location.origin}/pontaj/` : "/pontaj/",
   },
   cache: {
-    cacheLocation: "sessionStorage",
+    cacheLocation: "localStorage",
     // storeAuthStateInCookie was removed in MSAL v5 (no longer needed)
   },
 };

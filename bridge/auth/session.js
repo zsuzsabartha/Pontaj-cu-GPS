@@ -6,7 +6,7 @@ import { connectDB } from '../db.js';
 
 export const SESSION_COOKIE = 'pontaj_session';
 export const DEVICE_COOKIE = 'pontaj_device';
-const SESSION_TTL_SECONDS = 12 * 60 * 60; // one shift plus margin
+const SESSION_TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days persistent session (sliding renewal on app open)
 const DEVICE_TTL_SECONDS = 365 * 24 * 60 * 60; // 1 year trusted device
 
 // AUTH_MODE=report  -> violations are logged but requests continue (rollout / safety net)

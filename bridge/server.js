@@ -1538,6 +1538,7 @@ app.post('/api/v1/auth/microsoft-device/poll', asyncHandler(async (req, res) => 
 }));
 app.get('/api/v1/auth/me', (req, res) => {
     if (!req.user) return res.status(401).json({ success: false, error: 'Neautentificat.' });
+    issueSession(req, res, req.user.id);
     res.json({ success: true, user: req.user });
 });
 
