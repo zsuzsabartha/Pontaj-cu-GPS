@@ -25,6 +25,8 @@ const PUBLIC_API_PATHS = new Set([
     '/api/v1/auth/login-pin',
     '/api/v1/auth/verify-2fa',
     '/api/v1/auth/login-microsoft',
+    '/api/v1/auth/microsoft-device/start',
+    '/api/v1/auth/microsoft-device/poll',
     '/api/v1/auth/logout', // must work even with an expired session
 ]);
 

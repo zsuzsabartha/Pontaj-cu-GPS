@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, Role, Company } from '../types';
-import { KeyRound, Lock, User as UserIcon, ArrowLeft, Loader2, Sparkles, MailQuestion, Shield, Users, Briefcase, Smartphone } from 'lucide-react';
+import { KeyRound, Lock, User as UserIcon, ArrowLeft, Loader2, Sparkles, MailQuestion, Shield, Users, Briefcase, Smartphone, Copy, ExternalLink } from 'lucide-react';
 import { useMsal } from "@azure/msal-react";
 import { loginRequest } from "../authConfig";
 import { SQLService } from '../services/sqlService';
@@ -21,7 +21,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
     const { instance, accounts, inProgress } = useMsal();
     const [savedName, setSavedName] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('pontaj_saved_name') || '' : ''));
     const [email, setEmail] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('pontaj_saved_email') || '' : ''));
-    const [view, setView] = useState<'main' | 'pin' | '2fa' | 'forgot'>(() => (typeof window !== 'undefined' && localStorage.getItem('pontaj_saved_email') ? 'pin' : 'main'));
+    const [view, setView] = useState<'main' | 'pin' | '2fa' | 'forgot' | 'ms-device'>(() => (typeof window !== 'undefined' && localStorage.getItem('pontaj_saved_email') ? 'pin' : 'main'));
+    const [msDeviceData, setMsDeviceData] = useState<{ deviceCode: string; userCode: string; verificationUri: string; interval: number } | null>(null);
     const [challengeToken, setChallengeToken] = useState('');
     const [twoFaCode, setTwoFaCode] = useState('');
     const [twoFaMessage, setTwoFaMessage] = useState('');
@@ -65,6 +66,36 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
         })();
     }, [inProgress, accounts, instance, msLoginAttempted, onLogin]);
 
+    React.useEffect(() => {
+        if (view !== 'ms-device' || !msDeviceData?.deviceCode) return;
+        let cancelled = false;
+        const timer = setInterval(async () => {
+            if (cancelled) return;
+            try {
+                const res = await SQLService.pollMicrosoftDeviceFlow(msDeviceData.deviceCode);
+                if (cancelled) return;
+                if (res.success && res.user) {
+                    clearInterval(timer);
+                    persistDeviceIdentity(res.user);
+                    onLogin(res.user);
+                } else if (!res.pending) {
+                    clearInterval(timer);
+                    setError('Autentificare Microsoft eșuată.');
+                    setView('main');
+                }
+            } catch (err: any) {
+                if (cancelled) return;
+                clearInterval(timer);
+                setError(err.message || 'Autentificare Microsoft eșuată.');
+                setView('main');
+            }
+        }, Math.max(2500, (msDeviceData.interval || 3) * 1000));
+        return () => {
+            cancelled = true;
+            clearInterval(timer);
+        };
+    }, [view, msDeviceData, onLogin]);
+
     const handleMicrosoftLogin = async (simulateNew: boolean = false) => {
         setIsLoading(true);
         if (DEMO_MODE && (simulateNew || users.length === 0)) {
@@ -89,6 +120,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
             }, 1000);
         } else {
             try {
+                if (typeof window !== 'undefined' && window.location.hostname !== 'apps.bioeel.ro') {
+                    const flow = await SQLService.startMicrosoftDeviceFlow();
+                    setMsDeviceData({
+                        deviceCode: flow.deviceCode,
+                        userCode: flow.userCode,
+                        verificationUri: flow.verificationUri || 'https://login.microsoft.com/device',
+                        interval: flow.interval || 3
+                    });
+                    try { await navigator.clipboard?.writeText(flow.userCode); } catch { /* ignore */ }
+                    setError('');
+                    setIsLoading(false);
+                    setView('ms-device');
+                    return;
+                }
                 await instance.loginRedirect(loginRequest);
             } catch (err) {
                 console.error(err);
@@ -444,6 +489,56 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                             Solicită Resetare
                         </button>
                     </form>
+                )}
+
+                {view === 'ms-device' && msDeviceData && (
+                    <div className="space-y-4 animate-in fade-in slide-in-from-right-8 text-center">
+                        <button
+                            type="button"
+                            onClick={() => { setView('main'); setMsDeviceData(null); }}
+                            className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 flex items-center gap-1 text-sm mb-2 transition-colors"
+                        >
+                            <ArrowLeft size={16} /> Înapoi
+                        </button>
+
+                        <h3 className="font-bold text-gray-800 dark:text-white text-base">Autentificare Microsoft Mobil</h3>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                            1. Apăsați butonul de mai jos (codul se copiază automat).<br />
+                            2. Lipiți codul în pagina Microsoft și reveniți aici.
+                        </p>
+
+                        <div
+                            onClick={() => {
+                                navigator.clipboard?.writeText(msDeviceData.userCode).catch(() => {});
+                                showToast('Cod copiat în clipboard!', 'info');
+                            }}
+                            className="bg-emerald-50 dark:bg-emerald-900/30 border-2 border-emerald-500 rounded-xl p-4 cursor-pointer select-all"
+                        >
+                            <p className="text-[11px] uppercase tracking-wider font-bold text-emerald-600 dark:text-emerald-400 mb-1 flex items-center justify-center gap-1">
+                                <Copy size={12} /> Cod de verificare Microsoft
+                            </p>
+                            <p className="font-mono text-2xl font-black tracking-[0.25em] text-gray-900 dark:text-white">
+                                {msDeviceData.userCode}
+                            </p>
+                        </div>
+
+                        <a
+                            href={msDeviceData.verificationUri}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => {
+                                navigator.clipboard?.writeText(msDeviceData.userCode).catch(() => {});
+                            }}
+                            className="w-full bg-[#2F2F2F] dark:bg-gray-800 text-white p-3.5 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-all shadow-md"
+                        >
+                            <ExternalLink size={18} /> Copiază Codul & Deschide Microsoft
+                        </a>
+
+                        <div className="flex items-center justify-center gap-2 pt-2 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                            <Loader2 size={16} className="animate-spin" />
+                            <span>Așteptăm confirmarea din pagina Microsoft...</span>
+                        </div>
+                    </div>
                 )}
 
                 <div className="mt-8 text-center text-xs text-gray-400 dark:text-gray-600">

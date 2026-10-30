@@ -122,6 +122,10 @@ export const SQLService = {
     generateDeviceCode: (userId: string): Promise<{ success: boolean; code: string; expiresInMinutes: number }> => post('/auth/device-code', { userId }),
     resetUserDevice: (userId: string): Promise<{ success: boolean }> => post('/auth/device-reset', { userId }),
     loginMicrosoft: (idToken: string) => post('/auth/login-microsoft', { idToken }),
+    startMicrosoftDeviceFlow: (): Promise<{ success: boolean; deviceCode: string; userCode: string; verificationUri: string; expiresIn: number; interval: number }> =>
+        post('/auth/microsoft-device/start', {}),
+    pollMicrosoftDeviceFlow: (deviceCode: string): Promise<{ success: boolean; pending?: boolean; user?: User }> =>
+        post('/auth/microsoft-device/poll', { deviceCode }),
     me: (): Promise<{ success: boolean; user: User }> => get('/auth/me'),
     logout: () => post('/auth/logout', {}),
 };

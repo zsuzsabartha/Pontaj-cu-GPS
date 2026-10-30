@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 import { connectDB } from './db.js';
 import crypto from 'crypto';
 import { sessionMiddleware, issueSession, clearSession, deny, mapUserRow, AUTH_MODE, hashDeviceToken, readDeviceCookie, issueDeviceCookie, sign2FAChallenge, verify2FAChallenge, describeUserAgent } from './auth/session.js';
-import { verifyMicrosoftIdToken } from './auth/microsoft.js';
+import { verifyMicrosoftIdToken, startMicrosoftDeviceFlow, pollMicrosoftDeviceFlow } from './auth/microsoft.js';
 import {
   canSeeUser, canManageTimesheetsOf, canAssignSchedule, canAccessNotification, canDecideLeavesOf, canManageUsers, canEditConfig, canRunIntegrations,
   checkRoleAssignment, checkOwnTimesheetBreaks, checkOwnLeave, checkOwnCorrection, resolveTimesheetTimestamps
@@ -1506,6 +1506,36 @@ app.post('/api/v1/auth/login-microsoft', asyncHandler(async (req, res) => {
 }));
 
 // Utilizatorul sesiunii curente (rolurile vin mereu din DB)
+app.post('/api/v1/auth/microsoft-device/start', asyncHandler(async (_req, res) => {
+    const flow = await startMicrosoftDeviceFlow();
+    res.json({ success: true, ...flow });
+}));
+
+app.post('/api/v1/auth/microsoft-device/poll', asyncHandler(async (req, res) => {
+    const { deviceCode } = req.body || {};
+    if (!deviceCode) return res.status(400).json({ success: false, error: 'Lipsește deviceCode.' });
+    const poll = await pollMicrosoftDeviceFlow(deviceCode);
+    if (poll.pending) return res.json({ success: false, pending: true });
+
+    const email = await verifyMicrosoftIdToken(poll.idToken);
+    const pool = await connectDB();
+    const findUser = () => pool.request().input('email', email).query('SELECT * FROM users WHERE LOWER(email) = @email');
+    let userResult = await findUser();
+    if (userResult.recordset.length === 0 && Date.now() - lastOnDemandSyncAt > ON_DEMAND_SYNC_INTERVAL_MS) {
+        lastOnDemandSyncAt = Date.now();
+        const syncResult = await syncUsersWithBioeelAuth();
+        if (syncResult.success) userResult = await findUser();
+    }
+    if (userResult.recordset.length === 0) {
+        return res.status(403).json({ success: false, error: `Contul Microsoft (${email}) nu este asociat unui angajat activ.` });
+    }
+    const user = userResult.recordset[0];
+    if (user.employment_status === 'SUSPENDED' || user.employment_status === 'TERMINATED') {
+        return res.status(403).json({ success: false, error: 'Contul dumneavoastră este suspendat sau inactiv.' });
+    }
+    issueSession(req, res, user.id);
+    res.json({ success: true, user: mapUserRow(user) });
+}));
 app.get('/api/v1/auth/me', (req, res) => {
     if (!req.user) return res.status(401).json({ success: false, error: 'Neautentificat.' });
     res.json({ success: true, user: req.user });
