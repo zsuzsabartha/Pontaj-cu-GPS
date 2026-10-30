@@ -286,7 +286,8 @@ export default function App() {
     const unreadCount = notifications.filter((n: Notification) => n.userId === currentUser.id && !n.isRead).length;
     const myNotifications = notifications.filter((n: Notification) => n.userId === currentUser.id).sort((a: Notification, b: Notification) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    if (isMobileClockMode) {
+    const isPhoneScreen = typeof window !== 'undefined' && (window.innerWidth < 768 || window.matchMedia('(display-mode: standalone)').matches);
+    if (isMobileClockMode || (!canViewTeam && !isAdmin && isPhoneScreen)) {
         return (
             <>
                 <MobileClockScreen
@@ -310,6 +311,7 @@ export default function App() {
                     onToggleTheme={toggleTheme}
                     onLogout={handleFullLogout}
                     onSwitchToFullApp={() => setIsMobileClockMode(false)}
+                    canSwitchToFullApp={canViewTeam || isAdmin}
                 />
                 <ToastContainer />
             </>
@@ -573,6 +575,7 @@ export default function App() {
                         onApproveBreak={handleApproveBreak}
                         onApproveCorrection={handleApproveCorrection}
                         onOpenTimesheetModal={openTimesheetModal}
+                        onRefreshData={fetchAllData}
                     />
                 )}
 

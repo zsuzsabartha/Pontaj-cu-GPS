@@ -196,6 +196,8 @@ try {
   check('employee cannot generate 2FA enrollment code -> 403', (await call('POST', '/auth/device-code', { cookie: C.employee, body: { userId: employee.id } })).status === 403);
   const devCodeRes = await call('POST', '/auth/device-code', { cookie: C.admin, body: { userId: employee.id } });
   check('admin/HR can generate 6-digit 2FA enrollment code -> 200', devCodeRes.status === 200 && /^\d{6}$/.test(devCodeRes.data?.code || ''));
+  const mgrDevCodeRes = await call('POST', '/auth/device-code', { cookie: C.manager, body: { userId: colleague.id } });
+  check('manager can generate 6-digit 2FA enrollment code for own company employee -> 200', mgrDevCodeRes.status === 200 && /^\d{6}$/.test(mgrDevCodeRes.data?.code || ''));
   const challengeToken = jwt.sign({ sub: employee.id, purpose: '2fa_enroll' }, env.JWT_SECRET, { expiresIn: '10m' });
   const badVerify = await call('POST', '/auth/verify-2fa', { body: { challengeToken, code: '000000' } });
   check('POST /auth/verify-2fa rejects wrong 2FA code -> 401', badVerify.status === 401);

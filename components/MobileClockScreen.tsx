@@ -29,6 +29,7 @@ interface MobileClockScreenProps {
     onToggleTheme: () => void;
     onLogout: () => void;
     onSwitchToFullApp: () => void;
+    canSwitchToFullApp?: boolean;
 }
 
 const MobileClockScreen: React.FC<MobileClockScreenProps> = ({
@@ -51,7 +52,8 @@ const MobileClockScreen: React.FC<MobileClockScreenProps> = ({
     onRefresh,
     onToggleTheme,
     onLogout,
-    onSwitchToFullApp
+    onSwitchToFullApp,
+    canSwitchToFullApp = false
 }) => {
     const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
     const [isStandalone, setIsStandalone] = useState(false);
@@ -136,13 +138,15 @@ const MobileClockScreen: React.FC<MobileClockScreenProps> = ({
                     >
                         {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
                     </button>
-                    <button
-                        onClick={onSwitchToFullApp}
-                        className="p-2 rounded-lg text-slate-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-emerald-600 transition-colors"
-                        title="Deschide aplicația completă"
-                    >
-                        <Monitor size={18} />
-                    </button>
+                    {canSwitchToFullApp && (
+                        <button
+                            onClick={onSwitchToFullApp}
+                            className="p-2 rounded-lg text-slate-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-emerald-600 transition-colors"
+                            title="Deschide aplicația completă"
+                        >
+                            <Monitor size={18} />
+                        </button>
+                    )}
                     <button
                         onClick={onLogout}
                         className="p-2 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"

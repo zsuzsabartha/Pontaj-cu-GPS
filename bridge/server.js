@@ -24,7 +24,8 @@ const distDir = path.join(rootDir, 'dist');
 const app = express();
 app.set('trust proxy', 'loopback'); // Nginx runs on the same host; use X-Forwarded-For for req.ip
 const allowedOrigins = [process.env.FRONTEND_URL, 'https://apps.bioeel.ro', 'http://localhost:3000'].filter(Boolean);
-app.use(cors({ origin: (origin, cb) => cb(null, !origin || allowedOrigins.includes(origin)), credentials: true }));
+const isAllowedOrigin = (origin) => !origin || allowedOrigins.includes(origin) || /^https:\/\/[a-z0-9-]+\.msappproxy\.net$/i.test(origin);
+app.use(cors({ origin: (origin, cb) => cb(null, isAllowedOrigin(origin)), credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 
 // Suport rutare transparentă pentru prefixul /pontaj/api
@@ -1422,20 +1423,26 @@ app.post('/api/v1/auth/verify-2fa', asyncHandler(async (req, res) => {
     res.json({ success: true, user: mapUserRow(updatedRes.recordset[0]) });
 }));
 
-// Generare cod 2FA de înrolare de către HR / Admin pentru un angajat
+// Generare cod 2FA de înrolare de către Admin / HR / Manager / Pontator pentru un angajat din subordine
 app.post('/api/v1/auth/device-code', asyncHandler(async (req, res) => {
-    if (forbid(req, res, canManageUsers(req.user), 'only ADMIN/HR can generate 2FA enrollment codes')) return;
     const { userId } = req.body || {};
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
+    const directory = await loadUserDirectory();
+    const targetUser = directory.get(userId);
+    if (!targetUser) return res.status(404).json({ error: 'Utilizator negăsit' });
+    if (forbid(req, res, canManageUsers(req.user) || canManageTimesheetsOf(req.user, targetUser), 'only ADMIN/HR/Manager/Pontator of this employee can generate 2FA enrollment codes')) return;
     const code = getOrCreate2FACode(userId, true);
     res.json({ success: true, code, expiresInMinutes: 10 });
 }));
 
-// Resetare telefon asociat (Device Binding) de către HR / Admin (ex. când angajatul își schimbă telefonul)
+// Resetare telefon asociat (Device Binding) de către Admin / HR / Manager / Pontator (ex. când angajatul își schimbă telefonul)
 app.post('/api/v1/auth/device-reset', asyncHandler(async (req, res) => {
-    if (forbid(req, res, canManageUsers(req.user), 'only ADMIN/HR can reset bound devices')) return;
     const { userId } = req.body || {};
     if (!userId) return res.status(400).json({ error: 'Missing userId' });
+    const directory = await loadUserDirectory();
+    const targetUser = directory.get(userId);
+    if (!targetUser) return res.status(404).json({ error: 'Utilizator negăsit' });
+    if (forbid(req, res, canManageUsers(req.user) || canManageTimesheetsOf(req.user, targetUser), 'only ADMIN/HR/Manager/Pontator of this employee can reset bound devices')) return;
     const pool = await connectDB();
     await pool.request()
         .input('id', userId)
@@ -1444,7 +1451,7 @@ app.post('/api/v1/auth/device-reset', asyncHandler(async (req, res) => {
     await createNotification(pool, {
         userId,
         title: 'Dispozitiv resetat',
-        message: 'Dispozitivul asociat contului tău a fost resetat de HR. La următoarea autentificare cu PIN poți înrola noul telefon.',
+        message: 'Dispozitivul asociat contului tău a fost resetat. La următoarea autentificare cu PIN poți înrola noul telefon.',
         type: 'INFO'
     });
     res.json({ success: true });

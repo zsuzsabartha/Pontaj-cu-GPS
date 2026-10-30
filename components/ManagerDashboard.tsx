@@ -1,7 +1,10 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { User, Timesheet, LeaveRequest, CorrectionRequest, BreakStatus, LeaveStatus, ShiftStatus, Company, Office, BreakConfig, LeaveConfig, Holiday, Role } from '../types';
-import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight, Slash, LogIn, LogOut, PartyPopper, Moon, Sun, XCircle, History, Download, BarChart3, Search } from 'lucide-react';
+import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight, Slash, LogIn, LogOut, PartyPopper, Moon, Sun, XCircle, History, Download, BarChart3, Search, Smartphone, KeyRound, RotateCcw, QrCode, X } from 'lucide-react';
+import { SQLService } from '../services/sqlService';
+import { showToast } from '../utils/toast';
+import MobileInstallQRModal from './MobileInstallQRModal';
 import TimesheetList from './TimesheetList';
 import LeaveCalendarReport from './LeaveCalendarReport';
 import { toLocalDateISO, toLocalMonthISO, parseLocalDate, countWorkingDays, formatDateRO } from '../utils/date';
@@ -24,12 +27,40 @@ interface ManagerDashboardProps {
     onApproveBreak: (tsId: string, brId: string, status: BreakStatus) => void;
     onApproveCorrection: (id: string) => void;
     onOpenTimesheetModal: (ts: Timesheet | null, userId?: string) => void; // UPDATED SIGNATURE
+    onRefreshData?: () => Promise<void>;
 }
 
 const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
     users, currentUser, timesheets, leaves, correctionRequests, companies, departments, offices, breakConfigs = [], leaveConfigs, holidays,
-    canViewAllCompanies, onApproveLeave, onReject, onApproveBreak, onApproveCorrection, onOpenTimesheetModal
+    canViewAllCompanies, onApproveLeave, onReject, onApproveBreak, onApproveCorrection, onOpenTimesheetModal, onRefreshData
 }) => {
+
+    const [activeDeviceCode, setActiveDeviceCode] = useState<{ userName: string; email: string; code: string } | null>(null);
+    const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+
+    const handleGenerateDeviceCode = async (user: User) => {
+        try {
+            const res = await SQLService.generateDeviceCode(user.id);
+            if (res.success && res.code) {
+                setActiveDeviceCode({ userName: user.name, email: user.email, code: res.code });
+                showToast(`Cod 2FA generat pentru ${user.name}: ${res.code} (valabil 10 min)`, 'success');
+            }
+        } catch (e: any) {
+            showToast(e.message || 'Eroare la generarea codului 2FA.', 'error');
+        }
+    };
+
+    const handleResetDevice = async (user: User) => {
+        if (!confirm(`Resetați telefonul asociat pentru ${user.name}?\nAngajatul va putea înrola un telefon nou la următoarea autentificare cu PIN.`)) return;
+        try {
+            await SQLService.resetUserDevice(user.id);
+            showToast(`Dispozitivul pentru ${user.name} a fost resetat.`, 'success');
+            if (onRefreshData) await onRefreshData();
+        } catch (e: any) {
+            showToast(e.message || 'Eroare la resetarea dispozitivului.', 'error');
+        }
+    };
+
     // Added 'corrections' and 'reports' to activeTab state
     const [activeTab, setActiveTab] = useState<'status' | 'history' | 'leaves' | 'breaks' | 'corrections' | 'calendar' | 'reports'>('status');
     const [selectedTeamCompany, setSelectedTeamCompany] = useState<string>('ALL');
@@ -354,7 +385,16 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
             {/* HEADER & FILTERS */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Panou Manager</h1>
+                    <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-3">
+                        Panou Manager
+                        <button
+                            type="button"
+                            onClick={() => setIsQrModalOpen(true)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition-colors"
+                        >
+                            <QrCode size={14} /> Cod QR Aplicație Mobilă
+                        </button>
+                    </h1>
                     <p className="text-sm text-gray-500 dark:text-gray-400">Supervizare, aprobări și rapoarte echipă</p>
                 </div>
 
@@ -442,6 +482,22 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                     </div>
 
                     {/* Live Board Table */}
+                    {activeDeviceCode && (
+                        <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl p-4 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <KeyRound size={22} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                                <div>
+                                    <p className="text-xs font-bold text-blue-900 dark:text-blue-200">
+                                        Cod 2FA Înrolare Telefon pentru {activeDeviceCode.userName} ({activeDeviceCode.email})
+                                    </p>
+                                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-0.5">
+                                        Comunicați acest cod angajatului (valabil 10 minute): <span className="font-mono font-black text-base tracking-widest bg-white dark:bg-gray-900 px-2.5 py-0.5 rounded border border-blue-300 dark:border-blue-700 ml-1">{activeDeviceCode.code}</span>
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => setActiveDeviceCode(null)} className="text-blue-500 hover:text-blue-700 p-1"><X size={16} /></button>
+                        </div>
+                    )}
                     <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden transition-colors">
                         <div className="bg-slate-50 dark:bg-gray-800 px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                             <h3 className="font-bold text-slate-800 dark:text-gray-200 text-sm flex items-center gap-2">
@@ -523,7 +579,27 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3 text-right align-top">
-                                                <button onClick={() => onOpenTimesheetModal(null, user.id)} className="text-gray-400 hover:text-emerald-600 p-1.5 rounded hover:bg-emerald-50 transition"><PlusCircle size={18} /></button>
+                                                    <button onClick={() => onOpenTimesheetModal(null, user.id)} className="text-gray-400 hover:text-emerald-600 p-1.5 rounded hover:bg-emerald-50 transition" title="Adaugă pontaj manual"><PlusCircle size={18} /></button>
+                                                    <div className="inline-flex items-center gap-1 ml-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleGenerateDeviceCode(user)}
+                                                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors"
+                                                            title="Generează cod 2FA (6 cifre) valabil 10 minute pentru înrolarea telefonului"
+                                                        >
+                                                            <KeyRound size={11} /> Cod 2FA
+                                                        </button>
+                                                        {user.hasTrustedDevice && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleResetDevice(user)}
+                                                                className="inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 transition-colors"
+                                                                title={`Telefon înrolat: ${user.trustedDeviceLabel || 'Activ'}. Apăsați pentru resetare.`}
+                                                            >
+                                                                <RotateCcw size={11} /> Reset Telefon
+                                                            </button>
+                                                        )}
+                                                    </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -843,7 +919,8 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                 </div>
             )}
 
-            {/* --- TAB: CALENDAR REPORT --- */}
+                    {/* --- TAB: CALENDAR REPORT --- */}
+                    <MobileInstallQRModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} />
             {activeTab === 'calendar' && (
                 <div className="animate-in fade-in">
                     <LeaveCalendarReport

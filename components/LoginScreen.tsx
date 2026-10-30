@@ -1,36 +1,45 @@
-
 import React, { useState } from 'react';
 import { User, Role, Company } from '../types';
 import { KeyRound, Lock, User as UserIcon, ArrowLeft, Loader2, Sparkles, MailQuestion, Shield, Users, Briefcase, Smartphone } from 'lucide-react';
-import { showToast } from '../utils/toast';
 import { useMsal } from "@azure/msal-react";
 import { loginRequest } from "../authConfig";
 import { SQLService } from '../services/sqlService';
+import { showToast } from '../utils/toast';
 
 // Demo shortcuts (quick role login, simulated SSO, demo PIN hints) exist only in local development builds.
 const DEMO_MODE = import.meta.env.DEV;
 
 interface LoginScreenProps {
-    users: User[]; // Accept current users state
-    companies?: Company[]; // Accept companies for display
+    users: User[];
+    companies?: Company[];
     onLogin: (user: User, isNewUser?: boolean) => void;
     onRequestPinReset?: (email: string) => void;
     onCreateUser?: (u: User) => Promise<void>;
 }
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, onRequestPinReset, onCreateUser }) => {
+const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, onRequestPinReset }) => {
     const { instance, accounts, inProgress } = useMsal();
-    const [view, setView] = useState<'main' | 'pin' | '2fa' | 'forgot'>('main');
+    const [savedName, setSavedName] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('pontaj_saved_name') || '' : ''));
+    const [email, setEmail] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('pontaj_saved_email') || '' : ''));
+    const [view, setView] = useState<'main' | 'pin' | '2fa' | 'forgot'>(() => (typeof window !== 'undefined' && localStorage.getItem('pontaj_saved_email') ? 'pin' : 'main'));
     const [challengeToken, setChallengeToken] = useState('');
     const [twoFaCode, setTwoFaCode] = useState('');
     const [twoFaMessage, setTwoFaMessage] = useState('');
-    const [email, setEmail] = useState<string>('');
     const [pin, setPin] = useState('');
     const [resetEmail, setResetEmail] = useState('');
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
     const [msLoginAttempted, setMsLoginAttempted] = useState(false);
+
+    const persistDeviceIdentity = (user: User) => {
+        try {
+            localStorage.setItem('pontaj_saved_email', user.email);
+            localStorage.setItem('pontaj_saved_name', user.name);
+        } catch {
+            // ignore storage errors
+        }
+    };
 
     // After the Microsoft redirect: send the ID token to the server, which validates it and opens the session.
     // Unknown accounts are rejected by the server (employees come from BioeelAuth / ERP).
@@ -59,7 +68,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
     const handleMicrosoftLogin = async (simulateNew: boolean = false) => {
         setIsLoading(true);
         if (DEMO_MODE && (simulateNew || users.length === 0)) {
-            // Simulate OAuth Delay for Demo / New User creation
             setTimeout(() => {
                 const isFirstUser = users.length === 0;
                 const randomId = Math.floor(Math.random() * 1000);
@@ -106,8 +114,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                 return;
             }
 
-
             if (response.success && response.user) {
+                persistDeviceIdentity(response.user);
                 onLogin(response.user);
             } else {
                 setError(response.error || "PIN incorect.");
@@ -129,6 +137,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
         try {
             const response = await SQLService.verify2FA(challengeToken, twoFaCode);
             if (response.success && response.user) {
+                persistDeviceIdentity(response.user);
                 showToast('Telefonul a fost înrolat cu succes!', 'success');
                 onLogin(response.user);
             } else {
@@ -145,20 +154,17 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
         e.preventDefault();
         if (onRequestPinReset) {
             onRequestPinReset(resetEmail);
-            alert(`Dacă adresa ${resetEmail} există în sistem, un administrator a fost notificat să vă reseteze PIN-ul.`);
+            showToast(`Dacă adresa ${resetEmail} există în sistem, un administrator a fost notificat să vă reseteze PIN-ul.`, 'info');
             setView('main');
             setResetEmail('');
         }
     };
 
-    // Specific Demo Logins
     const handleDemoLogin = (role: Role) => {
         if (!DEMO_MODE) return;
         setIsLoading(true);
         setTimeout(() => {
-            // Find the best fit user for the requested role
             let targetUser = users.find(u => u.roles.includes(role) && u.isValidated);
-            // Special case for specific mock users to ensure consistent demo experience (if they exist)
             if (role === Role.ADMIN) {
                 const specific = users.find(u => u.email === 'admin@techgroup.ro');
                 if (specific) targetUser = specific;
@@ -172,10 +178,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                 onLogin(targetUser);
             } else {
                 setIsLoading(false);
-                alert(`Nu s-a găsit un utilizator cu rolul ${role}. Dacă baza de date este goală, folosiți butonul de "User Nou (SSO)" pentru a inițializa sistemul.`);
+                showToast(`Nu s-a găsit un utilizator cu rolul ${role}.`, 'warning');
             }
         }, 800);
-    }
+    };
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-4 relative overflow-hidden transition-colors duration-500">
@@ -236,7 +242,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                                     Autentificare cu PIN
                                 </button>
 
-                                {/* DEMO SECTION - Only show if users exist */}
                                 {DEMO_MODE && users.length > 0 && (
                                     <div className="mt-8 pt-6 border-t border-dashed border-gray-200 dark:border-gray-800">
                                         <p className="text-xs font-bold text-gray-400 dark:text-gray-600 uppercase text-center mb-3">Acces Rapid (Demo)</p>
@@ -277,26 +282,52 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                     <form onSubmit={handlePinLogin} className="space-y-4 animate-in fade-in slide-in-from-right-8">
                         <button
                             type="button"
-                            onClick={() => { setView('main'); setError(''); setEmail(''); setPin(''); }}
+                            onClick={() => { setView('main'); setError(''); setPin(''); }}
                             className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 flex items-center gap-1 text-sm mb-2 transition-colors"
                         >
                             <ArrowLeft size={16} /> Înapoi
                         </button>
 
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
-                            <div className="relative">
-                                <UserIcon className="absolute left-3 top-3 text-gray-400 dark:text-gray-600" size={18} />
-                                <input
-                                    type="email"
-                                    required
-                                    className="w-full pl-10 p-2.5 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 text-sm transition-all"
-                                    placeholder="nume@companie.ro"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                />
+                        {savedName && email ? (
+                            <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3 flex items-center justify-between">
+                                <div className="min-w-0">
+                                    <p className="text-xs text-emerald-700 dark:text-emerald-400 font-bold truncate">Bună, {savedName}!</p>
+                                    <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{email}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSavedName('');
+                                        setEmail('');
+                                        setPin('');
+                                        try {
+                                            localStorage.removeItem('pontaj_saved_email');
+                                            localStorage.removeItem('pontaj_saved_name');
+                                        } catch {
+                                            // ignore
+                                        }
+                                    }}
+                                    className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline shrink-0 ml-2"
+                                >
+                                    Alt cont
+                                </button>
                             </div>
-                        </div>
+                        ) : (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                                <div className="relative">
+                                    <UserIcon className="absolute left-3 top-3 text-gray-400 dark:text-gray-600" size={18} />
+                                    <input
+                                        type="email"
+                                        required
+                                        className="w-full pl-10 p-2.5 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 text-sm transition-all"
+                                        placeholder="nume@companie.ro"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                        )}
 
                         <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">PIN Securitate</label>
@@ -304,6 +335,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                                 <Lock className="absolute left-3 top-3 text-gray-400 dark:text-gray-600" size={18} />
                                 <input
                                     type="password"
+                                    inputMode="numeric"
                                     maxLength={4}
                                     value={pin}
                                     onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ''))}

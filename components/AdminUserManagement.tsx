@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
 import { User, Role, Company, Department, Office, WorkSchedule, Timesheet, LeaveRequest, CorrectionRequest, ShiftStatus, LeaveStatus } from '../types';
-import { UserPlus, ShieldAlert, Database, RefreshCw, Mail, Eye, AlertTriangle, BellRing, Upload, Edit2, X, Save, Wand2, Users, FileText, Download, Briefcase, Building, Clock, MapPin, CalendarClock, DownloadCloud, UploadCloud, Layers, Smartphone, KeyRound, RotateCcw } from 'lucide-react';
+import { UserPlus, ShieldAlert, Database, RefreshCw, Mail, Eye, AlertTriangle, BellRing, Upload, Edit2, X, Save, Wand2, Users, FileText, Download, Briefcase, Building, Clock, MapPin, CalendarClock, DownloadCloud, UploadCloud, Layers, Smartphone, KeyRound, RotateCcw, QrCode } from 'lucide-react';
+import MobileInstallQRModal from './MobileInstallQRModal';
 import UserValidationModal from './UserValidationModal';
 import { API_CONFIG, HOLIDAYS_RO, INITIAL_LEAVE_CONFIGS } from '../constants';
 import SmartTable, { Column } from './SmartTable';
@@ -37,6 +38,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
     const [validationUser, setValidationUser] = useState<User | null>(null);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [activeDeviceCode, setActiveDeviceCode] = useState<{ userName: string; email: string; code: string } | null>(null);
+    const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
     const handleGenerateDeviceCode = async (user: User) => {
         try {
@@ -402,7 +404,10 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
         <div className="space-y-6">
             <div className="bg-slate-800 dark:bg-slate-900 text-white p-4 rounded-xl flex items-center justify-between shadow-lg transition-colors">
                 <div className="flex items-center gap-3"><Database size={24} /><div><h3 className="font-bold text-sm">SQL Bridge</h3><p className="text-xs text-slate-300 dark:text-slate-400">{dbStatus}</p></div></div>
-                <button onClick={handleManualDBSync} disabled={isDbSyncing} className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 dark:bg-slate-800 hover:bg-slate-600 dark:hover:bg-slate-700 rounded text-xs transition-colors"><RefreshCw size={14} className={isDbSyncing ? "animate-spin" : ""} /> Sync</button>
+                <div className="flex items-center gap-2">
+                    <button onClick={() => setIsQrModalOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold transition-colors"><QrCode size={14} /> Cod QR Aplicație Mobilă</button>
+                    <button onClick={handleManualDBSync} disabled={isDbSyncing} className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 dark:bg-slate-800 hover:bg-slate-600 dark:hover:bg-slate-700 rounded text-xs transition-colors"><RefreshCw size={14} className={isDbSyncing ? "animate-spin" : ""} /> Sync</button>
+                </div>
             </div>
 
             <div className="flex gap-4 border-b border-gray-200 dark:border-gray-800 pb-2 overflow-x-auto transition-colors">
@@ -735,6 +740,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
             )}
 
             {validationUser && <UserValidationModal isOpen={!!validationUser} onClose={() => setValidationUser(null)} user={validationUser} companies={companies} departments={departments} offices={offices} workSchedules={workSchedules} onValidate={(u) => { onValidateUser(u.id); onUpdateUser(u); }} />}
+            <MobileInstallQRModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} />
         </div>
     );
 };
