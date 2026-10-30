@@ -318,7 +318,15 @@ export default function App() {
                     onLogout={handleFullLogout}
                     onSwitchToFullApp={() => setIsMobileClockMode(false)}
                     canSwitchToFullApp={canViewTeam || isAdmin}
+                    myLeaves={myLeaves}
+                    onOpenLeaveModal={() => setLeaveModalOpen(true)}
+                    onCancelLeave={(id) => initiateRejection('LEAVE_CANCEL', id)}
+                    notifications={myNotifications}
+                    unreadCount={unreadCount}
+                    onMarkNotificationRead={markAsRead}
                 />
+                <LeaveModal isOpen={isLeaveModalOpen} onClose={() => setLeaveModalOpen(false)} leaveConfigs={leaveConfigs} holidays={holidays} lockedDate={lockedDate} onSubmit={handleLeaveSubmit} />
+                <RejectionModal isOpen={rejectionModal.isOpen} onClose={() => setRejectionModal({ ...rejectionModal, isOpen: false })} onSubmit={(reason) => handleConfirmRejection(rejectionModal, reason)} title={rejectionModal.type === 'LEAVE_CANCEL' ? 'Motiv Anulare' : 'Motiv Respingere'} />
                 <ToastContainer />
             </>
         );

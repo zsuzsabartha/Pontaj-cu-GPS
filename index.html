@@ -10,6 +10,13 @@
     <meta name="apple-mobile-web-app-title" content="Bioeel Pontaj" />
     <link rel="apple-touch-icon" href="/pontaj/apple-touch-icon.png" />
     <title>Bioeel Pontaj</title>
+    <script>
+      window.__deferredInstallPrompt = null;
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        window.__deferredInstallPrompt = e;
+      });
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body>
