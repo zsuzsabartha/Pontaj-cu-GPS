@@ -70,7 +70,7 @@ export const issueSession = (req, res, userId) => {
     const token = jwt.sign({ sub: userId }, jwtSecret, { expiresIn: SESSION_TTL_SECONDS });
     res.cookie(SESSION_COOKIE, token, {
         httpOnly: true,
-        sameSite: 'strict',
+        sameSite: 'lax',
         secure: req.secure, // true behind Nginx/HTTPS when X-Forwarded-Proto is forwarded
         path: '/',
         maxAge: SESSION_TTL_SECONDS * 1000,
@@ -78,7 +78,7 @@ export const issueSession = (req, res, userId) => {
 };
 
 export const clearSession = (req, res) => {
-    res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: 'strict', secure: req.secure, path: '/' });
+    res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: 'lax', secure: req.secure, path: '/' });
 };
 
 const loadActiveUser = async (userId) => {

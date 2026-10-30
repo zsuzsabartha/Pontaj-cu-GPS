@@ -4,7 +4,7 @@ export const msalConfig: Configuration = {
   auth: {
     clientId: import.meta.env.VITE_AZURE_CLIENT_ID || "YOUR_CLIENT_ID_HERE",
     authority: `https://login.microsoftonline.com/${import.meta.env.VITE_AZURE_TENANT_ID || "common"}`,
-    redirectUri: "/pontaj/",
+    redirectUri: typeof window !== "undefined" ? `${window.location.origin}/pontaj/` : "/pontaj/",
   },
   cache: {
     cacheLocation: "sessionStorage",
