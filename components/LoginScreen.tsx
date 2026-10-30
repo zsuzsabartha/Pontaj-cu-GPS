@@ -6,6 +6,9 @@ import { useMsal } from "@azure/msal-react";
 import { loginRequest } from "../authConfig";
 import { SQLService } from '../services/sqlService';
 
+// Demo shortcuts (quick role login, simulated SSO, demo PIN hints) exist only in local development builds.
+const DEMO_MODE = import.meta.env.DEV;
+
 interface LoginScreenProps {
     users: User[]; // Accept current users state
     companies?: Company[]; // Accept companies for display
@@ -23,59 +26,35 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
 
-    const [isRegistering, setIsRegistering] = useState(false);
+    const [msLoginAttempted, setMsLoginAttempted] = useState(false);
 
-    // Filter users who use PIN and are validated
-    const pinUsers = users.filter(u => u.authType === 'PIN' && u.isValidated);
-
+    // After the Microsoft redirect: send the ID token to the server, which validates it and opens the session.
+    // Unknown accounts are rejected by the server (employees come from BioeelAuth / ERP).
     React.useEffect(() => {
-        if (inProgress === "none" && accounts.length > 0) {
-            // Delay auto-registration/login by 800ms to ensure the backend has finished loading the users array
-            const timer = setTimeout(() => {
-                const msAccount = accounts[0];
-                const dbUser = users.find(u => u.email.toLowerCase() === msAccount.username.toLowerCase());
-                
-                if (dbUser) {
-                    onLogin(dbUser);
-                } else if (onCreateUser && !isRegistering) {
-                    setIsRegistering(true);
-                    setIsLoading(true);
-                    // Auto-register
-                    const newUser: User = {
-                        id: `ms-${Date.now()}`,
-                        name: msAccount.name || msAccount.username.split('@')[0],
-                        email: msAccount.username,
-                        roles: users.length === 0 ? [Role.ADMIN, Role.MANAGER] : [Role.EMPLOYEE],
-                        companyId: companies && companies.length > 0 ? companies[0].id : 'c1',
-                        avatarUrl: `https://ui-avatars.com/api/?name=${msAccount.name ? msAccount.name.replace(' ', '+') : 'User'}`,
-                        authType: 'MICROSOFT',
-                        isValidated: true,
-                        requiresGPS: true,
-                        alternativeScheduleIds: [],
-                        shareBirthday: false,
-                        employmentStatus: 'ACTIVE',
-                        pin: '0000',
-                    };
-                    
-                    onCreateUser(newUser).catch(err => {
-                        console.error("Auto-registration failed", err);
-                        setError("Eroare la crearea contului.");
-                        setIsLoading(false);
-                        setIsRegistering(false);
-                    });
-                } else if (!isRegistering) {
-                    setError(`Contul de Microsoft (${msAccount.username}) nu este asociat unui angajat activ.`);
+        if (inProgress !== "none" || accounts.length === 0 || msLoginAttempted) return;
+        setMsLoginAttempted(true);
+        setIsLoading(true);
+        (async () => {
+            try {
+                const result = await instance.acquireTokenSilent({ ...loginRequest, account: accounts[0] });
+                const response = await SQLService.loginMicrosoft(result.idToken);
+                if (response.success && response.user) {
+                    onLogin(response.user);
+                } else {
+                    setError(response.error || "Autentificare Microsoft eșuată.");
                     setIsLoading(false);
                 }
-            }, 800);
-            
-            return () => clearTimeout(timer);
-        }
-    }, [inProgress, accounts, users, onLogin, onCreateUser, isRegistering, companies]);
+            } catch (err: any) {
+                console.error(err);
+                setError(err.message || "Autentificare Microsoft eșuată.");
+                setIsLoading(false);
+            }
+        })();
+    }, [inProgress, accounts, instance, msLoginAttempted, onLogin]);
 
     const handleMicrosoftLogin = async (simulateNew: boolean = false) => {
         setIsLoading(true);
-        if (simulateNew || users.length === 0) {
+        if (DEMO_MODE && (simulateNew || users.length === 0)) {
             // Simulate OAuth Delay for Demo / New User creation
             setTimeout(() => {
                 const isFirstUser = users.length === 0;
@@ -141,6 +120,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
 
     // Specific Demo Logins
     const handleDemoLogin = (role: Role) => {
+        if (!DEMO_MODE) return;
         setIsLoading(true);
         setTimeout(() => {
             // Find the best fit user for the requested role
@@ -205,7 +185,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                                         <path fill="#05a6f0" d="M1 12h10v10H1z" />
                                         <path fill="#ffba08" d="M12 12h10v10H12z" />
                                     </svg>
-                                    {users.length === 0 ? 'Initialize System (Admin SSO)' : 'Sign in with Microsoft'}
+                                    {DEMO_MODE && users.length === 0 ? 'Initialize System (Admin SSO)' : 'Sign in with Microsoft'}
                                 </button>
 
                                 <div className="relative flex py-2 items-center">
@@ -216,7 +196,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
 
                                 <button
                                     onClick={() => setView('pin')}
-                                    disabled={users.length === 0}
+                                    disabled={DEMO_MODE && users.length === 0}
                                     className="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 p-3 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all shadow-sm disabled:opacity-50"
                                 >
                                     <KeyRound size={20} className="text-gray-400 dark:text-gray-500" />
@@ -224,7 +204,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                                 </button>
 
                                 {/* DEMO SECTION - Only show if users exist */}
-                                {users.length > 0 && (
+                                {DEMO_MODE && users.length > 0 && (
                                     <div className="mt-8 pt-6 border-t border-dashed border-gray-200 dark:border-gray-800">
                                         <p className="text-xs font-bold text-gray-400 dark:text-gray-600 uppercase text-center mb-3">Acces Rapid (Demo)</p>
                                         <div className="grid grid-cols-2 gap-3">
@@ -314,7 +294,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
                             {isLoading ? <Loader2 className="animate-spin" /> : 'Accesează Contul'}
                         </button>
 
-                        {users.length > 0 && (
+                        {DEMO_MODE && users.length > 0 && (
                             <div className="text-center mt-4">
                                 <p className="text-xs text-gray-400 dark:text-gray-500">Pentru demo, PIN-urile sunt: Elena (1234), Mihai (0000)</p>
                             </div>

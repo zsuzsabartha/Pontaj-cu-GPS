@@ -2,53 +2,66 @@
 import { API_CONFIG } from '../constants';
 import { Timesheet, LeaveRequest, CorrectionRequest, User } from '../types';
 
+// Fired when the server rejects a request because the session is missing or expired.
+export const UNAUTHORIZED_EVENT = 'pontaj:unauthorized';
+
+export class ApiError extends Error {
+    status: number;
+    constructor(status: number, message: string) {
+        super(message);
+        this.status = status;
+    }
+}
+
+// Login endpoints legitimately answer 401/403 (wrong PIN, unknown account): they must not trigger a global logout.
+const isAuthEndpoint = (endpoint: string) => endpoint.startsWith('/auth/login') || endpoint === '/auth/me';
+
+const handleErrorResponse = async (endpoint: string, response: Response): Promise<never> => {
+    const errData = await response.json().catch(() => ({}));
+    if (response.status === 401 && !isAuthEndpoint(endpoint)) {
+        window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+    }
+    throw new ApiError(response.status, errData.error || `HTTP ${response.status}`);
+};
+
+// The API is served from the same origin (Nginx in production, Vite proxy in dev),
+// so the httpOnly session cookie is sent automatically.
 const get = async (endpoint: string) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); 
-        
         const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
-            signal: controller.signal
+            signal: controller.signal,
+            credentials: 'same-origin'
         });
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) return handleErrorResponse(endpoint, response);
         return await response.json();
-    } catch (error) {
-        throw error;
+    } finally {
+        clearTimeout(timeoutId);
     }
 };
 
 const post = async (endpoint: string, body: any) => {
-    try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            console.error(`[SQL Error] POST ${endpoint}:`, errData);
-            throw new Error(`HTTP ${response.status}: ${errData.error || JSON.stringify(errData)}`);
-        }
-        return await response.json();
-    } catch (error) {
-        throw error;
+    const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(body)
+    });
+    if (!response.ok) {
+        console.error(`[API Error] POST ${endpoint}: HTTP ${response.status}`);
+        return handleErrorResponse(endpoint, response);
     }
+    return await response.json();
 };
 
 const remove = async (endpoint: string) => {
-    try {
-        const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
-            method: 'DELETE',
-        });
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        return await response.json();
-    } catch (error) {
-        throw error;
-    }
+    const response = await fetch(`${API_CONFIG.BASE_URL}${endpoint}`, {
+        method: 'DELETE',
+        credentials: 'same-origin'
+    });
+    if (!response.ok) return handleErrorResponse(endpoint, response);
+    return await response.json();
 };
 
 export const SQLService = {
@@ -79,6 +92,11 @@ export const SQLService = {
 
     // User management
     upsertUser: (user: User) => post('/config/users', [user]),
-    loginPin: (email: string, pin: string) => post('/auth/login-pin', { email, pin }),
     syncUsers: () => post('/auth/sync-users', {}),
+
+    // --- SESSION (server-side, httpOnly cookie) ---
+    loginPin: (email: string, pin: string) => post('/auth/login-pin', { email, pin }),
+    loginMicrosoft: (idToken: string) => post('/auth/login-microsoft', { idToken }),
+    me: (): Promise<{ success: boolean; user: User }> => get('/auth/me'),
+    logout: () => post('/auth/logout', {}),
 };

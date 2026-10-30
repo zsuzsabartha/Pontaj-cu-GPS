@@ -1,35 +1,46 @@
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { User, Role } from '../types';
+import { SQLService, UNAUTHORIZED_EVENT } from '../services/sqlService';
 
-const getStoredUser = (): User | null => {
-    try {
-        const item = localStorage.getItem('pontaj_session_user');
-        return item ? JSON.parse(item) : null;
-    } catch { return null; }
-};
+// Legacy client-side session key (pre server-side auth). Removed on load; never trusted.
+const LEGACY_SESSION_KEY = 'pontaj_session_user';
 
-export const useAuth = (users: User[]) => {
-    const [currentUser, setCurrentUser] = useState<User | null>(getStoredUser());
+export const useAuth = () => {
+    const [currentUser, setCurrentUser] = useState<User | null>(null);
+    const [authChecked, setAuthChecked] = useState(false);
 
+    // Restore the session from the httpOnly cookie: the server is the source of truth for identity and roles.
+    useEffect(() => {
+        localStorage.removeItem(LEGACY_SESSION_KEY);
+        SQLService.me()
+            .then(res => setCurrentUser(res.user))
+            .catch(() => setCurrentUser(null))
+            .finally(() => setAuthChecked(true));
+    }, []);
+
+    // Session expired or revoked on the server -> back to the login screen.
+    useEffect(() => {
+        const onUnauthorized = () => setCurrentUser(null);
+        window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+        return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+    }, []);
+
+    // Called after a successful server login (the session cookie is already set).
     const handleLogin = useCallback((user: User) => {
-        // Validate that user still exists in the fetched list
-        const freshUser = users.find(u => u.id === user.id);
-        if (!freshUser) {
-            alert("Eroare: Utilizatorul nu a fost găsit pe server.");
-            return;
-        }
-        if (freshUser.employmentStatus === 'SUSPENDED' || freshUser.employmentStatus === 'TERMINATED') {
+        if (user.employmentStatus === 'SUSPENDED' || user.employmentStatus === 'TERMINATED') {
             alert("Contul dumneavoastră este suspendat sau inactiv.");
             return;
         }
-        
-        localStorage.setItem('pontaj_session_user', JSON.stringify(freshUser));
-        setCurrentUser(freshUser);
-    }, [users]);
+        setCurrentUser(user);
+    }, []);
 
-    const handleLogout = useCallback(() => {
-        localStorage.removeItem('pontaj_session_user');
+    const handleLogout = useCallback(async () => {
+        try {
+            await SQLService.logout();
+        } catch {
+            // Logging out locally is still correct if the server is unreachable.
+        }
         setCurrentUser(null);
     }, []);
 
@@ -39,6 +50,7 @@ export const useAuth = (users: User[]) => {
 
     return {
         currentUser,
+        authChecked,
         handleLogin,
         handleLogout,
         hasRole,

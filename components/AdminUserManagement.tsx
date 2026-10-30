@@ -37,6 +37,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [importText, setImportText] = useState('');
 
+    // State to hold generated data for download
     const [generatedData, setGeneratedData] = useState<{ timesheets: Timesheet[], leaves: LeaveRequest[], corrections: CorrectionRequest[] } | null>(null);
 
     const [newUser, setNewUser] = useState({
@@ -74,8 +75,6 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
         } finally { setIsDbSyncing(false); }
     };
 
-
-<<<<<<< HEAD
     const handleCreateSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const user: User = {
@@ -151,17 +150,6 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
             sql += `INSERT INTO leave_requests (id, user_id, type_id, start_date, end_date, reason, status) VALUES ('${l.id}', '${l.userId}', '${l.typeId}', '${l.startDate}', '${l.endDate}', N'${reasonClean}', '${l.status}');\n`;
         });
         sql += `GO\n\n`;
-=======
-  // Toggle helper for create form
-  const toggleAltScheduleCreate = (scheduleId: string) => {
-      const currentAlts = newUser.alternativeScheduleIds || [];
-      const exists = currentAlts.includes(scheduleId);
-      const newAlts = exists 
-          ? currentAlts.filter(id => id !== scheduleId)
-          : [...currentAlts, scheduleId];
-      setNewUser({ ...newUser, alternativeScheduleIds: newAlts });
-  };
->>>>>>> origin/main
 
         // 5. Timesheets
         sql += `-- 5. PONTAJE 2025 (${timesheets.length} înregistrări)\n`;
@@ -262,7 +250,6 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                 users.forEach(user => {
                     if (!user.isValidated) return;
 
-<<<<<<< HEAD
                     // 2. Generate Planned Leaves (Already filtered for holidays above)
                     if (userLeavePlans[user.id].includes(dateStr)) {
                         if (coConfig) {
@@ -275,82 +262,6 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                         }
                         return;
                     }
-=======
-  const generateSQL2025 = () => {
-      if (!generatedData) return;
-      const { timesheets, leaves } = generatedData;
-
-      let sql = `-- SCRIPT GENERAT AUTOMAT PENTRU PONTAJ 2025\n`;
-      sql += `-- Conține: Nomenclator Ture, Sărbători Legale 2025, Alocare Ture Utilizatori, Pontaje 2025, Concedii 2025\n\n`;
-      sql += `USE PontajSmart;\nGO\n\n`;
-
-      // 1. Nomenclature (Work Schedules)
-      sql += `-- 1. NOMENCLATOR PROGRAME DE LUCRU (SHIFTS)\n`;
-      workSchedules.forEach(ws => {
-          sql += `IF NOT EXISTS (SELECT * FROM work_schedules WHERE id='${ws.id}') \n`;
-          sql += `  INSERT INTO work_schedules (id, name, start_time, end_time, crosses_midnight) VALUES ('${ws.id}', N'${ws.name}', '${ws.startTime}', '${ws.endTime}', ${ws.crossesMidnight ? 1 : 0});\n`;
-      });
-      sql += `GO\n\n`;
-
-      // 2. Holidays 2025
-      sql += `-- 2. SĂRBĂTORI LEGALE 2025\n`;
-      const holidays2025 = HOLIDAYS_RO.filter(h => h.date.startsWith('2025'));
-      holidays2025.forEach(h => {
-          sql += `IF NOT EXISTS (SELECT * FROM holidays WHERE date = '${h.date}') \n`;
-          sql += `  INSERT INTO holidays (id, date, name) VALUES ('${h.id}', '${h.date}', N'${h.name}');\n`;
-      });
-      sql += `GO\n\n`;
-
-      // 3. User Assignments
-      sql += `-- 3. ALOCARE PROGRAME UTILIZATORI\n`;
-      users.forEach(u => {
-          if (u.mainScheduleId) {
-              sql += `UPDATE users SET main_schedule_id = '${u.mainScheduleId}' WHERE id = '${u.id}';\n`;
-          }
-      });
-      sql += `GO\n\n`;
-
-      // 4. Leaves
-      sql += `-- 4. CONCEDII 2025 (${leaves.length} înregistrări)\n`;
-      // Use chunks or batching if really large, but for demo simpler is fine
-      leaves.forEach(l => {
-          const reasonClean = l.reason.replace(/'/g, "''");
-          sql += `INSERT INTO leave_requests (id, user_id, type_id, start_date, end_date, reason, status) VALUES ('${l.id}', '${l.userId}', '${l.typeId}', '${l.startDate}', '${l.endDate}', N'${reasonClean}', '${l.status}');\n`;
-      });
-      sql += `GO\n\n`;
-
-      // 5. Timesheets
-      sql += `-- 5. PONTAJE 2025 (${timesheets.length} înregistrări)\n`;
-      timesheets.forEach(t => {
-          // SQL Server prefers YYYY-MM-DD HH:MM:SS for strings implicitly cast to datetime2
-          const start = t.startTime.replace('T', ' ').substring(0, 19);
-          const end = t.endTime ? `'${t.endTime.replace('T', ' ').substring(0, 19)}'` : 'NULL';
-          const schedId = t.detectedScheduleId ? `'${t.detectedScheduleId}'` : 'NULL';
-          const officeId = t.matchedOfficeId ? `'${t.matchedOfficeId}'` : 'NULL';
-          
-          sql += `INSERT INTO timesheets (id, user_id, start_time, end_time, date, status, matched_office_id, detected_schedule_id) VALUES ('${t.id}', '${t.userId}', '${start}', ${end}, '${t.date}', '${t.status}', ${officeId}, ${schedId});\n`;
-      });
-      sql += `GO\n`;
-
-      // Download Trigger
-      const blob = new Blob([sql], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `pontaj_data_2025_${new Date().getTime()}.sql`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-  };
-
-  const userColumns: Column<User>[] = [
-      { header: 'Angajat', accessor: 'name', sortable: true, filterable: true, render: (u) => <div className="flex items-center gap-3"><img src={u.avatarUrl} className="w-8 h-8 rounded-full"/><div><p className="font-bold text-sm">{u.name}</p><p className="text-xs text-gray-500">{u.email}</p></div></div> },
-      { header: 'ID ERP', accessor: 'erpId', render: (u) => <span className="font-mono text-xs bg-gray-50 px-2 py-1 rounded">{u.erpId || '-'}</span> },
-      { header: 'Companie', accessor: (u) => companies.find(c => c.id === u.companyId)?.name || '-' },
-      { header: 'Status', accessor: 'employmentStatus', render: (u) => getStatusLabel(u.employmentStatus) },
-      { header: 'Acțiuni', accessor: 'id', render: (u) => <button onClick={() => setEditingUser(u)} className="text-gray-400 hover:text-blue-600 p-2"><Edit2 size={16}/></button> }
-  ];
->>>>>>> origin/main
 
                     // 3. Generate Work Days (Skip Weekend AND Holidays)
                     if (!isWeekend && !isHoliday) {
@@ -363,7 +274,6 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                             return;
                         }
 
-<<<<<<< HEAD
                         const isDelegation = Math.random() < 0.02;
                         if (isDelegation && delConfig) {
                             generatedLeaves.push({
@@ -487,7 +397,10 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                             ))}
                         </div>
                     )}
-                    {activeSubTab === 'create' && (
+                </div>
+            )}
+
+            {activeSubTab === 'create' && (
                 <div className="bg-white dark:bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 max-w-2xl transition-colors">
                     <h3 className="font-bold text-gray-800 dark:text-gray-100 mb-2 flex items-center gap-2">
                         <RefreshCw size={20} className="text-emerald-600 dark:text-emerald-400" /> Sincronizare Director Angajați (BioeelAuth)
@@ -533,8 +446,6 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                         <RefreshCw size={18} className={isDbSyncing ? "animate-spin" : ""} />
                         {isDbSyncing ? 'Sincronizare în curs...' : 'Sincronizează Acum cu BioeelAuth'}
                     </button>
-                </div>
-            )}
                 </div>
             )}
 
@@ -755,4 +666,3 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
 };
 
 export default AdminUserManagement;
-

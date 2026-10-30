@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, Utensils, Cigarette, History, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff, ShieldAlert, LogOut, CheckSquare } from 'lucide-react';
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
 import { ShiftStatus, Coordinates, Office, User, BreakConfig, Holiday, LeaveRequest, LeaveStatus } from '../types';
+import { toLocalDateISO } from '../utils/date';
 
 interface ClockWidgetProps {
     user: User;
@@ -38,7 +39,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
     const [confirmData, setConfirmData] = useState<{ coords: Coordinates, office: Office, distance: number } | null>(null);
 
     const todayDateObj = new Date();
-    const todayDateStr = todayDateObj.toISOString().split('T')[0];
+    const todayDateStr = toLocalDateISO(todayDateObj);
     const todayDate = todayDateObj.toLocaleDateString('ro-RO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     const todayDateCapitalized = todayDate.charAt(0).toUpperCase() + todayDate.slice(1);
 

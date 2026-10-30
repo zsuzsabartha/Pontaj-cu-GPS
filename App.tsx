@@ -52,6 +52,7 @@ import { Users, Settings, LogOut, CheckCircle, XCircle, Building, Clock, UserCog
 import { useMsal } from "@azure/msal-react";
 import { findNearestOffice } from './services/geoService';
 import { SQLService } from './services/sqlService';
+import { toLocalDateISO } from './utils/date';
 
 import { useAuth } from './hooks/useAuth';
 import { useAppData } from './hooks/useAppData';
@@ -59,6 +60,9 @@ import { useTimesheetManager } from './hooks/useTimesheetManager';
 import { useTheme } from './hooks/useTheme';
 
 export default function App() {
+    // --- Auth State (server-side session; must resolve before business data is requested) ---
+    const { currentUser, authChecked, handleLogin, handleLogout, hasRole, isAdmin, canViewTeam, canManageUsers } = useAuth();
+
     // --- Data State ---
     const {
         users, setUsers, companies, setCompanies, departments, setDepartments,
@@ -66,10 +70,9 @@ export default function App() {
         workSchedules, setWorkSchedules, holidays, setHolidays, timesheets, setTimesheets,
         leaves, setLeaves, correctionRequests, setCorrectionRequests, schedulePlans, setSchedulePlans,
         notifications, setNotifications, lockedDate, setLockedDate, serverStatus, isGlobalLoading, setIsGlobalLoading, fetchAllData
-    } = useAppData();
+    } = useAppData(!!currentUser);
 
-    // --- Auth State ---
-    const { currentUser, handleLogin, handleLogout, hasRole, isAdmin, canViewTeam, canManageUsers } = useAuth(users);
+    // --- Microsoft (MSAL) ---
     const { instance } = useMsal();
 
     const handleFullLogout = () => {
@@ -160,7 +163,7 @@ export default function App() {
                                 setTimeout(() => alert("Cererea a fost aprobată din link!"), 500);
                             } else if (action === 'rejectLeave') {
                                 // Defer to let render finish before opening modal
-                                setTimeout(() => setRejectionModalData({ type: 'LEAVE', id }), 500);
+                                setTimeout(() => setRejectionModal({ isOpen: true, type: 'LEAVE', itemId: id }), 500);
                             }
                         } else {
                             alert("Nu aveți permisiunea de a aproba/respinge această cerere.");
@@ -177,7 +180,7 @@ export default function App() {
         if (!currentUser) return null;
         const active = timesheets.find((t: Timesheet) => t.userId === currentUser.id && (t.status === ShiftStatus.WORKING || t.status === ShiftStatus.ON_BREAK));
         if (active) return active;
-        const today = new Date().toISOString().split('T')[0];
+        const today = toLocalDateISO();
         const todayShifts = timesheets.filter((t: Timesheet) => t.userId === currentUser.id && t.date === today && t.status === ShiftStatus.COMPLETED).sort((a: Timesheet, b: Timesheet) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
         return todayShifts[0] || null;
     }, [currentUser, timesheets]);
@@ -254,11 +257,20 @@ export default function App() {
         setNotifications((prev: Notification[]) => prev.map((n: Notification) => n.id === id ? { ...n, isRead: true } : n));
     };
 
-    if (!currentUser) return <LoginScreen users={users} companies={companies} onLogin={handleLogin} onCreateUser={handleCreateUser} />;
+    if (!authChecked) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+                <RefreshCw size={32} className="text-emerald-600 animate-spin" />
+            </div>
+        );
+    }
+
+    if (!currentUser) return <LoginScreen users={users} companies={companies} onLogin={handleLogin} />;
 
     const myLeaves = leaves.filter((l: LeaveRequest) => l.userId === currentUser.id).sort((a: LeaveRequest, b: LeaveRequest) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
     const myTimesheets = timesheets.filter((t: Timesheet) => t.userId === currentUser.id);
-    const activeLeaveRequest = leaves.find((l: LeaveRequest) => l.userId === currentUser.id && l.startDate <= new Date().toISOString().split('T')[0] && l.endDate >= new Date().toISOString().split('T')[0] && l.status === LeaveStatus.APPROVED);
+    const todayLocal = toLocalDateISO();
+    const activeLeaveRequest = leaves.find((l: LeaveRequest) => l.userId === currentUser.id && l.startDate <= todayLocal && l.endDate >= todayLocal && l.status === LeaveStatus.APPROVED);
     const unreadCount = notifications.filter((n: Notification) => n.userId === currentUser.id && !n.isRead).length;
     const myNotifications = notifications.filter((n: Notification) => n.userId === currentUser.id).sort((a: Notification, b: Notification) => new Date(b.date).getTime() - new Date(a.date).getTime());
 

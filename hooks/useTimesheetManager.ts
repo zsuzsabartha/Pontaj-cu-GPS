@@ -9,6 +9,7 @@ import {
     WorkSchedule, DailySchedule, Department
 } from '../types';
 import { sendLeaveEmailViaGraph } from '../services/graphService';
+import { toLocalDateISO } from '../utils/date';
 
 interface TimesheetManagerProps {
     currentUser: User | null;
@@ -77,7 +78,7 @@ export const useTimesheetManager = ({
         setIsGlobalLoading(true);
         try {
             const now = new Date();
-            const today = now.toISOString().split('T')[0];
+            const today = toLocalDateISO(now);
             const detectedId = schedulePlans.find(s => s.userId === currentUser.id && s.date === today)?.scheduleId || currentUser.mainScheduleId;
             const schedName = workSchedules.find(s => s.id === detectedId)?.name;
 
@@ -161,7 +162,7 @@ export const useTimesheetManager = ({
                 const newTs: Timesheet = {
                     id: existingTs ? existingTs.id : `ts-corr-${Date.now()}`,
                     userId: target.userId,
-                    date: target.requestedDate || existingTs?.date || new Date().toISOString().split('T')[0],
+                    date: target.requestedDate || existingTs?.date || toLocalDateISO(),
                     startTime: target.requestedStartTime,
                     endTime: target.requestedEndTime,
                     status: target.requestedEndTime ? ShiftStatus.COMPLETED : ShiftStatus.WORKING,

@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { BreakConfig, LeaveConfig, Holiday, WorkSchedule } from '../types';
 import { Plus, Trash2, Save, Coffee, FileText, Check, X, CalendarDays, PartyPopper, RefreshCw, Settings, Lock, CalendarClock, Sun, Moon } from 'lucide-react';
 import { API_CONFIG } from '../constants';
+import { toLocalDateISO } from '../utils/date';
 
 interface NomenclatorManagementProps {
   breakConfigs: BreakConfig[];
@@ -151,7 +152,7 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
   const addHoliday = () => {
     const newHoliday: Holiday = {
       id: `h-${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
+      date: toLocalDateISO(),
       name: 'Sărbătoare Nouă'
     };
     setLocalHolidays([...localHolidays, newHoliday]);

@@ -7,8 +7,8 @@ export const msalConfig: Configuration = {
     redirectUri: "/pontaj/",
   },
   cache: {
-    cacheLocation: "sessionStorage", 
-    storeAuthStateInCookie: false,
+    cacheLocation: "sessionStorage",
+    // storeAuthStateInCookie was removed in MSAL v5 (no longer needed)
   },
 };
 

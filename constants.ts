@@ -33,7 +33,8 @@ export const isDateInLockedPeriod = (dateStr: string, lockedDate: string): boole
 
 // --- API CONNECTION CONFIG ---
 export const API_CONFIG = {
-    BASE_URL: import.meta.env.PROD ? '/pontaj/api/v1' : 'http://localhost:3005/api/v1',
+    // Same origin in production (Nginx) and dev (Vite proxy in vite.config.ts) so the session cookie is always sent.
+    BASE_URL: '/pontaj/api/v1',
     TIMEOUT: 10000
 };
 

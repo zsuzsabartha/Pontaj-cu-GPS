@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Timesheet, LeaveConfig } from '../types';
 import { MOCK_SCHEDULES, isDateInLockedPeriod } from '../constants';
+import { toLocalDateISO } from '../utils/date';
 import { X, Clock, AlertCircle, CalendarClock, PlusCircle, Lock, Briefcase, Palmtree, Trash2 } from 'lucide-react';
 
 interface TimesheetEditModalProps {
@@ -77,7 +78,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
                 setScheduleId(timesheet.detectedScheduleId || '');
             } else {
                 // Creating new
-                targetDate = new Date().toISOString().split('T')[0];
+                targetDate = toLocalDateISO();
                 setDate(targetDate);
                 setStartTime('09:00');
                 setEndTime('17:00');
@@ -196,7 +197,7 @@ const TimesheetEditModal: React.FC<TimesheetEditModalProps> = ({ isOpen, onClose
                                 type="date"
                                 required
                                 value={date}
-                                max={new Date().toISOString().split('T')[0]} // Cannot be in future
+                                max={toLocalDateISO()} // Cannot be in future
                                 onChange={(e) => handleDateChange(e.target.value)}
                                 className={`w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all ${isLocked ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-600' : ''}`}
                             />

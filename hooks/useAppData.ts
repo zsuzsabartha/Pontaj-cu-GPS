@@ -1,6 +1,6 @@
 
-import { useState, useEffect, useCallback } from 'react';
-import { SQLService } from '../services/sqlService';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { SQLService, ApiError } from '../services/sqlService';
 import { getDefaultLockedDate } from '../constants';
 import {
     User, Company, Department, Office, BreakConfig, LeaveConfig,
@@ -8,7 +8,12 @@ import {
     DailySchedule, Notification
 } from '../types';
 
-export const useAppData = () => {
+/**
+ * Loads application data from the server.
+ * `isAuthenticated`: business data is requested only after login (the API requires a session);
+ * before login only the public health check runs.
+ */
+export const useAppData = (isAuthenticated: boolean) => {
     // --- App Data State ---
     const [users, setUsers] = useState<User[]>([]);
     const [companies, setCompanies] = useState<Company[]>([]);
@@ -29,12 +34,34 @@ export const useAppData = () => {
     const [serverStatus, setServerStatus] = useState<'CONNECTING' | 'ONLINE' | 'OFFLINE'>('CONNECTING');
     const [isGlobalLoading, setIsGlobalLoading] = useState(false);
 
+    const authRef = useRef(isAuthenticated);
+    authRef.current = isAuthenticated;
+
+    const clearData = useCallback(() => {
+        setUsers([]); setCompanies([]); setDepartments([]); setOffices([]);
+        setBreakConfigs([]); setLeaveConfigs([]); setWorkSchedules([]); setHolidays([]);
+        setTimesheets([]); setLeaves([]); setCorrectionRequests([]);
+        setSchedulePlans([]); setNotifications([]);
+    }, []);
+
     const fetchAllData = useCallback(async () => {
         setIsGlobalLoading(true);
         try {
             await SQLService.checkHealth();
             setServerStatus('ONLINE');
+        } catch (e) {
+            console.error("Critical Server Error:", e);
+            setServerStatus('OFFLINE');
+            setIsGlobalLoading(false);
+            return;
+        }
 
+        if (!authRef.current) {
+            setIsGlobalLoading(false);
+            return;
+        }
+
+        try {
             const [
                 dbUsers, dbCompanies, dbDepts, dbOffices, dbBreaks, dbLeaves, dbHolidays, dbSchedules, dbTimesheets, dbLeaveReqs, dbCorrections
             ] = await Promise.all([
@@ -64,17 +91,21 @@ export const useAppData = () => {
             setCorrectionRequests(dbCorrections);
 
         } catch (e) {
-            console.error("Critical Server Error:", e);
-            setServerStatus('OFFLINE');
+            console.error("Data load error:", e);
+            // 401/403 are handled by the auth layer (back to login); anything else means the server is unusable.
+            if (!(e instanceof ApiError && (e.status === 401 || e.status === 403))) {
+                setServerStatus('OFFLINE');
+            }
         } finally {
             setIsGlobalLoading(false);
         }
     }, []);
 
-    // Initial load
+    // Load on start and whenever the user logs in; drop all data from memory on logout.
     useEffect(() => {
+        if (!isAuthenticated) clearData();
         fetchAllData();
-    }, [fetchAllData]);
+    }, [isAuthenticated, fetchAllData, clearData]);
 
     // Polling if offline
     useEffect(() => {

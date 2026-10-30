@@ -4,6 +4,7 @@ import { User, Timesheet, LeaveRequest, CorrectionRequest, BreakStatus, LeaveSta
 import { FileText, Coffee, Users, AlertOctagon, LayoutList, Calendar, CheckCircle, Clock4, Stethoscope, Palmtree, CheckSquare, AlertCircle, MapPin, PlusCircle, Filter, ChevronLeft, ChevronRight, Slash, LogIn, LogOut, PartyPopper, Moon, Sun, XCircle, History, Download, BarChart3, Search } from 'lucide-react';
 import TimesheetList from './TimesheetList';
 import LeaveCalendarReport from './LeaveCalendarReport';
+import { toLocalDateISO, toLocalMonthISO, parseLocalDate } from '../utils/date';
 
 interface ManagerDashboardProps {
     users: User[];
@@ -34,10 +35,10 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
     const [selectedTeamCompany, setSelectedTeamCompany] = useState<string>('ALL');
     const [selectedDepartment, setSelectedDepartment] = useState<string>('ALL');
     const [searchQuery, setSearchQuery] = useState('');
-    const [dashboardDate, setDashboardDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    const [dashboardDate, setDashboardDate] = useState<string>(toLocalDateISO());
 
     // Reporting State
-    const [reportMonth, setReportMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
+    const [reportMonth, setReportMonth] = useState<string>(toLocalMonthISO()); // YYYY-MM
 
     // Filters for sub-tabs
     const [leaveFilter, setLeaveFilter] = useState<'PENDING' | 'HISTORY'>('PENDING');
@@ -52,9 +53,9 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
     }, []);
 
     const changeDashboardDate = (offset: number) => {
-        const current = new Date(dashboardDate);
+        const current = parseLocalDate(dashboardDate);
         current.setDate(current.getDate() + offset);
-        setDashboardDate(current.toISOString().split('T')[0]);
+        setDashboardDate(toLocalDateISO(current));
     }
 
     const isOnlyPontator = currentUser.roles.includes(Role.PONTATOR) && !currentUser.roles.includes(Role.MANAGER) && !currentUser.roles.includes(Role.ADMIN) && !currentUser.roles.includes(Role.HR);

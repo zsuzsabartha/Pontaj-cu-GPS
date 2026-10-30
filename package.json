@@ -8,7 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "server": "node bridge/server.js",
-    "test": "node scripts/smoke_test.js"
+    "test": "node scripts/smoke_test.js",
+    "test:auth": "node --test bridge/auth/policy.test.js",
+    "test:e2e": "node scripts/e2e_auth_test.mjs",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@azure/msal-browser": "^5.11.0",

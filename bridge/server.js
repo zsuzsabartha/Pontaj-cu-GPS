@@ -8,6 +8,12 @@ import fs from 'fs';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import { connectDB } from './db.js';
+import { sessionMiddleware, issueSession, clearSession, deny, mapUserRow, AUTH_MODE } from './auth/session.js';
+import { verifyMicrosoftIdToken } from './auth/microsoft.js';
+import {
+  canSeeUser, canManageTimesheetsOf, canDecideLeavesOf, canManageUsers, canEditConfig, canRunIntegrations,
+  checkRoleAssignment, checkOwnTimesheetBreaks, checkOwnLeave, checkOwnCorrection
+} from './auth/policy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,7 +21,9 @@ const rootDir = path.resolve(__dirname, '..');
 const distDir = path.join(rootDir, 'dist');
 
 const app = express();
-app.use(cors());
+app.set('trust proxy', 'loopback'); // Nginx runs on the same host; use X-Forwarded-For for req.ip
+const allowedOrigins = [process.env.FRONTEND_URL, 'https://apps.bioeel.ro', 'http://localhost:3000'].filter(Boolean);
+app.use(cors({ origin: (origin, cb) => cb(null, !origin || allowedOrigins.includes(origin)), credentials: true }));
 app.use(express.json({ limit: '50mb' }));
 
 // Suport rutare transparentă pentru prefixul /pontaj/api
@@ -26,6 +34,10 @@ app.use((req, res, next) => {
   next();
 });
 
+// Sesiune server-side: atașează req.user din cookie; vezi bridge/auth/session.js (AUTH_MODE=report|enforce)
+app.use(sessionMiddleware);
+console.log(`[AUTH] Authorization mode: ${AUTH_MODE}`);
+
 /* -------------------- HELPERS -------------------- */
 
 const asyncHandler = (fn) => (req, res, next) =>
@@ -34,6 +46,23 @@ const asyncHandler = (fn) => (req, res, next) =>
 const toISODate = (d) => {
   if (!d) return null;
   return new Date(d).toISOString().split('T')[0];
+};
+
+// Returns true when the request must stop (enforce mode + violation).
+const forbid = (req, res, allowed, reason, status = 403) => !allowed && deny(req, res, status, reason);
+
+// Minimal user directory used for scope checks (id, company, timekeeper).
+const loadUserDirectory = async () => {
+  const pool = await connectDB();
+  const { recordset } = await pool.request().query('SELECT id, company_id, timekeeper_id FROM users');
+  return new Map(recordset.map(u => [u.id, { id: u.id, companyId: u.company_id, timekeeperId: u.timekeeper_id }]));
+};
+
+// In enforce mode only rows belonging to users the caller may see are returned.
+const visibleOnly = async (req, rows, getUserId) => {
+  if (AUTH_MODE !== 'enforce' || !req.user) return rows;
+  const directory = await loadUserDirectory();
+  return rows.filter(r => canSeeUser(req.user, directory.get(getUserId(r))));
 };
 
 /* -------------------- HEALTH -------------------- */
@@ -123,6 +152,7 @@ app.get('/api/v1/config/companies', asyncHandler(async (req, res) => {
     res.json(result.recordset);
 }));
 app.post('/api/v1/config/companies', asyncHandler(async (req, res) => {
+    if (forbid(req, res, canEditConfig(req.user), 'config changes require ADMIN')) return;
     await handleConfigSync('companies', req.body, (c) => ({
         query: 'INSERT INTO companies (id, name) VALUES (@id, @name)',
         params: { id: c.id, name: c.name }
@@ -139,6 +169,7 @@ app.get('/api/v1/config/departments', asyncHandler(async (req, res) => {
     })));
 }));
 app.post('/api/v1/config/departments', asyncHandler(async (req, res) => {
+    if (forbid(req, res, canEditConfig(req.user), 'config changes require ADMIN')) return;
     await handleConfigSync('departments', req.body, (d) => ({
         query: `
             INSERT INTO departments (id, name, company_id, manager_id, email_notifications, source) VALUES (@id, @name, @cid, @mid, @en, @source)
@@ -158,6 +189,7 @@ app.get('/api/v1/config/offices', asyncHandler(async (req, res) => {
     })));
 }));
 app.post('/api/v1/config/offices', asyncHandler(async (req, res) => {
+    if (forbid(req, res, canEditConfig(req.user), 'config changes require ADMIN')) return;
     await handleConfigSync('offices', req.body, (o) => ({
         query: 'INSERT INTO offices (id, name, latitude, longitude, radius_meters) VALUES (@id, @name, @lat, @long, @rad)',
         params: { id: o.id, name: o.name, lat: o.coordinates.latitude, long: o.coordinates.longitude, rad: o.radiusMeters }
@@ -169,17 +201,19 @@ app.post('/api/v1/config/offices', asyncHandler(async (req, res) => {
 app.get('/api/v1/config/users', asyncHandler(async (req, res) => {
     const pool = await connectDB();
     const result = await pool.request().query('SELECT * FROM users');
-    res.json(result.recordset.map(u => ({
-        ...u,
-        roles: u.roles ? JSON.parse(u.roles) : [],
-        alternativeScheduleIds: u.alternative_schedule_ids ? JSON.parse(u.alternative_schedule_ids) : [],
-        companyId: u.company_id, departmentId: u.department_id, assignedOfficeId: u.assigned_office_id,
-        mainScheduleId: u.main_schedule_id, contractHours: u.contract_hours, isValidated: u.is_validated,
-        requiresGPS: u.requires_gps, erpId: u.erp_id, authType: u.auth_type, employmentStatus: u.employment_status, timekeeperId: u.timekeeper_id,
-        firstName: u.first_name, lastName: u.last_name, hireDate: u.hire_date, terminationDate: u.termination_date, source: u.source
-    })));
+    res.json(result.recordset.map(mapUserRow)); // mapUserRow never exposes PIN columns
 }));
 app.post('/api/v1/config/users', asyncHandler(async (req, res) => {
+    if (forbid(req, res, canManageUsers(req.user), 'user management requires ADMIN/HR')) return;
+    if (req.user) {
+        const pool = await connectDB();
+        for (const u of req.body) {
+            const existing = await pool.request().input('id', u.id).query('SELECT roles FROM users WHERE id = @id');
+            const oldRoles = existing.recordset[0]?.roles ? JSON.parse(existing.recordset[0].roles) : [];
+            const reason = checkRoleAssignment(req.user, oldRoles, u.roles || []);
+            if (reason && deny(req, res, 403, reason)) return;
+        }
+    }
     await handleConfigSync('users', req.body, (u) => ({
         query: `
             INSERT INTO users (id, erp_id, company_id, department_id, assigned_office_id, main_schedule_id, name, email, auth_type, roles, contract_hours, is_validated, requires_gps, employment_status, timekeeper_id, first_name, last_name, hire_date, termination_date, source, alternative_schedule_ids) 
@@ -202,6 +236,7 @@ app.get('/api/v1/config/breaks', asyncHandler(async (req, res) => {
     res.json(result.recordset.map(b => ({ id: b.id, name: b.name, isPaid: b.is_paid, icon: b.icon })));
 }));
 app.post('/api/v1/config/breaks', asyncHandler(async (req, res) => {
+    if (forbid(req, res, canEditConfig(req.user), 'config changes require ADMIN')) return;
     await handleConfigSync('break_configs', req.body, (b) => ({
         query: 'INSERT INTO break_configs (id, name, is_paid, icon) VALUES (@id, @name, @paid, @icon)',
         params: { id: b.id, name: b.name, paid: b.isPaid?1:0, icon: b.icon }
@@ -215,6 +250,7 @@ app.get('/api/v1/config/leaves', asyncHandler(async (req, res) => {
     res.json(result.recordset.map(l => ({ id: l.id, name: l.name, code: l.code, requiresApproval: l.requires_approval })));
 }));
 app.post('/api/v1/config/leaves', asyncHandler(async (req, res) => {
+    if (forbid(req, res, canEditConfig(req.user), 'config changes require ADMIN')) return;
     await handleConfigSync('leave_configs', req.body, (l) => ({
         query: 'INSERT INTO leave_configs (id, name, code, requires_approval) VALUES (@id, @name, @code, @req)',
         params: { id: l.id, name: l.name, code: l.code, req: l.requiresApproval?1:0 }
@@ -228,6 +264,7 @@ app.get('/api/v1/config/holidays', asyncHandler(async (req, res) => {
     res.json(result.recordset.map(h => ({ id: h.id, date: toISODate(h.date), name: h.name })));
 }));
 app.post('/api/v1/config/holidays', asyncHandler(async (req, res) => {
+    if (forbid(req, res, canEditConfig(req.user), 'config changes require ADMIN')) return;
     await handleConfigSync('holidays', req.body, (h) => ({
         query: 'INSERT INTO holidays (id, date, name) VALUES (@id, @date, @name)',
         params: { id: h.id, date: h.date, name: h.name }
@@ -244,6 +281,7 @@ app.get('/api/v1/config/schedules', asyncHandler(async (req, res) => {
     })));
 }));
 app.post('/api/v1/config/schedules', asyncHandler(async (req, res) => {
+    if (forbid(req, res, canEditConfig(req.user), 'config changes require ADMIN')) return;
     await handleConfigSync('work_schedules', req.body, (s) => ({
         query: `
             INSERT INTO work_schedules (id, name, start_time, end_time, crosses_midnight, erp_id, source) VALUES (@id, @name, @start, @end, @cross, @erpId, @source)
@@ -284,11 +322,29 @@ app.get('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
             });
         }
     });
-    res.json([...map.values()]);
+    res.json(await visibleOnly(req, [...map.values()], t => t.userId));
 }));
 
 app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
     const pool = await connectDB();
+    if (req.user) {
+        const directory = await loadUserDirectory();
+        for (const t of req.body) {
+            const existing = await pool.request().input('id', t.id).query('SELECT user_id FROM timesheets WHERE id = @id');
+            const existingOwnerId = existing.recordset[0]?.user_id;
+            const owners = [t.userId, existingOwnerId].filter(Boolean);
+            if (owners.every(id => canManageTimesheetsOf(req.user, directory.get(id)))) continue;
+            if (!owners.every(id => id === req.user.id)) {
+                if (deny(req, res, 403, `cannot write timesheet ${t.id} of user ${t.userId}`)) return;
+                continue;
+            }
+            const existingBreaks = existingOwnerId
+                ? (await pool.request().input('id', t.id).query('SELECT id, status FROM breaks WHERE timesheet_id = @id')).recordset
+                : [];
+            const reason = checkOwnTimesheetBreaks(existingBreaks, t.breaks || []);
+            if (reason && deny(req, res, 403, reason)) return;
+        }
+    }
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
@@ -303,8 +359,8 @@ app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
                  throw new Error(`Data Constraint Violation: User ${t.userId} already has a timesheet on ${t.date}`);
             }
 
-            await transaction.request().input('id', t.id).query('DELETE FROM timesheets WHERE id = @id');
             await transaction.request().input('id', t.id).query('DELETE FROM breaks WHERE timesheet_id = @id');
+            const tsExists = (await transaction.request().input('id', t.id).query('SELECT 1 AS x FROM timesheets WHERE id = @id')).recordset.length > 0;
 
             const sLat = t.startLocation ? t.startLocation.latitude : null;
             const sLong = t.startLocation ? t.startLocation.longitude : null;
@@ -315,7 +371,10 @@ app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
                .input('status', t.status).input('oid', t.matchedOfficeId || null)
                .input('sid', t.detectedScheduleId || null)
                .input('slat', sLat).input('slong', sLong)
-               .query(`INSERT INTO timesheets (id, user_id, date, start_time, end_time, status, matched_office_id, detected_schedule_id, start_lat, start_long) 
+               .query(tsExists
+                   ? `UPDATE timesheets SET user_id = @uid, date = @date, start_time = @start, end_time = @end, status = @status,
+                       matched_office_id = @oid, detected_schedule_id = @sid, start_lat = @slat, start_long = @slong WHERE id = @id`
+                   : `INSERT INTO timesheets (id, user_id, date, start_time, end_time, status, matched_office_id, detected_schedule_id, start_lat, start_long) 
                        VALUES (@id, @uid, @date, @start, @end, @status, @oid, @sid, @slat, @slong)`);
             
             if (t.breaks) {
@@ -343,6 +402,15 @@ app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
 app.delete('/api/v1/timesheets/:id', asyncHandler(async (req, res) => {
     const pool = await connectDB();
     const id = req.params.id;
+    if (req.user) {
+        const owner = await pool.request().input('id', id).query('SELECT user_id FROM timesheets WHERE id = @id');
+        const ownerId = owner.recordset[0]?.user_id;
+        if (ownerId) {
+            const directory = await loadUserDirectory();
+            if (forbid(req, res, canManageTimesheetsOf(req.user, directory.get(ownerId)), `cannot delete timesheet ${id}`)) return;
+        }
+    }
+    await pool.request().input('id', id).query('UPDATE correction_requests SET timesheet_id = NULL WHERE timesheet_id = @id');
     await pool.request().input('id', id).query('DELETE FROM breaks WHERE timesheet_id = @id');
     await pool.request().input('id', id).query('DELETE FROM timesheets WHERE id = @id');
     res.json({ success: true, deletedId: id });
@@ -356,7 +424,8 @@ app.get('/api/v1/seed/leaves', asyncHandler(async (req, res) => {
         FROM leave_requests l
         LEFT JOIN leave_configs lc ON lc.id = l.type_id
     `);
-    res.json(result.recordset.map(l => ({
+    const rows = await visibleOnly(req, result.recordset, r => r.user_id);
+    res.json(rows.map(l => ({
         id: l.id, userId: l.user_id, typeId: l.type_id, typeName: l.type_name,
         startDate: toISODate(l.start_date), endDate: toISODate(l.end_date),
         reason: l.reason, status: l.status, managerComment: l.manager_comment
@@ -364,6 +433,20 @@ app.get('/api/v1/seed/leaves', asyncHandler(async (req, res) => {
 }));
 
 app.post('/api/v1/seed/leaves', asyncHandler(async (req, res) => {
+    if (req.user) {
+        const pool = await connectDB();
+        const directory = await loadUserDirectory();
+        for (const l of req.body) {
+            const existingRes = await pool.request().input('id', l.id).query('SELECT user_id, status FROM leave_requests WHERE id = @id');
+            const existing = existingRes.recordset[0] || null;
+            const owners = [l.userId, existing?.user_id].filter(Boolean);
+            if (owners.every(id => canDecideLeavesOf(req.user, directory.get(id)))) continue;
+            const reason = owners.every(id => id === req.user.id)
+                ? checkOwnLeave(existing, l)
+                : `cannot write leave ${l.id} of user ${l.userId}`;
+            if (reason && deny(req, res, 403, reason)) return;
+        }
+    }
     await handleConfigSync('leave_requests', req.body, (l) => ({
         query: 'INSERT INTO leave_requests (id, user_id, type_id, start_date, end_date, reason, status, manager_comment) VALUES (@id, @uid, @tid, @start, @end, @reason, @status, @comm)',
         params: { id: l.id, uid: l.userId, tid: l.typeId, start: l.startDate, end: l.endDate, reason: l.reason, status: l.status, comm: l.managerComment }
@@ -374,6 +457,14 @@ app.post('/api/v1/seed/leaves', asyncHandler(async (req, res) => {
 // DELETE LEAVE
 app.delete('/api/v1/leaves/:id', asyncHandler(async (req, res) => {
     const pool = await connectDB();
+    if (req.user) {
+        const owner = await pool.request().input('id', req.params.id).query('SELECT user_id FROM leave_requests WHERE id = @id');
+        const ownerId = owner.recordset[0]?.user_id;
+        if (ownerId) {
+            const directory = await loadUserDirectory();
+            if (forbid(req, res, canDecideLeavesOf(req.user, directory.get(ownerId)), `cannot delete leave ${req.params.id}`)) return;
+        }
+    }
     await pool.request().input('id', req.params.id).query('DELETE FROM leave_requests WHERE id = @id');
     res.json({ success: true });
 }));
@@ -382,16 +473,31 @@ app.delete('/api/v1/leaves/:id', asyncHandler(async (req, res) => {
 app.get('/api/v1/seed/corrections', asyncHandler(async (req, res) => {
     const pool = await connectDB();
     const result = await pool.request().query('SELECT * FROM correction_requests');
-    res.json(result.recordset.map(c => ({
+    const rows = await visibleOnly(req, result.recordset, r => r.user_id);
+    res.json(rows.map(c => ({
         id: c.id, userId: c.user_id, timesheetId: c.timesheet_id,
-        requestedDate: toISODate(c.requested_date), requestedStartTime: c.requested_start_time, requestedEndTime: c.requested_end_time,
+        requestedDate: toISODate(c.requested_date), requestedStartTime: c.requested_start, requestedEndTime: c.requested_end ?? c.requested_end_time,
         reason: c.reason, status: c.status, managerNote: c.manager_note
     })));
 }));
 
 app.post('/api/v1/seed/corrections', asyncHandler(async (req, res) => {
+    if (req.user) {
+        const pool = await connectDB();
+        const directory = await loadUserDirectory();
+        for (const c of req.body) {
+            const existingRes = await pool.request().input('id', c.id).query('SELECT user_id, status FROM correction_requests WHERE id = @id');
+            const existing = existingRes.recordset[0] || null;
+            const owners = [c.userId, existing?.user_id].filter(Boolean);
+            if (owners.every(id => canManageTimesheetsOf(req.user, directory.get(id)))) continue;
+            const reason = owners.every(id => id === req.user.id)
+                ? checkOwnCorrection(existing, c)
+                : `cannot write correction ${c.id} of user ${c.userId}`;
+            if (reason && deny(req, res, 403, reason)) return;
+        }
+    }
     await handleConfigSync('correction_requests', req.body, (c) => ({
-        query: 'INSERT INTO correction_requests (id, user_id, timesheet_id, requested_date, requested_start_time, requested_end_time, reason, status, manager_note) VALUES (@id, @uid, @tid, @date, @start, @end, @reason, @status, @note)',
+        query: 'INSERT INTO correction_requests (id, user_id, timesheet_id, requested_date, requested_start, requested_end, reason, status, manager_note) VALUES (@id, @uid, @tid, @date, @start, @end, @reason, @status, @note)',
         params: { id: c.id, uid: c.userId, tid: c.timesheetId, date: c.requestedDate, start: c.requestedStartTime, end: c.requestedEndTime, reason: c.reason, status: c.status, note: c.managerNote }
     }));
     res.json({ success: true });
@@ -400,12 +506,21 @@ app.post('/api/v1/seed/corrections', asyncHandler(async (req, res) => {
 // DELETE CORRECTION
 app.delete('/api/v1/corrections/:id', asyncHandler(async (req, res) => {
     const pool = await connectDB();
+    if (req.user) {
+        const owner = await pool.request().input('id', req.params.id).query('SELECT user_id FROM correction_requests WHERE id = @id');
+        const ownerId = owner.recordset[0]?.user_id;
+        if (ownerId) {
+            const directory = await loadUserDirectory();
+            if (forbid(req, res, canManageTimesheetsOf(req.user, directory.get(ownerId)), `cannot delete correction ${req.params.id}`)) return;
+        }
+    }
     await pool.request().input('id', req.params.id).query('DELETE FROM correction_requests WHERE id = @id');
     res.json({ success: true });
 }));
 
 /* -------------------- ERP QUEUE SYNC -------------------- */
 app.post('/api/v1/erp/process-queue', asyncHandler(async (req, res) => {
+    if (forbid(req, res, canRunIntegrations(req.user), 'integrations require ADMIN/HR')) return;
     const pool = await connectDB();
     
     const pendingReq = await pool.request().query(`
@@ -486,6 +601,7 @@ app.post('/api/v1/erp/process-queue', asyncHandler(async (req, res) => {
 
 // ADD TO QUEUE (For testing/simulating ERP pushes)
 app.post('/api/v1/erp/queue', asyncHandler(async (req, res) => {
+    if (forbid(req, res, canRunIntegrations(req.user), 'integrations require ADMIN/HR')) return;
     const pool = await connectDB();
     const { doc_type, data } = req.body;
     const id = `q-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -502,7 +618,11 @@ app.post('/api/v1/erp/queue', asyncHandler(async (req, res) => {
 /* -------------------- BIOEELAUTH INTEGRATION -------------------- */
 
 // Disable SSL verification for internal proxy/self-signed certs
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+// Only on developer machines (internal proxy cert for apps.bioeel.ro). Never on the production host,
+// where the call goes to http://localhost:3006 and Microsoft signing keys must be fetched over verified TLS.
+if (!(os.hostname().toUpperCase() === 'BE-APL01' || process.env.NODE_ENV === 'production')) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+}
 
 const AUTH_API_BASE = process.env.BIOEEL_AUTH_API || 
     (os.hostname().toUpperCase() === 'BE-APL01' || process.env.NODE_ENV === 'production'
@@ -633,6 +753,34 @@ async function syncUsersWithBioeelAuth() {
     }
 }
 
+// Simple in-memory brute-force protection for PIN login (per IP + email).
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const loginAttempts = new Map();
+
+const isLoginBlocked = (key) => {
+    const entry = loginAttempts.get(key);
+    if (!entry) return false;
+    if (Date.now() - entry.firstAt > LOGIN_WINDOW_MS) {
+        loginAttempts.delete(key);
+        return false;
+    }
+    return entry.count >= LOGIN_MAX_ATTEMPTS;
+};
+
+const registerFailedLogin = (key) => {
+    const entry = loginAttempts.get(key);
+    if (!entry || Date.now() - entry.firstAt > LOGIN_WINDOW_MS) {
+        loginAttempts.set(key, { count: 1, firstAt: Date.now() });
+    } else {
+        entry.count++;
+    }
+};
+
+// On-demand sync (triggered by unknown emails at login) runs at most once per interval.
+const ON_DEMAND_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+let lastOnDemandSyncAt = 0;
+
 // Endpoint de login securizat cu PIN (BioeelAuth)
 app.post('/api/v1/auth/login-pin', asyncHandler(async (req, res) => {
     const { email, pin } = req.body;
@@ -642,11 +790,17 @@ app.post('/api/v1/auth/login-pin', asyncHandler(async (req, res) => {
 
     const pool = await connectDB();
     
+    const attemptKey = `${req.ip}|${String(email).toLowerCase().trim()}`;
+    if (isLoginBlocked(attemptKey)) {
+        return res.status(429).json({ success: false, error: 'Prea multe încercări eșuate. Încercați din nou peste 15 minute.' });
+    }
+
     let userResult = await pool.request()
         .input('email', email.toLowerCase().trim())
         .query('SELECT * FROM users WHERE email = @email');
 
-    if (userResult.recordset.length === 0) {
+    if (userResult.recordset.length === 0 && Date.now() - lastOnDemandSyncAt > ON_DEMAND_SYNC_INTERVAL_MS) {
+        lastOnDemandSyncAt = Date.now();
         console.log(`User ${email} not found locally during PIN login. Triggering sync...`);
         const syncResult = await syncUsersWithBioeelAuth();
         if (syncResult.success) {
@@ -657,6 +811,7 @@ app.post('/api/v1/auth/login-pin', asyncHandler(async (req, res) => {
     }
 
     if (userResult.recordset.length === 0) {
+        registerFailedLogin(attemptKey);
         return res.status(404).json({ success: false, error: 'Utilizator negăsit.' });
     }
 
@@ -708,8 +863,11 @@ app.post('/api/v1/auth/login-pin', asyncHandler(async (req, res) => {
                 mappedUser.employmentStatus = 'ACTIVE';
             }
 
+            loginAttempts.delete(attemptKey);
+            issueSession(req, res, user.id);
             res.json({ success: true, user: mappedUser });
         } else {
+            registerFailedLogin(attemptKey);
             res.status(401).json({ success: false, error: data.message || 'PIN incorect.' });
         }
     } catch (err) {
@@ -718,8 +876,56 @@ app.post('/api/v1/auth/login-pin', asyncHandler(async (req, res) => {
     }
 }));
 
+// Login Microsoft: ID token-ul obținut de MSAL este validat pe server, apoi se emite sesiunea.
+app.post('/api/v1/auth/login-microsoft', asyncHandler(async (req, res) => {
+    const { idToken } = req.body || {};
+    if (!idToken) return res.status(400).json({ success: false, error: 'Lipsește token-ul Microsoft.' });
+
+    let email;
+    try {
+        email = await verifyMicrosoftIdToken(idToken);
+    } catch (err) {
+        console.error('Microsoft token validation failed:', err.message);
+        const serverSide = /configured|download|fetch/i.test(err.message);
+        return res.status(serverSide ? 502 : 401).json({
+            success: false,
+            error: serverSide ? 'Serverul nu poate verifica momentan autentificarea Microsoft. Folosiți PIN-ul.' : 'Autentificare Microsoft invalidă.'
+        });
+    }
+
+    const pool = await connectDB();
+    const findUser = () => pool.request().input('email', email).query('SELECT * FROM users WHERE LOWER(email) = @email');
+    let userResult = await findUser();
+    if (userResult.recordset.length === 0 && Date.now() - lastOnDemandSyncAt > ON_DEMAND_SYNC_INTERVAL_MS) {
+        lastOnDemandSyncAt = Date.now();
+        const syncResult = await syncUsersWithBioeelAuth();
+        if (syncResult.success) userResult = await findUser();
+    }
+    if (userResult.recordset.length === 0) {
+        return res.status(403).json({ success: false, error: `Contul Microsoft (${email}) nu este asociat unui angajat activ.` });
+    }
+    const user = userResult.recordset[0];
+    if (user.employment_status === 'SUSPENDED' || user.employment_status === 'TERMINATED') {
+        return res.status(403).json({ success: false, error: 'Contul dumneavoastră este suspendat sau inactiv.' });
+    }
+    issueSession(req, res, user.id);
+    res.json({ success: true, user: mapUserRow(user) });
+}));
+
+// Utilizatorul sesiunii curente (rolurile vin mereu din DB)
+app.get('/api/v1/auth/me', (req, res) => {
+    if (!req.user) return res.status(401).json({ success: false, error: 'Neautentificat.' });
+    res.json({ success: true, user: req.user });
+});
+
+app.post('/api/v1/auth/logout', (req, res) => {
+    clearSession(req, res);
+    res.json({ success: true });
+});
+
 // Endpoint declanșare manuală sincronizare utilizatori
 app.post('/api/v1/auth/sync-users', asyncHandler(async (req, res) => {
+    if (forbid(req, res, canRunIntegrations(req.user), 'integrations require ADMIN/HR')) return;
     const result = await syncUsersWithBioeelAuth();
     if (result.success) {
         res.json({ success: true, count: result.count });
@@ -752,7 +958,8 @@ app.use((err, req, res, _) => {
   if (err.message && err.message.includes('Data Constraint Violation')) {
       return res.status(409).json({ error: 'Duplicate Entry', message: err.message });
   }
-  res.status(500).json({ error: err.message, stack: err.stack });
+  // Never expose stack traces to clients; full details stay in the server log.
+  res.status(500).json({ error: err.message || 'Internal Server Error' });
 });
 
 /* -------------------- SERVER START -------------------- */
