@@ -21,12 +21,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ users, companies, onLogin, on
     const { instance, accounts, inProgress } = useMsal();
     const [savedName, setSavedName] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('pontaj_saved_name') || '' : ''));
     const [email, setEmail] = useState<string>(() => (typeof window !== 'undefined' ? localStorage.getItem('pontaj_saved_email') || '' : ''));
-    const isMobileOrTunnel = typeof window !== 'undefined' && (
-        window.location.hostname.endsWith('.trycloudflare.com') ||
-        new URLSearchParams(window.location.search).get('mode') === 'mobile' ||
-        window.innerWidth < 768
-    );
-    const [view, setView] = useState<'main' | 'pin' | '2fa' | 'forgot'>(() => (typeof window !== 'undefined' && (localStorage.getItem('pontaj_saved_email') || isMobileOrTunnel) ? 'pin' : 'main'));
+    const [view, setView] = useState<'main' | 'pin' | '2fa' | 'forgot'>(() => (typeof window !== 'undefined' && localStorage.getItem('pontaj_saved_email') ? 'pin' : 'main'));
     const [challengeToken, setChallengeToken] = useState('');
     const [twoFaCode, setTwoFaCode] = useState('');
     const [twoFaMessage, setTwoFaMessage] = useState('');
