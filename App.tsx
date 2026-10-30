@@ -189,9 +189,13 @@ export default function App() {
     // --- Derived State for Active or Today's Shift ---
     const activeOrTodayTimesheet = useMemo(() => {
         if (!currentUser) return null;
-        const active = timesheets.find((t: Timesheet) => t.userId === currentUser.id && (t.status === ShiftStatus.WORKING || t.status === ShiftStatus.ON_BREAK));
+
+        const MAX_OPEN_SHIFT_MS = 20 * 60 * 60 * 1000;
+        const active = timesheets.find((t: Timesheet) => t.userId === currentUser.id && (t.status === ShiftStatus.WORKING || t.status === ShiftStatus.ON_BREAK) && (t.date === toLocalDateISO() || (Date.now() - new Date(t.startTime).getTime()) < MAX_OPEN_SHIFT_MS));
         if (active) return active;
         const today = toLocalDateISO();
+
+
         const todayShifts = timesheets.filter((t: Timesheet) => t.userId === currentUser.id && t.date === today && t.status === ShiftStatus.COMPLETED).sort((a: Timesheet, b: Timesheet) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
         return todayShifts[0] || null;
     }, [currentUser, timesheets]);
@@ -643,10 +647,10 @@ export default function App() {
 
             <LeaveModal isOpen={isLeaveModalOpen} onClose={() => setLeaveModalOpen(false)} leaveConfigs={leaveConfigs} holidays={holidays} lockedDate={lockedDate} onSubmit={handleLeaveSubmit} />
             <TimesheetEditModal isOpen={editModalData.isOpen} onClose={() => setEditModalData({ isOpen: false, timesheet: null, targetUserId: null })} timesheet={editModalData.timesheet} isManager={hasRole(Role.MANAGER) || hasRole(Role.ADMIN)} lockedDate={lockedDate} leaveConfigs={leaveConfigs} workSchedules={workSchedules} onSave={(data) => handleTimesheetSave(data, editModalData.targetUserId)} onDelete={handleTimesheetDelete} />
-// (RejectionModal rendered above)
+
             <RejectionModal isOpen={rejectionModal.isOpen} onClose={() => setRejectionModal({ ...rejectionModal, isOpen: false })} onSubmit={(reason) => handleConfirmRejection(rejectionModal, reason)} title={rejectionModal.type === 'LEAVE_CANCEL' ? 'Motiv Anulare' : 'Motiv Respingere'} />
             <ToastContainer />
-// (RejectionModal rendered above)
+
         </div>
     );
 }
