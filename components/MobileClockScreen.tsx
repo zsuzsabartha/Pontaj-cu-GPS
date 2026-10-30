@@ -57,6 +57,7 @@ const MobileClockScreen: React.FC<MobileClockScreenProps> = ({
 }) => {
     const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
     const [isStandalone, setIsStandalone] = useState(false);
+    const [showIosBanner, setShowIosBanner] = useState<boolean>(() => typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent));
 
     useEffect(() => {
         const standalone =
@@ -173,6 +174,13 @@ const MobileClockScreen: React.FC<MobileClockScreenProps> = ({
                     >
                         Instalează
                     </button>
+                </div>
+            )}
+
+            {!isStandalone && !installPrompt && showIosBanner && (
+                <div className="mx-4 mt-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between gap-2">
+                    <span>📱 <strong>iPhone:</strong> în Safari apăsați <strong>Share (Partajează)</strong> → <strong>Adaugă la ecranul principal</strong>.</span>
+                    <button onClick={() => setShowIosBanner(false)} className="text-emerald-600 dark:text-emerald-400 font-bold px-1.5">✕</button>
                 </div>
             )}
 

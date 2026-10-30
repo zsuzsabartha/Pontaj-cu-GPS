@@ -150,7 +150,7 @@ const MobileInstallQRModal: React.FC<MobileInstallQRModalProps> = ({ isOpen, onC
                         <div className="flex items-start gap-2.5">
                             <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">1</span>
                             <p className="text-slate-700 dark:text-gray-300">
-                                <strong>Scanați codul QR</strong> cu camera telefonului și apăsați butonul <strong>„Instalează”</strong> din partea de sus a ecranului.
+                                <strong>Scanați codul QR</strong> cu camera telefonului (pe <strong>Android</strong> apăsați <strong>„Instalează”</strong>; pe <strong>iPhone</strong> apăsați <strong>Share → Adaugă la ecranul principal</strong>).
                             </p>
                         </div>
                         <div className="flex items-start gap-2.5">
