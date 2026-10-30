@@ -28,9 +28,9 @@ Get-Process -Name "cloudflared" -ErrorAction SilentlyContinue | Stop-Process -Fo
 if (Test-Path $LogFile) { Remove-Item $LogFile -Force -ErrorAction SilentlyContinue }
 
 Write-Host "[2/3] Se porneste tunelul HTTPS catre $TargetUrl ..." -ForegroundColor Cyan
-$argList = @("tunnel", "--url", $TargetUrl, "--no-autoupdate", "--no-tls-verify", "--http-host-header", "apps.bioeel.ro", "--logfile", $LogFile)
+$argList = @("tunnel", "--url", $TargetUrl, "--protocol", "http2", "--no-autoupdate", "--no-tls-verify", "--http-host-header", "apps.bioeel.ro", "--logfile", $LogFile)
 if ($TargetUrl -like "http://localhost*") {
-    $argList = @("tunnel", "--url", $TargetUrl, "--no-autoupdate", "--logfile", $LogFile)
+    $argList = @("tunnel", "--url", $TargetUrl, "--protocol", "http2", "--no-autoupdate", "--logfile", $LogFile)
 }
 $proc = Start-Process -FilePath $CloudflaredPath -ArgumentList $argList -PassThru -WindowStyle Hidden
 

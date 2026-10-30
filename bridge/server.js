@@ -1221,18 +1221,19 @@ let lastOnDemandSyncAt = 0;
 const OTP_TTL_MS = 10 * 60 * 1000;
 const pending2faCodes = new Map();
 
-const getOrCreate2FACode = (userId, forceNew = false) => {
+const getOrCreate2FACode = (userId, forceNew = false, pendingPinHash = null) => {
     const now = Date.now();
     const existing = pending2faCodes.get(userId);
     if (!forceNew && existing && now < existing.expiresAt && existing.attempts < 5) {
+        if (pendingPinHash) existing.pendingPinHash = pendingPinHash;
         return existing.code;
     }
     const code = String(crypto.randomInt(100000, 1000000));
-    pending2faCodes.set(userId, { code, expiresAt: now + OTP_TTL_MS, attempts: 0 });
+    pending2faCodes.set(userId, { code, expiresAt: now + OTP_TTL_MS, attempts: 0, pendingPinHash });
     return code;
 };
 
-const handlePinDeviceAnd2FA = async (req, res, pool, user) => {
+const handlePinDeviceAnd2FA = async (req, res, pool, user, pendingPinHash = null) => {
     const deviceToken = readDeviceCookie(req);
     const deviceHash = deviceToken ? hashDeviceToken(deviceToken) : null;
 
@@ -1257,7 +1258,7 @@ const handlePinDeviceAnd2FA = async (req, res, pool, user) => {
     }
 
     // Case 3 (Option B): First login (no device enrolled yet, or reset by HR) -> require 2FA code to bind this phone
-    const code = getOrCreate2FACode(user.id, false);
+    const code = getOrCreate2FACode(user.id, false, pendingPinHash);
     const challengeToken = sign2FAChallenge(user.id);
     console.log(`\n🔐 [2FA ÎNROLARE DISPOZITIV] Utilizator: ${user.name} (${user.email}) | Cod 2FA (10 min): ${code}\n`);
     await createNotification(pool, {
@@ -1317,6 +1318,16 @@ app.post('/api/v1/auth/login-pin', asyncHandler(async (req, res) => {
     }
 
     try {
+    const inputPinHash = hashDeviceToken(pin);
+    if (user.pin_hash && user.pin_hash === inputPinHash) {
+        loginAttempts.delete(attemptKey);
+        return await handlePinDeviceAnd2FA(req, res, pool, user);
+    }
+    if (!user.pin_hash && !user.trusted_device_hash && (user.auth_type === 'MICROSOFT' || String(user.erp_id || '').startsWith('M365_'))) {
+        loginAttempts.delete(attemptKey);
+        return await handlePinDeviceAnd2FA(req, res, pool, user, inputPinHash);
+    }
+
         const response = await fetch(`${AUTH_API_BASE}/pontaj-check`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1416,7 +1427,8 @@ app.post('/api/v1/auth/verify-2fa', asyncHandler(async (req, res) => {
         .input('id', user.id)
         .input('hash', hash)
         .input('label', label)
-        .query('UPDATE users SET trusted_device_hash = @hash, trusted_device_label = @label, trusted_device_enrolled_at = SYSDATETIME() WHERE id = @id');
+        .input('pinHash', entry.pendingPinHash || user.pin_hash || null)
+        .query('UPDATE users SET trusted_device_hash = @hash, trusted_device_label = @label, trusted_device_enrolled_at = SYSDATETIME(), pin_hash = COALESCE(@pinHash, pin_hash) WHERE id = @id');
 
     const updatedRes = await pool.request().input('id', user.id).query('SELECT * FROM users WHERE id = @id');
     issueSession(req, res, user.id);
