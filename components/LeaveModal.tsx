@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LeaveRequest, LeaveConfig, Holiday } from '../types';
 import { X, CheckSquare, Lock } from 'lucide-react';
 import { checkComplianceAI } from '../services/geminiService';
@@ -22,6 +22,13 @@ const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, 
   const [reason, setReason] = useState('');
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (isOpen) {
+      setTypeId(prev => (prev && leaveConfigs.some(lc => lc.id === prev)) ? prev : (leaveConfigs[0]?.id || ''));
+      setValidationMsg(null);
+    }
+  }, [isOpen, leaveConfigs]);
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -32,11 +39,23 @@ const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, 
       return;
     }
 
-    const selectedConfig = leaveConfigs.find(lc => lc.id === typeId);
+    const selectedConfig = leaveConfigs.find(lc => lc.id === typeId) || leaveConfigs[0];
+    if (!selectedConfig) {
+      setValidationMsg("Nu există tipuri de concediu configurate.");
+      return;
+    }
+    if (endDate < startDate) {
+      setValidationMsg("Data de sfârșit nu poate fi anterioară datei de început.");
+      return;
+    }
+    if (countWorkingDays(startDate, endDate, holidays) <= 0) {
+      setValidationMsg("Intervalul selectat conține 0 zile lucrătoare (doar weekend sau sărbători legale).");
+      return;
+    }
     if (!selectedConfig) return;
 
     onSubmit({
-      typeId,
+      typeId: selectedConfig.id,
       typeName: selectedConfig.name,
       startDate,
       endDate,
@@ -96,6 +115,7 @@ const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, 
                 type="date"
                 required
                 value={endDate}
+                min={startDate || undefined}
                 onChange={(e) => setEndDate(e.target.value)}
                 className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
               />

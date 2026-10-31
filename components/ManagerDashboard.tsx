@@ -206,7 +206,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
 
                 // 3. Check Holiday / Weekend
                 const isHoliday = holidays.some(h => h.date === dateStr);
-                const dayOfWeek = new Date(dateStr).getDay();
+                const dayOfWeek = parseLocalDate(dateStr).getDay();
                 const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
                 let cellValue = "";
@@ -501,7 +501,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                     <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden transition-colors">
                         <div className="bg-slate-50 dark:bg-gray-800 px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                             <h3 className="font-bold text-slate-800 dark:text-gray-200 text-sm flex items-center gap-2">
-                                <Users size={16} className="text-emerald-500 dark:text-emerald-400" /> Status Echipă - {new Date(dashboardDate).toLocaleDateString('ro-RO')}
+                                <Users size={16} className="text-emerald-500 dark:text-emerald-400" /> Status Echipă - {formatDateRO(dashboardDate)}
                             </h3>
                             {/* Date Controls for Live View Context */}
                             <div className="flex items-center bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-0.5">
@@ -856,7 +856,7 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                         )}
                                     </div>
                                     <div className="text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/50 p-3 rounded-lg transition-colors">
-                                        <p className="flex justify-between"><span className="font-semibold text-gray-700 dark:text-gray-200">Data Solicitată:</span> <span>{req.requestedDate || 'N/A'}</span></p>
+                                        <p className="flex justify-between"><span className="font-semibold text-gray-700 dark:text-gray-200">Data Solicitată:</span> <span>{req.requestedDate ? formatDateRO(req.requestedDate) : 'N/A'}</span></p>
                                         <p className="mt-1 flex justify-between"><span className="font-semibold text-gray-700 dark:text-gray-200">Interval:</span> <span className="text-gray-600 dark:text-gray-400">{new Date(req.requestedStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {req.requestedEndTime ? new Date(req.requestedEndTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}</span></p>
                                         <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700 transition-colors">
                                             <span className="font-semibold text-gray-700 dark:text-gray-200 block mb-1">Motiv:</span>

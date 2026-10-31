@@ -114,6 +114,7 @@ export const SQLService = {
 
     // User management
     upsertUser: (user: User) => post('/config/users', [user]),
+    upsertUsers: (users: User[]) => post('/config/users', users),
     syncUsers: () => post('/auth/sync-users', {}),
 
     // --- SESSION (server-side, httpOnly cookie) ---

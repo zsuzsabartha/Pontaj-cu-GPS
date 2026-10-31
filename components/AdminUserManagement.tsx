@@ -93,7 +93,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
     const handleManualDBSync = async () => {
         setIsDbSyncing(true);
         try {
-            await fetch(`${API_CONFIG.BASE_URL}/config/users`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(users) });
+            await SQLService.upsertUsers(users);
             setDbStatus('connected');
             showToast("Sincronizare completă cu baza de date SQL efectuată.", 'success');
         } catch (e) {
@@ -665,6 +665,7 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                                             value={editingUser.mainScheduleId || ''}
                                             onChange={e => setEditingUser({ ...editingUser, mainScheduleId: e.target.value })}
                                         >
+                                            <option value="">-- Selectează Program Principal --</option>
                                             {workSchedules.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                         </select>
                                     </div>

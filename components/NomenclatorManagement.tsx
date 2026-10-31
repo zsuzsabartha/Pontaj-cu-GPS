@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BreakConfig, LeaveConfig, Holiday, WorkSchedule } from '../types';
 import { Plus, Trash2, Save, Coffee, FileText, Check, X, CalendarDays, PartyPopper, RefreshCw, Settings, Lock, CalendarClock, Sun, Moon } from 'lucide-react';
 // (SQLService imported below)
@@ -35,6 +35,12 @@ const NomenclatorManagement: React.FC<NomenclatorManagementProps> = ({
   const [localSchedules, setLocalSchedules] = useState(workSchedules);
   const [localHolidays, setLocalHolidays] = useState(holidays);
   const [localLockedDate, setLocalLockedDate] = useState(currentLockedDate);
+
+  useEffect(() => { setLocalBreaks(breakConfigs); }, [breakConfigs]);
+  useEffect(() => { setLocalLeaves(leaveConfigs); }, [leaveConfigs]);
+  useEffect(() => { setLocalSchedules(workSchedules); }, [workSchedules]);
+  useEffect(() => { setLocalHolidays(holidays); }, [holidays]);
+  useEffect(() => { setLocalLockedDate(currentLockedDate); }, [currentLockedDate]);
 
   // Helper to save to backend (replace=1 prunes deleted items from the config table)
   const saveToSQL = async (endpoint: 'breaks' | 'leaves' | 'schedules' | 'holidays', data: any[]) => {

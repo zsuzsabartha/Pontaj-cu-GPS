@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { DailySchedule, WorkSchedule, User, Role, Holiday, Timesheet, LeaveRequest, LeaveStatus } from '../types';
 import { isDateInLockedPeriod } from '../constants';
+import { formatDateRO } from '../utils/date';
 import { ChevronLeft, ChevronRight, CalendarClock, Moon, Sun, Clock, PartyPopper, X, Check, Trash2, Edit, ShieldCheck, Lock, Briefcase, Palmtree, Coffee, Info, Hourglass } from 'lucide-react';
 
 interface ScheduleCalendarProps {
@@ -21,8 +22,9 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
     const [selectedUser, setSelectedUser] = useState<string>(currentUser.id);
     const [selectionModal, setSelectionModal] = useState<{ isOpen: boolean, dateStr: string, day: number } | null>(null);
 
-    const isManager = currentUser.roles.includes(Role.MANAGER) || currentUser.roles.includes(Role.ADMIN);
-    const isAdmin = currentUser.roles.includes(Role.ADMIN);
+    const isManager = currentUser.roles.includes(Role.MANAGER) || currentUser.roles.includes(Role.ADMIN) || currentUser.roles.includes(Role.HR) || currentUser.roles.includes(Role.PONTATOR);
+    const isAdmin = currentUser.roles.includes(Role.ADMIN) || currentUser.roles.includes(Role.HR);
+    const isPontatorOnly = currentUser.roles.includes(Role.PONTATOR) && !isAdmin && !currentUser.roles.includes(Role.MANAGER);
 
     // Helpers
     const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -89,7 +91,9 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
     // Logic: Admins see all users. Managers see only their company.
     const teamUsers = isAdmin
         ? users
-        : (isManager ? users.filter(u => u.companyId === currentUser.companyId) : [currentUser]);
+        : (isPontatorOnly
+            ? users.filter(u => u.timekeeperId === currentUser.id || u.id === currentUser.id)
+            : (isManager ? users.filter(u => u.companyId === currentUser.companyId) : [currentUser]));
 
     const targetUserObj = users.find(u => u.id === selectedUser);
 
@@ -330,7 +334,7 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
                             <div>
                                 <h3 className="font-bold text-lg">Modificare Program</h3>
                                 <p className="text-xs text-emerald-100 dark:text-emerald-200 opacity-90">
-                                    {targetUserObj.name} - {selectionModal.dateStr}
+                                    {targetUserObj.name} - {formatDateRO(selectionModal.dateStr)}
                                 </p>
                             </div>
                             <button onClick={() => setSelectionModal(null)} className="p-1 hover:bg-white/20 rounded transition-colors"><X size={20} /></button>
@@ -393,7 +397,8 @@ const ScheduleCalendar: React.FC<ScheduleCalendarProps> = ({ currentUser, users,
                                             ...(targetUserObj.alternativeScheduleIds || [])
                                         ];
 
-                                        const isAllowedUser = allAllowedSchedules.includes(schedule.id);
+                                        const hasConfiguredSchedules = Boolean(targetUserObj.mainScheduleId || (targetUserObj.alternativeScheduleIds && targetUserObj.alternativeScheduleIds.length > 0));
+                                        const isAllowedUser = !hasConfiguredSchedules || allAllowedSchedules.includes(schedule.id);
 
                                         // Check if user has ANY night shift capability
                                         const isEssentialStaff = allAllowedSchedules.some(id =>

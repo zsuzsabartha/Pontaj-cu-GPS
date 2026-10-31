@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { User, LeaveRequest, LeaveConfig, LeaveStatus, Holiday } from '../types';
 import { ChevronLeft, ChevronRight, Calendar, User as UserIcon } from 'lucide-react';
+import { parseLocalDate } from '../utils/date';
 
 interface LeaveCalendarReportProps {
     users: User[];
@@ -30,7 +31,7 @@ const LeaveCalendarReport: React.FC<LeaveCalendarReportProps> = ({ users, leaves
 
     const getLeavesForDay = (day: number) => {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const dayObj = new Date(dateStr);
+        const dayObj = parseLocalDate(dateStr);
         const dayOfWeek = dayObj.getDay(); // 0 = Sun, 6 = Sat
         const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
         const isHoliday = holidays.some(h => h.date === dateStr);
