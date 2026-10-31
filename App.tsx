@@ -146,6 +146,7 @@ export default function App() {
     });
 
     // --- URL Action Interceptor (for Email Links) ---
+    const [managerInitialTab, setManagerInitialTab] = useState<'status' | 'history' | 'leaves' | 'breaks' | 'corrections' | 'calendar' | 'reports'>('status');
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
         const action = urlParams.get('action');
@@ -163,10 +164,18 @@ export default function App() {
                 try {
                     const { action, id } = JSON.parse(pending);
                     const targetLeave = leaves.find(l => l.id === id);
+                    if (action === 'viewLeave' || action === 'approveLeave' || action === 'rejectLeave') {
+                        setIsMobileClockMode(false);
+                        setActiveTab('team');
+                        setManagerInitialTab('leaves');
+                    }
                     
                     if (targetLeave && targetLeave.status === LeaveStatus.PENDING) {
-                        const canApprove = currentUser.roles.includes(Role.ADMIN) || 
-                            (currentUser.roles.includes(Role.MANAGER) && departments.some(d => d.id === users.find(u=>u.id === targetLeave.userId)?.departmentId && d.managerId === currentUser.id));
+                        const targetUser = users.find(u => u.id === targetLeave.userId);
+                        const canApprove = currentUser.roles.includes(Role.ADMIN) ||
+                            (currentUser.roles.includes(Role.HR) && targetUser?.companyId === currentUser.companyId) ||
+                            (currentUser.roles.includes(Role.MANAGER) && (targetUser?.companyId === currentUser.companyId || departments.some(d => d.id === targetUser?.departmentId && d.managerId === currentUser.id)));
+                        // Department / Company manager check handled above
                         
                         if (canApprove) {
                             if (action === 'approveLeave') {
@@ -302,6 +311,9 @@ export default function App() {
                     offices={offices}
                     breakConfigs={breakConfigs}
                     holidays={holidays}
+
+                    schedulePlans={schedulePlans}
+                    workSchedules={workSchedules}
                     activeLeaveRequest={activeLeaveRequest}
                     shiftStartTime={activeOrTodayTimesheet?.startTime}
                     shiftEndTime={activeOrTodayTimesheet?.endTime}
@@ -325,6 +337,14 @@ export default function App() {
                     unreadCount={unreadCount}
                     onMarkNotificationRead={markAsRead}
                 />
+                {isGlobalLoading && (
+                    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[70] pointer-events-none animate-in fade-in">
+                        <div className="bg-slate-900/95 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2.5 border border-emerald-500/40 text-xs font-bold">
+                            <RefreshCw className="animate-spin text-emerald-400" size={15} />
+                            <span>Se sincronizează cu serverul...</span>
+                        </div>
+                    </div>
+                )}
                 <LeaveModal isOpen={isLeaveModalOpen} onClose={() => setLeaveModalOpen(false)} leaveConfigs={leaveConfigs} holidays={holidays} lockedDate={lockedDate} onSubmit={handleLeaveSubmit} />
                 <RejectionModal isOpen={rejectionModal.isOpen} onClose={() => setRejectionModal({ ...rejectionModal, isOpen: false })} onSubmit={(reason) => handleConfirmRejection(rejectionModal, reason)} title={rejectionModal.type === 'LEAVE_CANCEL' ? 'Motiv Anulare' : 'Motiv Respingere'} />
                 <ToastContainer />
@@ -427,10 +447,10 @@ export default function App() {
         <div className="min-h-screen flex flex-col md:flex-row bg-gray-50 dark:bg-gray-950 text-gray-800 dark:text-gray-200 font-sans relative transition-colors duration-300">
             {/* GLOBAL LOADING OVERLAY */}
             {isGlobalLoading && (
-                <div className="fixed inset-0 bg-white/70 dark:bg-black/70 z-[60] flex items-center justify-center backdrop-blur-[1px]">
-                    <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-xl flex items-center gap-3 border border-gray-100 dark:border-gray-700">
+                <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[70] pointer-events-none animate-in fade-in">
+                    <div className="bg-slate-900/95 text-white px-4 py-2 rounded-full shadow-xl flex items-center gap-2.5 border border-emerald-500/40 text-xs font-bold">
                         <RefreshCw className="animate-spin text-emerald-600 dark:text-emerald-400" size={24} />
-                        <span className="font-bold text-gray-700 dark:text-gray-300">Se procesează...</span>
+                        <span className="font-bold text-white">Se sincronizează cu serverul...</span>
                     </div>
                 </div>
             )}
@@ -536,7 +556,12 @@ export default function App() {
                                 offices={offices}
                                 breakConfigs={breakConfigs}
                                 holidays={holidays}
-                                activeLeaveRequest={activeLeaveRequest}
+                                schedulePlans={schedulePlans}
+
+
+
+                    workSchedules={workSchedules}
+                    activeLeaveRequest={activeLeaveRequest}
                                 shiftStartTime={activeOrTodayTimesheet?.startTime}
                                 shiftEndTime={activeOrTodayTimesheet?.endTime}
                                 accumulatedBreakTime={shiftStats.accumulatedPauseMs}
@@ -583,6 +608,7 @@ export default function App() {
                         leaveConfigs={leaveConfigs}
                         breakConfigs={breakConfigs}
                         holidays={holidays}
+
                         canViewAllCompanies={isAdmin}
                         onApproveLeave={handleApproveLeave}
                         onReject={initiateRejection}
@@ -590,6 +616,7 @@ export default function App() {
                         onApproveCorrection={handleApproveCorrection}
                         onOpenTimesheetModal={openTimesheetModal}
                         onRefreshData={fetchAllData}
+                        initialTab={managerInitialTab}
                     />
                 )}
 

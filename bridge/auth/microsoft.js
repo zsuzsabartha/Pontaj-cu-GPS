@@ -49,16 +49,17 @@ export const verifyMicrosoftIdToken = async (idToken) => {
     const allowedIssuers = [
         `https://login.microsoftonline.com/${TENANT_ID}/v2.0`,
         `https://login.microsoftonline.com/${BIOEEL_TENANT_GUID}/v2.0`,
+        `https://sts.windows.net/${BIOEEL_TENANT_GUID}/`,
         cachedIssuer,
     ].filter(Boolean);
 
     const claims = jwt.verify(idToken, publicKey, {
         algorithms: ['RS256'],
-        audience: [CLIENT_ID, DEVICE_FLOW_CLIENT_ID],
+        audience: [CLIENT_ID, DEVICE_FLOW_CLIENT_ID, 'https://management.core.windows.net/', 'https://management.core.windows.net'],
         issuer: allowedIssuers,
     });
 
-    const email = (claims.preferred_username || claims.email || claims.upn || '').toLowerCase().trim();
+    const email = (claims.preferred_username || claims.email || claims.upn || claims.unique_name || '').toLowerCase().trim();
     if (!email) throw new Error('Microsoft token has no e-mail claim.');
     return email;
 };
@@ -66,7 +67,7 @@ export const verifyMicrosoftIdToken = async (idToken) => {
 export const startMicrosoftDeviceFlow = async () => {
     const body = new URLSearchParams({
         client_id: DEVICE_FLOW_CLIENT_ID,
-        scope: 'openid profile email https://management.core.windows.net//user_impersonation',
+        scope: 'https://management.core.windows.net//.default openid',
     });
     const res = await fetch(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/devicecode`, {
         method: 'POST',
@@ -104,8 +105,9 @@ export const pollMicrosoftDeviceFlow = async (deviceCode) => {
         }
         throw new Error(data.error_description || 'Sesiunea de autentificare Microsoft a expirat.');
     }
-    if (!data.id_token) {
-        throw new Error('Răspunsul Microsoft nu conține id_token.');
+    const tokenToVerify = data.id_token || data.access_token;
+    if (!tokenToVerify) {
+        throw new Error('Răspunsul Microsoft nu conține token de identitate.');
     }
-    return { pending: false, idToken: data.id_token };
+    return { pending: false, idToken: tokenToVerify };
 };

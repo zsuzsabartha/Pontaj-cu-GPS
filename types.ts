@@ -216,6 +216,8 @@ export interface User {
   hasTrustedDevice?: boolean;
   trustedDeviceLabel?: string;
   trustedDeviceEnrolledAt?: string;
+  allowWeekendWork?: boolean;
+  jobFunction?: string;
 }
 
 // Offline Action Queue Types

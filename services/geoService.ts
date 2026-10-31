@@ -41,7 +41,7 @@ const getPosition = (highAccuracy: boolean, timeout: number): Promise<Geolocatio
         navigator.geolocation.getCurrentPosition(resolve, reject, { 
             enableHighAccuracy: highAccuracy, 
             timeout: timeout, 
-            maximumAge: 0 
+            maximumAge: 60000 
         });
     });
 };
@@ -55,13 +55,13 @@ export const getCurrentLocation = async (): Promise<Coordinates> => {
         // Attempt 1: Low Accuracy (Default as requested)
         // High accuracy often fails indoors or times out. Low accuracy uses Wifi/Cell towers.
         console.log("Acquiring GPS (Low Accuracy Mode)...");
-        const pos = await getPosition(false, 15000); // 15s timeout
+        const pos = await getPosition(false, 3500); // Fast 3.5s timeout with 60s cache
         return { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
     } catch (error) {
         console.warn("Low Accuracy GPS failed, trying High Accuracy backup...");
         try {
             // Attempt 2: High Accuracy as backup
-            const pos = await getPosition(true, 10000);
+            const pos = await getPosition(true, 4000);
             return { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
         } catch (finalError: any) {
             let msg = 'Eroare localizare.';

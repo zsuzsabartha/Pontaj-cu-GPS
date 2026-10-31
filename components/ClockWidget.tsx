@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Square, Coffee, MapPin, AlertTriangle, CalendarDays, Clock, Satellite, Briefcase, Utensils, Cigarette, History, RefreshCw, CheckCircle, XCircle, PartyPopper, CalendarOff, ShieldAlert, LogOut, CheckSquare } from 'lucide-react';
 import { getCurrentLocation, findNearestOffice } from '../services/geoService';
-import { ShiftStatus, Coordinates, Office, User, BreakConfig, Holiday, LeaveRequest, LeaveStatus } from '../types';
+import { ShiftStatus, Coordinates, Office, User, BreakConfig, Holiday, LeaveRequest, LeaveStatus, DailySchedule, WorkSchedule, Role } from '../types';
 import { toLocalDateISO } from '../utils/date';
 import { showToast } from '../utils/toast';
 
@@ -13,6 +13,8 @@ interface ClockWidgetProps {
     currentStatus: ShiftStatus;
     breakConfigs: BreakConfig[];
     holidays: Holiday[];
+    schedulePlans?: DailySchedule[];
+    workSchedules?: WorkSchedule[];
     activeLeaveRequest?: LeaveRequest;
     shiftStartTime?: string;
     shiftEndTime?: string; // NEW: For completed shifts
@@ -24,7 +26,7 @@ interface ClockWidgetProps {
 }
 
 const ClockWidget: React.FC<ClockWidgetProps> = ({
-    user, companyName, offices, currentStatus, breakConfigs, holidays, activeLeaveRequest,
+    user, companyName, offices, currentStatus, breakConfigs, holidays, schedulePlans = [], workSchedules = [], activeLeaveRequest,
     shiftStartTime, shiftEndTime, accumulatedBreakTime = 0, activeBreakStartTime,
     onClockIn, onClockOut, onToggleBreak
 }) => {
@@ -46,6 +48,13 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
 
     // Check for Holiday
     const todayHoliday = holidays.find(h => h.date === todayDateStr);
+    const isWeekend = todayDateObj.getDay() === 0 || todayDateObj.getDay() === 6;
+    const hasScheduledShiftToday = schedulePlans.some(s => s.userId === user.id && s.date === todayDateStr && !!s.scheduleId);
+    const userScheduleIds = [user.mainScheduleId, ...(user.alternativeScheduleIds || [])].filter(Boolean);
+    const hasShiftWorkSchedule = workSchedules.some(ws => userScheduleIds.includes(ws.id) && (ws.crossesMidnight || /tur[aă]|weekend|gard[aă]|24|12/i.test(ws.name)));
+    const hasCoordRole = (user.roles || []).some(r => [Role.ADMIN, Role.MANAGER, Role.HR, Role.PONTATOR].includes(r));
+    const canWorkWeekendOrHoliday = !!user.allowWeekendWork || hasScheduledShiftToday || hasShiftWorkSchedule || hasCoordRole;
+    const isRestrictedDay = (isWeekend || !!todayHoliday) && !canWorkWeekendOrHoliday;
 
     let statusText = "NEPONTAT";
     let statusColor = "bg-gray-100 text-gray-500 border-gray-200";
@@ -394,12 +403,27 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
                     </div>
                 )}
 
+                {/* WEEKEND / HOLIDAY RESTRICTION WARNING */}
+                {isRestrictedDay && currentStatus === ShiftStatus.NOT_STARTED && (
+                    <div className="mb-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 flex items-start gap-3 w-full transition-colors">
+                        <CalendarOff className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" size={18} />
+                        <div className="text-left">
+                            <p className="text-xs font-bold text-amber-800 dark:text-amber-300">
+                                Zi nelucrătoare ({todayHoliday ? `Sărbătoare Legală: ${todayHoliday.name}` : 'Weekend'})
+                            </p>
+                            <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5 leading-snug">
+                                Pontajul este permis doar angajaților planificați în tură sau cu aprobare pentru lucru în weekend/sărbători.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Buttons Grid */}
                 <div className="grid grid-cols-2 gap-4 w-full">
                     {currentStatus === ShiftStatus.NOT_STARTED ? (
                         <button
                             onClick={handleClockIn}
-                            disabled={!user.isValidated || loading || (activeLeaveRequest?.status === LeaveStatus.APPROVED && !activeLeaveRequest?.typeName.includes('Delegatie'))} // Disable if unvalidated OR approved leave
+                            disabled={!user.isValidated || loading || isRestrictedDay || (activeLeaveRequest?.status === LeaveStatus.APPROVED && !activeLeaveRequest?.typeName.includes('Delegatie'))} // Disable if unvalidated, restricted weekend/holiday OR approved leave
                             className="col-span-2 flex items-center justify-center gap-2 text-white py-4 rounded-xl font-semibold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:grayscale bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200"
                         >
                             {loading ? (

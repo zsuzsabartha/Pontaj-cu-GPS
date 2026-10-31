@@ -48,7 +48,9 @@ export const useTimesheetManager = ({
                 if (target) {
                     const status = rejectionModal.type === 'LEAVE_CANCEL' ? LeaveStatus.CANCELLED : LeaveStatus.REJECTED;
                     const updated = { ...target, status, [rejectionModal.type === 'LEAVE_CANCEL' ? 'cancellationReason' : 'managerComment']: reason };
-                    await SQLService.upsertLeave(updated);
+                    setLeaves(prev => prev.map(l => l.id === target.id ? updated : l));
+                    // Optimistic update applied above
+                await SQLService.upsertLeave(updated);
                     setLeaves(prev => prev.map(l => l.id === target.id ? updated : l));
                 }
             } else if (rejectionModal.type === 'CORRECTION') {
@@ -97,12 +99,14 @@ export const useTimesheetManager = ({
                 detectedScheduleName: schedName
             };
 
+            setTimesheets(prev => [newTs, ...prev]);
             const res = await SQLService.upsertTimesheet({ ...newTs, clockAction: 'CLOCK_IN' });
             const savedTs = res.timesheets?.[0] || newTs;
-            setTimesheets(prev => [savedTs, ...prev]);
+            setTimesheets(prev => prev.map(t => t.id === newTs.id ? savedTs : t));
             showToast("Pontaj început cu succes!", 'success');
         } catch (e) {
-            showToast("Nu s-a putut efectua pontajul. Eroare comunicare server.", 'error');
+            setTimesheets(prev => prev.filter(t => !t.id.startsWith('ts-') || t.userId !== currentUser.id || t.status !== ShiftStatus.WORKING || (Date.now() - Number(t.id.slice(3))) > 15000));
+            showToast((e as any)?.message || "Nu s-a putut efectua pontajul. Eroare comunicare server.", 'error');
         } finally {
             setIsGlobalLoading(false);
         }
@@ -116,12 +120,14 @@ export const useTimesheetManager = ({
             const updatedTs: Timesheet = {
                 ...activeTs, endTime: new Date().toISOString(), status: ShiftStatus.COMPLETED, endLocation: loc, endDistanceToOffice: endDist, notes: note || activeTs.notes
             };
+            setTimesheets(prev => prev.map(t => t.id === activeTs.id ? updatedTs : t));
             const res = await SQLService.upsertTimesheet({ ...updatedTs, clockAction: 'CLOCK_OUT' });
             showToast("Pontaj încheiat cu succes!", 'success');
             const savedTs = res.timesheets?.[0] || updatedTs;
             setTimesheets(prev => prev.map(t => t.id === activeTs.id ? savedTs : t));
             // State updated above
         } catch (e) {
+            setTimesheets(prev => prev.map(t => t.id === activeTs.id ? activeTs : t));
             showToast("Eroare la oprirea pontajului.", 'error');
         } finally {
             setIsGlobalLoading(false);
@@ -150,6 +156,7 @@ export const useTimesheetManager = ({
                 updatedTs = { ...activeTs, status: ShiftStatus.ON_BREAK, breaks: [...activeTs.breaks, newBreak] };
             }
             if (updatedTs) {
+                setTimesheets(prev => prev.map(t => t.id === activeTs.id ? updatedTs! : t));
                 const res = await SQLService.upsertTimesheet({ ...updatedTs, clockAction });
                 showToast(clockAction === 'BREAK_START' ? "Pauză începută!" : "Pauză încheiată!", 'info');
                 const savedTs = res.timesheets?.[0] || updatedTs;
@@ -157,6 +164,7 @@ export const useTimesheetManager = ({
             // State updated above
             }
         } catch (e) {
+            setTimesheets(prev => prev.map(t => t.id === activeTs.id ? activeTs : t));
             showToast("Eroare server la schimbarea stării pauzei.", 'error');
         } finally {
             setIsGlobalLoading(false);
@@ -199,9 +207,10 @@ export const useTimesheetManager = ({
             const newLeave: LeaveRequest = {
                 id: `lr-${Date.now()}`, userId: currentUser.id, status: req.status || LeaveStatus.PENDING, createdAt: new Date().toISOString(), ...req
             };
+            setLeaves(prev => [newLeave, ...prev.filter(x => x.id !== newLeave.id)]);
             await SQLService.upsertLeave(newLeave);
-            setLeaves(prev => [newLeave, ...prev]);
-            showToast("Cererea de concediu a fost înregistrată!", 'success');
+            setLeaves(prev => [newLeave, ...prev.filter(x => x.id !== newLeave.id)]);
+            showToast("Cererea a fost înregistrată și managerul a fost notificat pe email!", 'success');
 
             // Try sending email to manager
             try {
@@ -212,8 +221,11 @@ export const useTimesheetManager = ({
                     if (manager && manager.email) targetEmail = manager.email;
                 }
                 
-                if (targetEmail) {
-                    await sendLeaveEmailViaGraph(targetEmail, currentUser.name, newLeave);
+                // Server-side POST /api/v1/seed/leaves already dispatches Microsoft Graph email to manager
+                void sendLeaveEmailViaGraph;
+                void targetEmail;
+                if (!targetEmail) {
+                    // Server-side fallback notifies company/department manager automatically
                 } else {
                     console.warn("Niciun manager setat pentru departament, emailul nu a fost trimis.");
                 }
@@ -245,6 +257,7 @@ export const useTimesheetManager = ({
     const handleUpdateUser = useCallback(async (updatedUser: User) => {
         setIsGlobalLoading(true);
         try {
+            setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
             await SQLService.upsertUser(updatedUser);
             setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
         } catch (e) {
@@ -347,9 +360,10 @@ export const useTimesheetManager = ({
                     createdAt: new Date().toISOString()
                 };
 
-                await SQLService.upsertLeave(newLeave);
-                setLeaves(prev => [newLeave, ...prev]);
-            showToast("Cererea de concediu a fost înregistrată!", 'success');
+                setLeaves(prev => [newLeave, ...prev.filter(x => x.id !== newLeave.id)]);
+            await SQLService.upsertLeave(newLeave);
+                setLeaves(prev => [newLeave, ...prev.filter(x => x.id !== newLeave.id)]);
+            showToast("Cererea a fost înregistrată și managerul a fost notificat pe email!", 'success');
 
                 if (isManager && data.tsId) {
                     await SQLService.deleteTimesheet(data.tsId);
@@ -387,6 +401,7 @@ export const useTimesheetManager = ({
             const target = leaves.find(l => l.id === reqId);
             if (target) {
                 const updated = { ...target, status: LeaveStatus.APPROVED };
+                setLeaves(prev => prev.map(l => l.id === reqId ? updated : l));
                 await SQLService.upsertLeave(updated);
                 setLeaves(prev => prev.map(l => l.id === reqId ? updated : l));
             }

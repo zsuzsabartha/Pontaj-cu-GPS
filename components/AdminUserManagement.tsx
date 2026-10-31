@@ -678,6 +678,15 @@ const AdminUserManagement: React.FC<AdminUserManagementProps> = ({
                                         />
                                         <span className="text-sm text-gray-700 dark:text-gray-300">Necesită GPS la pontaj</span>
                                     </div>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={!!editingUser.allowWeekendWork}
+                                            onChange={e => setEditingUser({ ...editingUser, allowWeekendWork: e.target.checked })}
+                                            className="w-4 h-4 text-emerald-600 dark:text-emerald-500 rounded bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-700"
+                                        />
+                                        <span className="text-sm text-gray-700 dark:text-gray-300">Permite pontaj în Weekend / Sărbători</span>
+                                    </div>
                                 </div>
 
                                 {/* Alternative Schedules */}

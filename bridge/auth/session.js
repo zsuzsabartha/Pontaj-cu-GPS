@@ -34,14 +34,24 @@ const safeJsonArray = (value) => {
     try { return value ? JSON.parse(value) : []; } catch { return []; }
 };
 
+export const encodeUserAltSchedules = (altIds = [], allowWeekendWork = false, jobFunction = null) => {
+    const clean = (Array.isArray(altIds) ? altIds : []).filter(x => typeof x === 'string' && !x.startsWith('__ALLOW_WEEKEND__') && !x.startsWith('__FUNC__:'));
+    if (allowWeekendWork) clean.push('__ALLOW_WEEKEND__');
+    if (jobFunction) clean.push(`__FUNC__:${String(jobFunction).trim()}`);
+    return JSON.stringify(clean);
+};
 /** Maps a `users` DB row to the API shape used by the frontend (never includes PIN or device secret hashes). */
 export const mapUserRow = (u) => {
     // eslint-disable-next-line no-unused-vars
     const { pin, pin_hash, trusted_device_hash, totp_secret, ...rest } = u;
+    const rawAlt = safeJsonArray(u.alternative_schedule_ids);
+    const allowWeekendFromAlt = rawAlt.includes('__ALLOW_WEEKEND__');
+    const funcTag = rawAlt.find(x => typeof x === 'string' && x.startsWith('__FUNC__:'));
+    const cleanAlt = rawAlt.filter(x => typeof x === 'string' && !x.startsWith('__ALLOW_WEEKEND__') && !x.startsWith('__FUNC__:'));
     return {
         ...rest,
         roles: safeJsonArray(u.roles),
-        alternativeScheduleIds: safeJsonArray(u.alternative_schedule_ids),
+        alternativeScheduleIds: cleanAlt,
         companyId: u.company_id,
         departmentId: u.department_id,
         assignedOfficeId: u.assigned_office_id,
@@ -58,6 +68,8 @@ export const mapUserRow = (u) => {
         hireDate: u.hire_date,
         terminationDate: u.termination_date,
         source: u.source,
+        allowWeekendWork: Boolean(u.allow_weekend_work || allowWeekendFromAlt),
+        jobFunction: u.job_function || (funcTag ? funcTag.slice('__FUNC__:'.length) : undefined),
         hasTrustedDevice: !!trusted_device_hash,
         trustedDeviceLabel: u.trusted_device_label || undefined,
         trustedDeviceEnrolledAt: u.trusted_device_enrolled_at instanceof Date

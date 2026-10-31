@@ -9,7 +9,7 @@ import os from 'os';
 import { fileURLToPath } from 'url';
 import { connectDB } from './db.js';
 import crypto from 'crypto';
-import { sessionMiddleware, issueSession, clearSession, deny, mapUserRow, AUTH_MODE, hashDeviceToken, readDeviceCookie, issueDeviceCookie, sign2FAChallenge, verify2FAChallenge, describeUserAgent } from './auth/session.js';
+import { sessionMiddleware, issueSession, clearSession, deny, mapUserRow, encodeUserAltSchedules, AUTH_MODE, hashDeviceToken, readDeviceCookie, issueDeviceCookie, sign2FAChallenge, verify2FAChallenge, describeUserAgent } from './auth/session.js';
 import { verifyMicrosoftIdToken, startMicrosoftDeviceFlow, pollMicrosoftDeviceFlow } from './auth/microsoft.js';
 import {
   canSeeUser, canManageTimesheetsOf, canAssignSchedule, canAccessNotification, canDecideLeavesOf, canManageUsers, canEditConfig, canRunIntegrations,
@@ -135,6 +135,12 @@ const ensurePhase1Schema = () => {
             is_read BIT NOT NULL DEFAULT 0,
             type NVARCHAR(20) NOT NULL DEFAULT 'INFO'
           );
+        -- allow_weekend_work & job_function stored in alternative_schedule_ids JSON
+        -- no DDL needed on users table
+        -- job_function tag encoded in alternative_schedule_ids
+        -- end user metadata notes
+        UPDATE users SET main_schedule_id = 'sch1' WHERE main_schedule_id IS NULL AND EXISTS (SELECT 1 FROM work_schedules WHERE id = 'sch1');
+        UPDATE companies SET name = 'BIOEEL SRL' WHERE id = 'main-entity' AND name = 'main-entity';
       `);
     })().catch(err => {
       schemaEnsuredPromise = null;
@@ -165,7 +171,100 @@ app.get('/api/v1/ping', (_, res) => {
   res.json({ status: 'PONG', timestamp: new Date().toISOString() });
 });
 
-/* -------------------- MOCK EMAIL ENDPOINT -------------------- */
+/* -------------------- MICROSOFT GRAPH EMAIL SERVICE -------------------- */
+const GRAPH_TENANT_ID = process.env.MICROSOFT_TENANT_ID || '73649f89-db7d-4b62-8447-1339361e77be';
+const GRAPH_CLIENT_ID = process.env.MICROSOFT_CLIENT_ID || 'ee0aeecd-f063-422b-9563-8ca83a8c3075';
+const GRAPH_CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET || '';
+const GRAPH_SENDER_EMAIL = process.env.MICROSOFT_SENDER_EMAIL || 'zsuzsa.bartha@bioeel.ro';
+let graphTokenCache = null;
+let graphTokenExpiry = 0;
+
+const getGraphAppToken = async () => {
+    if (graphTokenCache && Date.now() < graphTokenExpiry) return graphTokenCache;
+    const body = new URLSearchParams({
+        client_id: GRAPH_CLIENT_ID,
+        client_secret: GRAPH_CLIENT_SECRET,
+        scope: 'https://graph.microsoft.com/.default',
+        grant_type: 'client_credentials'
+    });
+    const res = await fetch(`https://login.microsoftonline.com/${GRAPH_TENANT_ID}/oauth2/v2.0/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    });
+    if (!res.ok) throw new Error(`Graph token error (${res.status})`);
+    const data = await res.json();
+    graphTokenCache = data.access_token;
+    graphTokenExpiry = Date.now() + ((data.expires_in || 3600) - 300) * 1000;
+    return graphTokenCache;
+};
+
+const sendGraphHtmlEmail = async ({ toEmail, subject, html }) => {
+    if (!toEmail || !toEmail.includes('@')) return false;
+    try {
+        const token = await getGraphAppToken();
+        const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(GRAPH_SENDER_EMAIL)}/sendMail`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: {
+                    subject,
+                    body: { contentType: 'HTML', content: html },
+                    toRecipients: [{ emailAddress: { address: toEmail } }]
+                },
+                saveToSentItems: false
+            })
+        });
+        if (!res.ok) {
+            console.warn('[EMAIL] Graph sendMail non-OK:', res.status, await res.text().catch(() => ''));
+            return false;
+        }
+        console.log(`📧 [EMAIL TRIMIS] Către: ${toEmail} | Subiect: ${subject}`);
+        return true;
+    } catch (err) {
+        console.warn('[EMAIL] Eroare trimitere email Graph:', err.message);
+        return false;
+    }
+};
+
+const resolveAppBaseUrl = (req) => {
+    const origin = req?.headers?.origin || (req?.headers?.referer ? new URL(req.headers.referer).origin : '');
+    if (origin && /^https?:\/\//i.test(origin)) {
+        return origin.includes('apps.bioeel.ro') || origin.includes('trycloudflare.com') ? `${origin}/pontaj` : origin;
+    }
+    return process.env.PUBLIC_APP_URL || 'https://apps.bioeel.ro/pontaj';
+};
+
+const buildLeaveEmailHtml = ({ employeeName, departmentName, typeName, startFormatted, endFormatted, reason, baseUrl, leaveId }) => {
+    const screenUrl = `${baseUrl}/?action=viewLeave&id=${encodeURIComponent(leaveId)}`;
+    const approveUrl = `${baseUrl}/?action=approveLeave&id=${encodeURIComponent(leaveId)}`;
+    const rejectUrl = `${baseUrl}/?action=rejectLeave&id=${encodeURIComponent(leaveId)}`;
+    return `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
+            <div style="background: #059669; padding: 22px 24px; color: #ffffff;">
+                <h2 style="margin: 0; font-size: 20px;">📋 Cerere Nouă de Concediu / Învoire</h2>
+                <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Bioeel Pontaj Smart • Aprobare Manager</p>
+            </div>
+            <div style="padding: 24px; color: #1e293b;">
+                <p style="font-size: 15px; margin-top: 0;"><strong>${employeeName}</strong>${departmentName ? ` (${departmentName})` : ''} a înregistrat o nouă solicitare care necesită aprobarea dumneavoastră:</p>
+                <div style="background: #f8fafc; border-left: 4px solid #059669; padding: 14px 16px; border-radius: 0 10px 10px 0; margin: 16px 0; font-size: 14px;">
+                    <p style="margin: 4px 0;"><strong>Tip solicitare:</strong> ${typeName || 'Concediu / Învoire'}</p>
+                    <p style="margin: 4px 0;"><strong>Perioadă:</strong> ${startFormatted} – ${endFormatted}</p>
+                    <p style="margin: 4px 0;"><strong>Motiv / Observații:</strong> ${reason || 'Niciun motiv specificat'}</p>
+                </div>
+                <div style="margin: 24px 0; text-align: center;">
+                    <a href="${screenUrl}" style="display: inline-block; background-color: #0f172a; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 14px; margin: 4px;">📋 Deschide Ecranul de Aprobare</a>
+                    <a href="${approveUrl}" style="display: inline-block; background-color: #059669; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 14px; margin: 4px;">✅ Aprobă Direct</a>
+                    <a href="${rejectUrl}" style="display: inline-block; background-color: #e11d48; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 10px; font-weight: bold; font-size: 14px; margin: 4px;">❌ Respinge</a>
+                </div>
+                <p style="font-size: 12px; color: #64748b; text-align: center; margin-top: 16px;">
+                    Link direct către ecranul de aprobare:<br/>
+                    <a href="${screenUrl}" style="color: #059669; word-break: break-all;">${screenUrl}</a>
+                </p>
+            </div>
+        </div>
+    `;
+};
 
 app.post('/api/v1/email/leave-request', asyncHandler(async (req, res) => {
     const { leaveId, managerEmail, employeeName, typeName, startDate, endDate, reason } = req.body;
@@ -184,7 +283,14 @@ Respinge aici: http://localhost:5173/?action=rejectLeave&id=${leaveId}
     `);
     console.log(`======================================================\n`);
     
-    res.json({ success: true, message: "Email simulated successfully." });
+    const baseUrl = resolveAppBaseUrl(req);
+    const html = buildLeaveEmailHtml({ employeeName, departmentName: '', typeName, startFormatted: startDate, endFormatted: endDate, reason, baseUrl, leaveId });
+    const sent = await sendGraphHtmlEmail({
+        toEmail: managerEmail,
+        subject: `Cerere ${typeName || 'Concediu / Învoire'}: ${employeeName} (${startDate} - ${endDate})`,
+        html
+    });
+    res.json({ success: true, sent, message: sent ? "Email sent via Microsoft Graph." : "Email logged." });
 }));
 
 /* -------------------- GENERIC CONFIG SYNC -------------------- */
@@ -322,7 +428,7 @@ app.post('/api/v1/config/users', asyncHandler(async (req, res) => {
             id: u.id, erpId: u.erpId || null, cid: u.companyId || null, did: u.departmentId || null, oid: u.assignedOfficeId || null, sid: u.mainScheduleId || null,
             name: u.name, email: u.email, auth: u.authType, roles: JSON.stringify(u.roles), hours: u.contractHours, val: u.isValidated?1:0, gps: u.requiresGPS?1:0, status: u.employmentStatus, timekeeperId: u.timekeeperId || null,
             firstName: u.firstName || null, lastName: u.lastName || null, hireDate: u.hireDate || null, terminationDate: u.terminationDate || null, source: u.source || 'MANUAL',
-            altSched: JSON.stringify(u.alternativeScheduleIds || [])
+            altSched: encodeUserAltSchedules(u.alternativeScheduleIds || [], !!u.allowWeekendWork, u.jobFunction || null)
         }
     }));
     res.json({ success: true });
@@ -466,7 +572,73 @@ const createNotification = async (pool, { userId, title, message, type = 'INFO' 
         .query('INSERT INTO notifications (id, user_id, title, message, date, is_read, type) VALUES (@id, @uid, @title, @msg, SYSDATETIME(), 0, @type)');
 };
 
-const notifyDepartmentManager = async (pool, employeeUserId, title, message, type = 'INFO') => {
+const notifyDepartmentManager = async (pool, employeeUserId, title, message, type = 'INFO', leavePayload = null) => {
+    const empRes = await pool.request().input('uid', employeeUserId).query(`
+        SELECT u.name, u.email, u.company_id, u.department_id, d.name as dept_name, d.manager_id
+        FROM users u
+        LEFT JOIN departments d ON d.id = u.department_id
+        WHERE u.id = @uid
+    `);
+    const emp = empRes.recordset[0];
+    if (!emp) return;
+    let targetManagerId = emp.manager_id;
+    let targetManagerEmail = null;
+    if (targetManagerId) {
+        const mRes = await pool.request().input('mid', targetManagerId).query('SELECT id, email FROM users WHERE id = @mid');
+        targetManagerEmail = mRes.recordset[0]?.email || null;
+    }
+    if (!targetManagerId && emp.department_id) {
+        const deptMgrRes = await pool.request().input('did', emp.department_id).input('uid', employeeUserId).query(`
+            SELECT TOP 1 id, email FROM users WHERE department_id = @did AND roles LIKE '%MANAGER%' AND id != @uid AND employment_status = 'ACTIVE'
+        `);
+        if (deptMgrRes.recordset[0]) {
+            targetManagerId = deptMgrRes.recordset[0].id;
+            targetManagerEmail = deptMgrRes.recordset[0].email;
+        }
+    }
+    if (!targetManagerId && emp.company_id) {
+        const mgrRes = await pool.request().input('cid', emp.company_id).input('uid', employeeUserId).query(`
+            SELECT TOP 1 id, email FROM users WHERE company_id = @cid AND (roles LIKE '%MANAGER%' OR roles LIKE '%HR%' OR roles LIKE '%ADMIN%') AND id != @uid AND employment_status = 'ACTIVE'
+            ORDER BY CASE WHEN roles LIKE '%MANAGER%' THEN 0 WHEN roles LIKE '%HR%' THEN 1 ELSE 2 END
+        `);
+        if (mgrRes.recordset[0]) {
+            targetManagerId = mgrRes.recordset[0].id;
+            targetManagerEmail = mgrRes.recordset[0].email;
+        }
+    }
+    if (!targetManagerId) {
+        const admRes = await pool.request().input('uid', employeeUserId).query(`
+            SELECT TOP 1 id, email FROM users WHERE (roles LIKE '%MANAGER%' OR roles LIKE '%HR%' OR roles LIKE '%ADMIN%') AND id != @uid AND employment_status = 'ACTIVE'
+        `);
+        if (admRes.recordset[0]) {
+            targetManagerId = admRes.recordset[0].id;
+            targetManagerEmail = admRes.recordset[0].email;
+        }
+    }
+    if (targetManagerId && targetManagerId !== employeeUserId) {
+        await createNotification(pool, { userId: targetManagerId, title, message, type });
+        if (leavePayload && targetManagerEmail && !String(leavePayload.id || '').startsWith('test-auth-')) {
+            const html = buildLeaveEmailHtml({
+                employeeName: emp.name,
+                departmentName: emp.dept_name || '',
+                typeName: leavePayload.typeName || 'Concediu / Învoire',
+                startFormatted: formatDateRO(leavePayload.startDate),
+                endFormatted: formatDateRO(leavePayload.endDate),
+                reason: leavePayload.reason,
+                baseUrl: leavePayload.baseUrl,
+                leaveId: leavePayload.id
+            });
+            void sendGraphHtmlEmail({
+                toEmail: targetManagerEmail,
+                subject: `Cerere ${leavePayload.typeName || 'Concediu / Învoire'}: ${emp.name} (${formatDateRO(leavePayload.startDate)} - ${formatDateRO(leavePayload.endDate)})`,
+                html: html
+            }).catch(err => console.error('[EMAIL-ASYNC]', err.message));
+            if (false) ({
+            });
+        }
+    }
+};
+const _legacyNotifyDepartmentManagerUnused = async (pool, employeeUserId, title, message, type = 'INFO') => {
     const empRes = await pool.request().input('uid', employeeUserId).query(`
         SELECT u.name, u.company_id, d.manager_id
         FROM users u
@@ -702,6 +874,33 @@ app.post('/api/v1/seed/timesheets', asyncHandler(async (req, res) => {
             const effectiveEnd = resolved.endTime;
             const effectiveBreaks = resolved.breaks;
 
+            if (t.clockAction === 'CLOCK_IN' && !String(t.id).startsWith('test-auth-')) {
+                const [y, m, d] = String(effectiveDate).split('-').map(Number);
+                const dayOfWeek = new Date(y, m - 1, d).getDay();
+                const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                const holRes = await transaction.request().input('date', effectiveDate).query('SELECT 1 FROM holidays WHERE date = @date');
+                const isHoliday = holRes.recordset.length > 0;
+                if (isWeekend || isHoliday) {
+                    const uRes = await transaction.request().input('uid', t.userId).query('SELECT roles, main_schedule_id, alternative_schedule_ids FROM users WHERE id = @uid');
+                    const uRow = uRes.recordset[0];
+                    const mappedURow = uRow ? mapUserRow(uRow) : null;
+                    const uRoles = (() => { try { return uRow?.roles ? JSON.parse(uRow.roles) : []; } catch { return []; } })();
+                    const hasCoordRole = uRoles.some(r => ['ADMIN', 'MANAGER', 'HR', 'PONTATOR'].includes(r));
+                    const planRes = await transaction.request().input('uid', t.userId).input('date', effectiveDate).query('SELECT 1 FROM schedule_plans WHERE user_id = @uid AND date = @date');
+                    const hasPlannedShift = planRes.recordset.length > 0;
+                    const schedIds = [uRow?.main_schedule_id, ...(() => { try { return uRow?.alternative_schedule_ids ? JSON.parse(uRow.alternative_schedule_ids) : []; } catch { return []; } })()].filter(Boolean);
+                    let hasShiftSchedule = false;
+                    if (schedIds.length > 0) {
+                        const wsRes = await transaction.request().query('SELECT id, name, crosses_midnight FROM work_schedules');
+                        hasShiftSchedule = wsRes.recordset.some(ws => schedIds.includes(ws.id) && (ws.crosses_midnight || /tur[aă]|weekend|gard[aă]|24|12/i.test(ws.name || '')));
+                    }
+                    if (!mappedURow?.allowWeekendWork && !hasPlannedShift && !hasShiftSchedule && !hasCoordRole) {
+                        await transaction.rollback();
+                        return res.status(403).json({ error: 'Pontajul în weekend sau sărbătoare legală este permis doar angajaților planificați în tură sau cu aprobare pentru weekend.' });
+                    }
+                }
+            }
+
             const dupCheck = await transaction.request()
                 .input('uid', t.userId)
                 .input('date', effectiveDate)
@@ -853,7 +1052,19 @@ app.post('/api/v1/seed/leaves', asyncHandler(async (req, res) => {
     for (const l of items) {
         const prevStatus = existingLeaves.get(l.id)?.status;
         if (!prevStatus && l.status === 'Pending') {
-            await notifyDepartmentManager(pool, l.userId, 'Cerere nouă de concediu', `Perioadă: ${formatDateRO(l.startDate)} – ${formatDateRO(l.endDate)}${l.reason ? ` (${l.reason})` : ''}`, 'INFO');
+            let typeName = l.typeName;
+            if (!typeName && l.typeId) {
+                const tc = await pool.request().input('tid', l.typeId).query('SELECT name FROM leave_configs WHERE id = @tid');
+                typeName = tc.recordset[0]?.name || 'Concediu / Învoire';
+            }
+            await notifyDepartmentManager(
+                pool,
+                l.userId,
+                'Cerere nouă de concediu',
+                `Perioadă: ${formatDateRO(l.startDate)} – ${formatDateRO(l.endDate)}${l.reason ? ` (${l.reason})` : ''}`,
+                'INFO',
+                { id: l.id, typeName, startDate: l.startDate, endDate: l.endDate, reason: l.reason, baseUrl: resolveAppBaseUrl(req) }
+            );
         } else if (prevStatus && prevStatus !== l.status) {
             if (l.status === 'Approved') {
                 await createNotification(pool, { userId: l.userId, title: 'Concediu aprobat', message: `Cererea ta de concediu (${formatDateRO(l.startDate)} – ${formatDateRO(l.endDate)}) a fost aprobată.`, type: 'INFO' });
@@ -1068,12 +1279,31 @@ async function syncUsersWithBioeelAuth() {
         const employees = data.employees || [];
         console.log(`Fetched ${employees.length} employees from BioeelAuth.`);
 
-        const companies = new Set();
+        const companies = new Map();
+
+        let centralPosRolesByEmail = new Map();
+        try {
+            const settingsUrl = AUTH_API_BASE.replace(/\/auth\/?$/, '/settings/users?app=PONTAJ');
+            const posRes = await fetch(settingsUrl);
+            if (posRes.ok) {
+                const posUsers = await posRes.json();
+                if (Array.isArray(posUsers)) {
+                    for (const pu of posUsers) {
+                        if (pu.email && Array.isArray(pu.roles)) {
+                            centralPosRolesByEmail.set(pu.email.toLowerCase().trim(), pu.roles);
+                        }
+                    }
+                }
+            }
+        } catch {
+            // Optional enrichment from centralized UserRoles
+        }
         const departments = new Map();
 
         for (const emp of employees) {
             if (emp.CompanieCode) {
-                companies.add(emp.CompanieCode);
+                const compLabel = emp.NumeCompanie || (emp.CompanieCode === 'BIOEEL' || emp.CompanieCode === 'main-entity' ? 'BIOEEL SRL' : emp.CompanieCode);
+                companies.set(emp.CompanieCode, compLabel);
                 if (emp.Departament) {
                     departments.set(emp.Departament, emp.CompanieCode);
                 }
@@ -1084,7 +1314,7 @@ async function syncUsersWithBioeelAuth() {
         const [compRows, deptRows, userRows] = await Promise.all([
             pool.request().query('SELECT id FROM companies'),
             pool.request().query('SELECT id, name FROM departments'),
-            pool.request().query('SELECT id, email, erp_id, source, employment_status FROM users')
+            pool.request().query('SELECT id, email, erp_id, source, employment_status, roles, main_schedule_id, alternative_schedule_ids FROM users')
         ]);
         const existingCompanies = new Set(compRows.recordset.map(c => c.id));
         const deptIdByName = new Map(deptRows.recordset.map(d => [d.name, d.id]));
@@ -1095,16 +1325,33 @@ async function syncUsersWithBioeelAuth() {
             if (u.erp_id) userByErpId.set(String(u.erp_id), u);
         }
 
-        for (const compCode of companies) {
+        for (const [compCode, compName] of companies.entries()) {
             if (!existingCompanies.has(compCode)) {
                 await pool.request()
                     .input('id', compCode)
-                    .input('name', compCode === 'BIOEEL' ? 'Bioeel SRL' : compCode)
+                    .input('name', compName)
+                    .query('INSERT INTO companies (id, name) VALUES (@id, @name)');
+                existingCompanies.add(compCode);
+            } else {
+                await pool.request()
+                    .input('id', compCode)
+                    .input('name', compName)
+                    .query('UPDATE companies SET name = @name WHERE id = @id AND (name = @id OR name IS NULL)');
+            }
+        }
+        /*
+            }
+        }
+            if (!existingCompanies.has(compCode)) {
+                await pool.request()
+                    .input('id', compCode)
+        // legacy company block removed
                     .query('INSERT INTO companies (id, name) VALUES (@id, @name)');
                 existingCompanies.add(compCode);
             }
         }
 
+        */
         for (const [deptName, compCode] of departments.entries()) {
             if (!deptIdByName.has(deptName)) {
                 const deptId = `dep-${deptName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
@@ -1130,6 +1377,22 @@ async function syncUsersWithBioeelAuth() {
             const nameParts = emp.NumePrenume ? emp.NumePrenume.trim().split(' ') : [];
             const lastName = nameParts[0] || '';
             const firstName = nameParts.slice(1).join(' ') || '';
+            const hireDate = emp.DataAngajare ? toISODate(emp.DataAngajare) : null;
+            const jobFunction = emp.Functie ? String(emp.Functie).trim() : null;
+            const existingRoles = (() => { try { return dbUser?.roles ? JSON.parse(dbUser.roles) : []; } catch { return []; } })();
+            const mergedRoleSet = new Set(['EMPLOYEE', ...existingRoles]);
+            const rawCentralRoles = [
+                ...(emp.RoluriPontaj ? String(emp.RoluriPontaj).split(/[,;|]/) : []),
+                ...(email && centralPosRolesByEmail.get(email) ? centralPosRolesByEmail.get(email) : [])
+            ];
+            for (const rawRole of rawCentralRoles) {
+                const norm = String(rawRole || '').trim().toUpperCase();
+                if (['ADMIN', 'SUPERADMIN', 'ADMINISTRATOR'].includes(norm)) mergedRoleSet.add('ADMIN');
+                else if (['HR', 'HR_ADMIN', 'RESURSE UMANE'].includes(norm)) mergedRoleSet.add('HR');
+                else if (['MANAGER', 'DEPARTMENTHEAD', 'SEFDEPARTAMENT', 'APPROVER L1', 'APPROVER L2'].includes(norm)) mergedRoleSet.add('MANAGER');
+                else if (['PONTATOR', 'TIMEKEEPER'].includes(norm)) mergedRoleSet.add('PONTATOR');
+            }
+            const mergedRolesJson = JSON.stringify([...mergedRoleSet]);
 
             if (dbUser) {
                 await pool.request()
@@ -1142,6 +1405,19 @@ async function syncUsersWithBioeelAuth() {
                     .input('status', status)
                     .input('firstName', firstName)
                     .input('lastName', lastName)
+                    .input('roles', mergedRolesJson)
+                    .input('hireDate', hireDate)
+                    .input('altSched', encodeUserAltSchedules(mapUserRow(dbUser).alternativeScheduleIds, mapUserRow(dbUser).allowWeekendWork, jobFunction || mapUserRow(dbUser).jobFunction))
+                    .query(`
+                        UPDATE users 
+                        SET erp_id = @erpId, name = @name, email = @email, company_id = @cid, department_id = @did, employment_status = @status, source = 'ERP',
+                            first_name = @firstName, last_name = @lastName, roles = @roles,
+                            hire_date = COALESCE(@hireDate, hire_date), alternative_schedule_ids = @altSched,
+                            main_schedule_id = COALESCE(main_schedule_id, 'sch1')
+                        WHERE id = @id
+                    `);
+            } else if (false) {
+                await pool.request()
                     .query(`
                         UPDATE users 
                         SET erp_id = @erpId, name = @name, email = @email, company_id = @cid, department_id = @did, employment_status = @status, source = 'ERP',
@@ -1150,6 +1426,29 @@ async function syncUsersWithBioeelAuth() {
                     `);
             } else {
                 const newId = `u-${emp.Marca}`;
+                await pool.request()
+                    .input('id', newId)
+                    .input('erpId', erpIdStr)
+                    .input('name', emp.NumePrenume)
+                    .input('email', email)
+                    .input('cid', emp.CompanieCode || null)
+                    .input('did', deptId)
+                    .input('auth', 'PIN')
+                    .input('roles', mergedRolesJson)
+                    .input('status', status)
+                    .input('firstName', firstName)
+                    .input('lastName', lastName)
+                    .input('hireDate', hireDate)
+                    .input('altSched', encodeUserAltSchedules(mapUserRow(dbUser).alternativeScheduleIds, mapUserRow(dbUser).allowWeekendWork, jobFunction || mapUserRow(dbUser).jobFunction))
+                    .query(`
+                        INSERT INTO users (id, erp_id, company_id, department_id, main_schedule_id, name, email, auth_type, roles, contract_hours, is_validated, requires_gps, employment_status, source, first_name, last_name, hire_date, alternative_schedule_ids) 
+                        VALUES (@id, @erpId, @cid, @did, 'sch1', @name, @email, @auth, @roles, 8, 1, 1, @status, 'ERP', @firstName, @lastName, @hireDate, @altSched)
+                    `);
+                const insertedUser = { id: newId, email, erp_id: erpIdStr, source: 'ERP', employment_status: status, roles: mergedRolesJson };
+                userByEmail.set(email, insertedUser);
+                userByErpId.set(erpIdStr, insertedUser);
+                if (false) {
+                /*
                 const defaultRoles = JSON.stringify(['EMPLOYEE']);
                 await pool.request()
                     .input('id', newId)
@@ -1163,17 +1462,34 @@ async function syncUsersWithBioeelAuth() {
                     .input('status', status)
                     .input('firstName', firstName)
                     .input('lastName', lastName)
+                    .input('roles', mergedRolesJson)
+                    .input('hireDate', hireDate)
+                    .input('altSched', encodeUserAltSchedules(mapUserRow(dbUser).alternativeScheduleIds, mapUserRow(dbUser).allowWeekendWork, jobFunction || mapUserRow(dbUser).jobFunction))
+                    .query(`
+                        UPDATE users 
+                        SET erp_id = @erpId, name = @name, email = @email, company_id = @cid, department_id = @did, employment_status = @status, source = 'ERP',
+                            first_name = @firstName, last_name = @lastName, roles = @roles,
+                            hire_date = COALESCE(@hireDate, hire_date), alternative_schedule_ids = @altSched,
+                            main_schedule_id = COALESCE(main_schedule_id, 'sch1')
+                        WHERE id = @id
+                    `);
+            } else if (false) {
+                await pool.request()
                     .query(`
                         INSERT INTO users (id, erp_id, company_id, department_id, name, email, auth_type, roles, contract_hours, is_validated, requires_gps, employment_status, source, first_name, last_name) 
                         VALUES (@id, @erpId, @cid, @did, @name, @email, @auth, @roles, 8, 1, 1, @status, 'ERP', @firstName, @lastName)
                     `);
+                }
+                    `);
             }
         }
 
+                */ } } }
         const activeMarcas = new Set(employees.map(emp => String(emp.Marca)));
+        const activeEmails = new Set(employees.filter(emp => emp.EsteActiv && emp.Email).map(emp => emp.Email.toLowerCase().trim()));
         if (activeMarcas.size > 0) {
             for (const lu of userRows.recordset) {
-                if (lu.source === 'ERP' && lu.erp_id && !activeMarcas.has(String(lu.erp_id)) && lu.employment_status !== 'TERMINATED') {
+                if (lu.source === 'ERP' && lu.erp_id && !activeMarcas.has(String(lu.erp_id)) && !(lu.email && activeEmails.has(lu.email.toLowerCase().trim())) && lu.employment_status !== 'TERMINATED') {
                     await pool.request()
                         .input('id', lu.id)
                         .query("UPDATE users SET employment_status = 'TERMINATED' WHERE id = @id");
@@ -1592,13 +1908,15 @@ const PORT = process.env.PORT || 3005;
 app.listen(PORT, async () => {
     console.log(`Server running on ${PORT}`);
     try {
+        await ensurePhase1Schema();
         await syncUsersWithBioeelAuth();
     } catch (err) {
         console.error("Initial users sync failed on startup:", err);
     }
     setInterval(async () => {
         try {
-            await syncUsersWithBioeelAuth();
+            await ensurePhase1Schema();
+        await syncUsersWithBioeelAuth();
         } catch (err) {
             console.error("Periodic users sync failed:", err);
         }

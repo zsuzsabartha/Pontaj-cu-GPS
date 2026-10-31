@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { LogOut, RefreshCw, Sun, Moon, Download, Monitor, Smartphone, Palmtree, PlusCircle, Bell, ShieldAlert, Mail, X } from 'lucide-react';
 import ClockWidget from './ClockWidget';
-import { User, Office, BreakConfig, Holiday, LeaveRequest, LeaveStatus, ShiftStatus, Coordinates, Notification } from '../types';
+import { User, Office, BreakConfig, Holiday, LeaveRequest, LeaveStatus, ShiftStatus, Coordinates, Notification, DailySchedule, WorkSchedule } from '../types';
 import { formatDateRO, countWorkingDays, toLocalDateISO } from '../utils/date';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -15,6 +15,8 @@ interface MobileClockScreenProps {
     offices: Office[];
     breakConfigs: BreakConfig[];
     holidays: Holiday[];
+    schedulePlans?: DailySchedule[];
+    workSchedules?: WorkSchedule[];
     activeLeaveRequest?: LeaveRequest;
     shiftStartTime?: string;
     shiftEndTime?: string;
@@ -45,6 +47,8 @@ const MobileClockScreen: React.FC<MobileClockScreenProps> = ({
     offices,
     breakConfigs,
     holidays,
+    schedulePlans = [],
+    workSchedules = [],
     activeLeaveRequest,
     shiftStartTime,
     shiftEndTime,
@@ -270,6 +274,8 @@ const MobileClockScreen: React.FC<MobileClockScreenProps> = ({
                     offices={offices}
                     breakConfigs={breakConfigs}
                     holidays={holidays}
+                    schedulePlans={schedulePlans}
+                    workSchedules={workSchedules}
                     activeLeaveRequest={activeLeaveRequest}
                     shiftStartTime={shiftStartTime}
                     shiftEndTime={shiftEndTime}

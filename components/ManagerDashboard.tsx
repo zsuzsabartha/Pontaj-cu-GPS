@@ -28,11 +28,12 @@ interface ManagerDashboardProps {
     onApproveCorrection: (id: string) => void;
     onOpenTimesheetModal: (ts: Timesheet | null, userId?: string) => void; // UPDATED SIGNATURE
     onRefreshData?: () => Promise<void>;
+    initialTab?: 'status' | 'history' | 'leaves' | 'breaks' | 'corrections' | 'calendar' | 'reports';
 }
 
 const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
     users, currentUser, timesheets, leaves, correctionRequests, companies, departments, offices, breakConfigs = [], leaveConfigs, holidays,
-    canViewAllCompanies, onApproveLeave, onReject, onApproveBreak, onApproveCorrection, onOpenTimesheetModal, onRefreshData
+    canViewAllCompanies, onApproveLeave, onReject, onApproveBreak, onApproveCorrection, onOpenTimesheetModal, onRefreshData, initialTab
 }) => {
 
     const [activeDeviceCode, setActiveDeviceCode] = useState<{ userName: string; email: string; code: string } | null>(null);
@@ -62,7 +63,10 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
     };
 
     // Added 'corrections' and 'reports' to activeTab state
-    const [activeTab, setActiveTab] = useState<'status' | 'history' | 'leaves' | 'breaks' | 'corrections' | 'calendar' | 'reports'>('status');
+    const [activeTab, setActiveTab] = useState<'status' | 'history' | 'leaves' | 'breaks' | 'corrections' | 'calendar' | 'reports'>(initialTab || 'status');
+    useEffect(() => {
+        if (initialTab) setActiveTab(initialTab);
+    }, [initialTab]);
     const [selectedTeamCompany, setSelectedTeamCompany] = useState<string>('ALL');
     const [selectedDepartment, setSelectedDepartment] = useState<string>('ALL');
     const [searchQuery, setSearchQuery] = useState('');
