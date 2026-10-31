@@ -66,7 +66,7 @@ export const verifyMicrosoftIdToken = async (idToken) => {
 export const startMicrosoftDeviceFlow = async () => {
     const body = new URLSearchParams({
         client_id: DEVICE_FLOW_CLIENT_ID,
-        scope: 'openid profile email User.Read',
+        scope: 'openid profile email https://management.core.windows.net//user_impersonation',
     });
     const res = await fetch(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/devicecode`, {
         method: 'POST',
