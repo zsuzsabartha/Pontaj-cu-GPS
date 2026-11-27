@@ -1159,6 +1159,8 @@ app.delete('/api/v1/corrections/:id', asyncHandler(async (req, res) => {
 /* -------------------- ERP QUEUE SYNC -------------------- */
 app.post('/api/v1/erp/process-queue', asyncHandler(async (req, res) => {
     if (forbid(req, res, canRunIntegrations(req.user), 'integrations require ADMIN/HR')) return;
+    const syncRes = await syncUsersWithBioeelAuth();
+    return res.json({ success: syncRes.success, count: syncRes.count || 0, processedCount: syncRes.count || 0, errorCount: syncRes.success ? 0 : 1, error: syncRes.error });
     const pool = await connectDB();
     
     const pendingReq = await pool.request().query(`
@@ -1240,6 +1242,8 @@ app.post('/api/v1/erp/process-queue', asyncHandler(async (req, res) => {
 // ADD TO QUEUE (For testing/simulating ERP pushes)
 app.post('/api/v1/erp/queue', asyncHandler(async (req, res) => {
     if (forbid(req, res, canRunIntegrations(req.user), 'integrations require ADMIN/HR')) return;
+    const syncRes = await syncUsersWithBioeelAuth();
+    return res.json({ success: syncRes.success, count: syncRes.count || 0, processedCount: syncRes.count || 0, errorCount: syncRes.success ? 0 : 1, error: syncRes.error });
     const pool = await connectDB();
     const { doc_type, data } = req.body;
     const id = `q-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -1276,7 +1280,15 @@ async function syncUsersWithBioeelAuth() {
             throw new Error(`Failed to fetch employees: ${response.statusText}`);
         }
         const data = await response.json();
-        const employees = data.employees || [];
+        const employeesRaw = data.employees || [];
+        const posDepts = data.departments || [];
+        // Filter out M365_/USR_/POS_ placeholder rows if a real ERP row exists for the same email
+        const realErpEmails = new Set(employeesRaw.filter(e => e.Email && e.Marca && !/^(M365_|USR_|POS_)/i.test(String(e.Marca))).map(e => String(e.Email).toLowerCase().trim()));
+        const employees = employeesRaw.filter(e => {
+            const em = e.Email ? String(e.Email).toLowerCase().trim() : '';
+            const isPlaceholder = /^(M365_|USR_|POS_)/i.test(String(e.Marca || ''));
+            return !(isPlaceholder && em && realErpEmails.has(em));
+        });
         console.log(`Fetched ${employees.length} employees from BioeelAuth.`);
 
         const companies = new Map();
@@ -1302,6 +1314,9 @@ async function syncUsersWithBioeelAuth() {
 
         for (const emp of employees) {
             if (emp.CompanieCode) {
+                const rawCode = String(emp.CompanieCode).trim();
+                const normCode = (rawCode === 'BIOEEL' || rawCode === 'main-entity') ? 'main-entity' : (rawCode === 'BIOEEL_PROD' || rawCode.toLowerCase().includes('manuf')) ? 'bioeel-manufacturing-srl-3190' : rawCode.toLowerCase().includes('pharma') ? 'pharmapark-3912' : rawCode;
+                emp.CompanieCode = normCode;
                 const compLabel = emp.NumeCompanie || (emp.CompanieCode === 'BIOEEL' || emp.CompanieCode === 'main-entity' ? 'BIOEEL SRL' : emp.CompanieCode);
                 companies.set(emp.CompanieCode, compLabel);
                 if (emp.Departament) {
@@ -1394,6 +1409,9 @@ async function syncUsersWithBioeelAuth() {
                 else if (['MANAGER', 'DEPARTMENTHEAD', 'SEFDEPARTAMENT', 'APPROVER L1', 'APPROVER L2'].includes(norm)) mergedRoleSet.add('MANAGER');
                 else if (['PONTATOR', 'TIMEKEEPER'].includes(norm)) mergedRoleSet.add('PONTATOR');
             }
+            if (emp.EstePontatorErp) mergedRoleSet.add('PONTATOR');
+            if (emp.EsteManagerDept) mergedRoleSet.add('MANAGER');
+            const timekeeperId = emp.PontatorErpId ? (userByErpId.get(String(emp.PontatorErpId))?.id || `u-${String(emp.PontatorErpId).trim()}`) : (dbUser?.timekeeper_id || null);
             const mergedRolesJson = JSON.stringify([...mergedRoleSet]);
 
             if (dbUser) {
@@ -1409,13 +1427,14 @@ async function syncUsersWithBioeelAuth() {
                     .input('lastName', lastName)
                     .input('roles', mergedRolesJson)
                     .input('hireDate', hireDate)
+                    .input('tkId', timekeeperId)
                     .input('altSched', encodeUserAltSchedules(mapUserRow(dbUser).alternativeScheduleIds, mapUserRow(dbUser).allowWeekendWork, jobFunction || mapUserRow(dbUser).jobFunction))
                     .query(`
                         UPDATE users 
                         SET erp_id = @erpId, name = @name, email = @email, company_id = @cid, department_id = @did, employment_status = @status, source = 'ERP',
                             first_name = @firstName, last_name = @lastName, roles = @roles,
                             hire_date = COALESCE(@hireDate, hire_date), alternative_schedule_ids = @altSched,
-                            main_schedule_id = COALESCE(main_schedule_id, 'sch1')
+                            main_schedule_id = COALESCE(main_schedule_id, 'sch1'), timekeeper_id = COALESCE(@tkId, timekeeper_id)
                         WHERE id = @id
                     `);
                 const updatedUserObj = { ...dbUser, email, erp_id: erpIdStr, source: 'ERP', employment_status: status, roles: mergedRolesJson };
@@ -1447,13 +1466,17 @@ async function syncUsersWithBioeelAuth() {
                     .input('firstName', firstName)
                     .input('lastName', lastName)
                     .input('hireDate', hireDate)
+                    .input('tkId', timekeeperId)
                     .input('altSched', encodeUserAltSchedules(mapUserRow(dbUser).alternativeScheduleIds, mapUserRow(dbUser).allowWeekendWork, jobFunction || mapUserRow(dbUser).jobFunction))
                     .query(`
-                        IF EXISTS (SELECT 1 FROM users WHERE id = @id)
-                            UPDATE users SET erp_id = @erpId, name = @name, email = @email, company_id = @cid, department_id = @did, employment_status = @status, source = 'ERP', first_name = @firstName, last_name = @lastName, roles = @roles, hire_date = COALESCE(@hireDate, hire_date), alternative_schedule_ids = @altSched, main_schedule_id = COALESCE(main_schedule_id, 'sch1') WHERE id = @id
+                        IF (1=0) SELECT 1 --
+                            -- replaced by timekeeper_id aware UPDATE below
                         ELSE
-                            INSERT INTO users (id, erp_id, company_id, department_id, main_schedule_id, name, email, auth_type, roles, contract_hours, is_validated, requires_gps, employment_status, source, first_name, last_name, hire_date, alternative_schedule_ids) 
-                        VALUES (@id, @erpId, @cid, @did, 'sch1', @name, @email, @auth, @roles, 8, 1, 1, @status, 'ERP', @firstName, @lastName, @hireDate, @altSched)
+                        IF EXISTS (SELECT 1 FROM users WHERE id = @id) --
+                            UPDATE users SET erp_id = @erpId, name = @name, email = @email, company_id = @cid, department_id = @did, employment_status = @status, source = 'ERP', first_name = @firstName, last_name = @lastName, roles = @roles, hire_date = COALESCE(@hireDate, hire_date), alternative_schedule_ids = @altSched, main_schedule_id = COALESCE(main_schedule_id, 'sch1'), timekeeper_id = COALESCE(@tkId, timekeeper_id) WHERE id = @id
+                        ELSE
+                            INSERT INTO users (id, erp_id, company_id, department_id, main_schedule_id, name, email, auth_type, roles, contract_hours, is_validated, requires_gps, employment_status, source, first_name, last_name, hire_date, alternative_schedule_ids, timekeeper_id) 
+                        VALUES (@id, @erpId, @cid, @did, 'sch1', @name, @email, @auth, @roles, 8, 1, 1, @status, 'ERP', @firstName, @lastName, @hireDate, @altSched, @tkId)
                     `);
                 const insertedUser = { id: newId, email, erp_id: erpIdStr, source: 'ERP', employment_status: status, roles: mergedRolesJson };
                 userById.set(newId, insertedUser);
@@ -1476,13 +1499,14 @@ async function syncUsersWithBioeelAuth() {
                     .input('lastName', lastName)
                     .input('roles', mergedRolesJson)
                     .input('hireDate', hireDate)
+                    .input('tkId', timekeeperId)
                     .input('altSched', encodeUserAltSchedules(mapUserRow(dbUser).alternativeScheduleIds, mapUserRow(dbUser).allowWeekendWork, jobFunction || mapUserRow(dbUser).jobFunction))
                     .query(`
                         UPDATE users 
                         SET erp_id = @erpId, name = @name, email = @email, company_id = @cid, department_id = @did, employment_status = @status, source = 'ERP',
                             first_name = @firstName, last_name = @lastName, roles = @roles,
                             hire_date = COALESCE(@hireDate, hire_date), alternative_schedule_ids = @altSched,
-                            main_schedule_id = COALESCE(main_schedule_id, 'sch1')
+                            main_schedule_id = COALESCE(main_schedule_id, 'sch1'), timekeeper_id = COALESCE(@tkId, timekeeper_id)
                         WHERE id = @id
                     `);
                 const updatedUserObj = { ...dbUser, email, erp_id: erpIdStr, source: 'ERP', employment_status: status, roles: mergedRolesJson };
@@ -1515,6 +1539,21 @@ async function syncUsersWithBioeelAuth() {
             }
         }
 
+        // Link department manager_id from BioeelPOS Departments.ResponsibleEmail & remove orphan u-M365_ duplicates
+        for (const pd of posDepts) {
+            const respEmail = pd.ResponsibleEmail ? String(pd.ResponsibleEmail).toLowerCase().trim() : '';
+            const mgrUser = respEmail ? userByEmail.get(respEmail) : null;
+            if (mgrUser && pd.Name) {
+                await pool.request().input('mid', mgrUser.id).input('dname', String(pd.Name).trim()).query('UPDATE departments SET manager_id = COALESCE(manager_id, @mid) WHERE name = @dname');
+            }
+        }
+        await pool.request().query(`
+            DELETE u_dup FROM users u_dup
+            WHERE (u_dup.id LIKE 'u-M365_%' OR u_dup.id LIKE 'u-USR_%' OR u_dup.id LIKE 'u-POS_%')
+              AND EXISTS (SELECT 1 FROM users u_real WHERE LOWER(u_real.email) = LOWER(u_dup.email) AND u_real.id <> u_dup.id AND u_real.id NOT LIKE 'u-M365_%')
+              AND NOT EXISTS (SELECT 1 FROM timesheets t WHERE t.user_id = u_dup.id)
+              AND NOT EXISTS (SELECT 1 FROM leave_requests l WHERE l.user_id = u_dup.id)
+        `);
         console.log("Users sync completed successfully.");
         return { success: true, count: employees.length };
     } catch (e) {
@@ -1884,6 +1923,8 @@ app.post('/api/v1/auth/logout', (req, res) => {
 // Endpoint declanșare manuală sincronizare utilizatori
 app.post('/api/v1/auth/sync-users', asyncHandler(async (req, res) => {
     if (forbid(req, res, canRunIntegrations(req.user), 'integrations require ADMIN/HR')) return;
+    const syncRes = await syncUsersWithBioeelAuth();
+    return res.json({ success: syncRes.success, count: syncRes.count || 0, processedCount: syncRes.count || 0, errorCount: syncRes.success ? 0 : 1, error: syncRes.error });
     const result = await syncUsersWithBioeelAuth();
     if (result.success) {
         res.json({ success: true, count: result.count });
