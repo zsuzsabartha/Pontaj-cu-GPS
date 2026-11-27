@@ -198,7 +198,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
                 if (!office) return;
                 setLiveGeo({ coords, office, distance, accuracy });
 
-                const hasApprovedLeave = activeLeaveRequest?.status === LeaveStatus.APPROVED && !activeLeaveRequest?.typeName.includes('Delegatie');
+                const hasApprovedLeave = activeLeaveRequest?.status === LeaveStatus.APPROVED && !/delega[tț]ie|[iî]nvoire/i.test(activeLeaveRequest?.typeName || '');
                 const insideRadius = distance <= (office.radiusMeters || 100) && accuracy <= 200;
                 const outsideWithBuffer = distance > ((office.radiusMeters || 100) + 50) && accuracy <= 100;
 
@@ -543,7 +543,7 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
                     {currentStatus === ShiftStatus.NOT_STARTED ? (
                         <button
                             onClick={handleClockIn}
-                            disabled={!user.isValidated || loading || isRestrictedDay || (activeLeaveRequest?.status === LeaveStatus.APPROVED && !activeLeaveRequest?.typeName.includes('Delegatie'))} // Disable if unvalidated, restricted weekend/holiday OR approved leave
+                            disabled={!user.isValidated || loading || isRestrictedDay || (activeLeaveRequest?.status === LeaveStatus.APPROVED && !/delega[tț]ie|[iî]nvoire/i.test(activeLeaveRequest?.typeName || ''))} // Disable if unvalidated, restricted weekend/holiday OR approved full-day leave
                             className="col-span-2 flex items-center justify-center gap-2 text-white py-4 rounded-xl font-semibold transition-all shadow-lg active:scale-95 disabled:opacity-50 disabled:grayscale bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200"
                         >
                             {loading ? (

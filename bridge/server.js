@@ -750,7 +750,55 @@ app.post('/api/v1/schedule-plans', asyncHandler(async (req, res) => {
 /* -------------------- SEED ENDPOINTS -------------------- */
 
 // TIMESHEETS (supports ?from=YYYY-MM-DD&to=YYYY-MM-DD&userId=... while always keeping active shifts)
+const autoCloseForgottenShifts = async (pool) => {
+    try {
+        const todayLocal = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Bucharest' }).format(new Date());
+        const openRes = await pool.request().input('today', todayLocal).query(`
+            SELECT t.id, t.user_id, t.date, t.start_time, t.notes, u.name AS user_name, u.timekeeper_id,
+                   COALESCE(ws_det.end_time, ws_main.end_time, '16:30') AS sched_end,
+                   COALESCE(ws_det.crosses_midnight, ws_main.crosses_midnight, 0) AS crosses_midnight
+            FROM timesheets t
+            INNER JOIN users u ON u.id = t.user_id
+            LEFT JOIN work_schedules ws_det ON ws_det.id = t.detected_schedule_id
+            LEFT JOIN work_schedules ws_main ON ws_main.id = u.main_schedule_id
+            WHERE t.status IN ('WORKING', 'ON_BREAK')
+              AND t.end_time IS NULL
+              AND t.id NOT LIKE 'test-auth-%'
+              AND (t.date < @today OR DATEDIFF(MINUTE, t.start_time, SYSDATETIME()) > 960)
+        `);
+        for (const r of openRes.recordset) {
+            const dateIso = toISODate(r.date);
+            const [eh, em] = String(r.sched_end || '16:30').slice(0, 5).split(':').map(n => parseInt(n, 10) || 0);
+            const startObj = new Date(r.start_time);
+            let endObj = new Date(startObj);
+            endObj.setHours(eh, em, 0, 0);
+            if (r.crosses_midnight || endObj <= startObj) {
+                endObj = new Date(startObj.getTime() + 8 * 3600000);
+            }
+            const endIso = endObj.toISOString();
+            const endHHMM = `${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}`;
+            const autoNote = `${r.notes ? `${r.notes} | ` : ''}Închis automat la sfârșitul programului (${endHHMM} - tură uitată deschisă)`;
+            await pool.request().input('id', r.id).input('end', endIso).input('notes', autoNote).query(`
+                UPDATE breaks SET end_time = COALESCE(end_time, @end) WHERE timesheet_id = @id AND end_time IS NULL;
+                UPDATE timesheets SET end_time = @end, status = 'COMPLETED', notes = @notes WHERE id = @id;
+            `);
+            const logId = `log-auto-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+            await pool.request().input('lid', logId).input('tid', r.id).input('uid', r.user_id).input('det', `Închis automat de server la ora programului (${endHHMM}) - pontaj uitat deschis`)
+                .query('INSERT INTO timesheet_logs (id, timesheet_id, changed_by_user_id, change_date, details) VALUES (@lid, @tid, @uid, SYSDATETIME(), @det)');
+            const msg = `Pontajul din ${formatDateRO(dateIso)} pentru ${r.user_name} a fost uitat deschis și a fost închis automat la ora de sfârșit a programului (${endHHMM}). Vă rugăm să verificați.`;
+            await createNotification(pool, { userId: r.user_id, title: 'Pontaj închis automat la sfârșitul programului', message: msg, type: 'ALERT' });
+            if (r.timekeeper_id && r.timekeeper_id !== r.user_id) {
+                await createNotification(pool, { userId: r.timekeeper_id, title: `Verificare pontaj închis automat: ${r.user_name}`, message: msg, type: 'ALERT' });
+            }
+            await notifyDepartmentManager(pool, r.user_id, `Verificare pontaj închis automat: ${r.user_name}`, msg, 'ALERT');
+        }
+    } catch (e) {
+        console.error('[AUTO-CLOSE-SHIFTS]', e.message);
+    }
+};
 const handleGetTimesheets = asyncHandler(async (req, res) => {
+    const pool = await connectDB();
+    await autoCloseForgottenShifts(pool);
     const pool = await connectDB();
     const from = typeof req.query.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : null;
     const to = typeof req.query.to === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to) ? req.query.to : null;

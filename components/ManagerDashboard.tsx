@@ -215,12 +215,28 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
 
                 let cellValue = "";
 
-                if (leave) {
+                const leaveConfig = leave ? leaveConfigs.find(c => c.id === leave.typeId) : undefined;
+                const isPartialLeave = Boolean(leave && (/[iî]nvoire|delega[tț]ie|bilet de voie/i.test(leaveConfig?.name || leave.typeName || '') || leaveConfig?.code === 'INV' || /\[Interval Orar:/i.test(leave.reason || '')));
+                if (timesheet && timesheet.endTime && (!leave || isPartialLeave)) {
+                    const start = new Date(timesheet.startTime).getTime();
+                    const end = new Date(timesheet.endTime).getTime();
+                    const durationMs = end - start;
+                    const unpaidBreaksMs = timesheet.breaks.reduce((acc, b) => {
+                        const bConfig = breakConfigs.find(bc => bc.id === b.typeId);
+                        if ((!bConfig?.isPaid || b.status === BreakStatus.REJECTED) && b.endTime && b.startTime) {
+                            return acc + (new Date(b.endTime).getTime() - new Date(b.startTime).getTime());
+                        }
+                        return acc;
+                    }, 0);
+                    const netHours = Math.max(0, (durationMs - unpaidBreaksMs) / 3600000);
+                    cellValue = leave ? `${netHours.toFixed(1)} (${leaveConfig?.code || 'INV'})` : netHours.toFixed(1);
+                    totalMonthlyHours += netHours;
+                } else if (leave) {
                     // Use Config Code if available (e.g., CO, CM), else Type Name
                     const config = leaveConfigs.find(c => c.id === leave.typeId);
                     cellValue = config?.code || "C";
                     // Only count leave days if it's not a weekend/holiday (standard rule, though simplified here)
-                    if (!isWeekend && !isHoliday) totalLeaveDays++;
+                    if (!isWeekend && !isHoliday && !isPartialLeave) totalLeaveDays++;
                 } else if (timesheet && timesheet.endTime) {
                     // Calculate Net Hours
                     const start = new Date(timesheet.startTime).getTime();

@@ -19,6 +19,10 @@ const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, 
   const [typeId, setTypeId] = useState<string>(leaveConfigs[0]?.id || '');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('11:00');
+  const selectedCfg = leaveConfigs.find(lc => lc.id === typeId) || leaveConfigs[0];
+  const isHourlyInvoire = Boolean(selectedCfg && (/[iî]nvoire|bilet de voie/i.test(selectedCfg.name) || selectedCfg.code === 'INV'));
   const [reason, setReason] = useState('');
   const [validationMsg, setValidationMsg] = useState<string | null>(null);
 
@@ -44,17 +48,25 @@ const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, 
       setValidationMsg("Nu există tipuri de concediu configurate.");
       return;
     }
-    if (endDate < startDate) {
+    if (!isHourlyInvoire && endDate < startDate) {
       setValidationMsg("Data de sfârșit nu poate fi anterioară datei de început.");
       return;
     }
-    if (countWorkingDays(startDate, endDate, holidays) <= 0) {
+    if (isHourlyInvoire && endTime <= startTime) {
+      setValidationMsg("Ora de sfârșit a învoirii trebuie să fie după ora de început.");
+      return;
+    }
+    if (countWorkingDays(startDate, isHourlyInvoire ? startDate : endDate, holidays) <= 0) {
       setValidationMsg("Intervalul selectat conține 0 zile lucrătoare (doar weekend sau sărbători legale).");
       return;
     }
     if (!selectedConfig) return;
 
-    onSubmit({
+    const finalEndDate = isHourlyInvoire ? startDate : endDate;
+    const invoireDiffHrs = isHourlyInvoire ? Math.max(0, ((parseInt(endTime.slice(0,2))*60 + parseInt(endTime.slice(3,5))) - (parseInt(startTime.slice(0,2))*60 + parseInt(startTime.slice(3,5)))) / 60) : 0;
+    const finalReason = isHourlyInvoire && !reason.includes('[Interval Orar:') ? `[Interval Orar: ${startTime} - ${endTime} (${invoireDiffHrs.toFixed(1)}h)] ${reason}`.trim() : reason;
+    onSubmit({ typeId: selectedConfig.id, typeName: selectedConfig.name, startDate, endDate: finalEndDate, reason: finalReason });
+    if (false) onSubmit({
       typeId: selectedConfig.id,
       typeName: selectedConfig.name,
       startDate,
@@ -93,13 +105,14 @@ const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, 
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">De la</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{isHourlyInvoire ? 'Data Învoirii' : 'De la'}</label>
               <input
                 type="date"
                 required
                 value={startDate}
                 onChange={(e) => {
                   setStartDate(e.target.value);
+                  if (isHourlyInvoire) setEndDate(e.target.value);
                   if (isDateInLockedPeriod(e.target.value, lockedDate)) {
                     setValidationMsg("Data este într-o perioadă închisă!");
                   } else {
@@ -109,6 +122,19 @@ const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, 
                 className={`w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all ${isDateInLockedPeriod(startDate, lockedDate) ? 'border-red-500 bg-red-50 dark:bg-red-900/20 text-red-900 dark:text-red-400' : ''}`}
               />
             </div>
+            <div>
+            {isHourlyInvoire ? (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">De la ora</label>
+                  <input type="time" required value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Până la ora</label>
+                  <input type="time" required value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none" />
+                </div>
+              </div>
+            ) : (
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Până la</label>
               <input
@@ -120,11 +146,19 @@ const LeaveModal: React.FC<LeaveModalProps> = ({ isOpen, onClose, leaveConfigs, 
                 className="w-full p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
               />
             </div>
+            )}
+            <input className="hidden"
+              />
+            </div>
           </div>
 
-          {startDate && endDate && (
+          {startDate && (isHourlyInvoire || endDate) && (
             <div className="text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 rounded-lg border border-emerald-100 dark:border-emerald-800">
-              Durată calculată: <span className="font-bold">{countWorkingDays(startDate, endDate, holidays)} zile lucrătoare</span> (fără weekend și sărbători legale)
+              {isHourlyInvoire ? (
+                <>Durată învoire: <span className="font-bold">{startTime} – {endTime} ({Math.max(0, ((parseInt(endTime.slice(0,2))*60 + parseInt(endTime.slice(3,5))) - (parseInt(startTime.slice(0,2))*60 + parseInt(startTime.slice(3,5)))) / 60).toFixed(1)} ore)</span> • Orele lucrate în ziua respectivă rămân în pontaj</>
+              ) : (
+                <>Durată calculată: <span className="font-bold">{countWorkingDays(startDate, endDate, holidays)} zile lucrătoare</span> (fără weekend și sărbători legale)</>
+              )}
             </div>
           )}
 
