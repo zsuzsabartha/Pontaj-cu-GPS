@@ -1311,6 +1311,11 @@ async function syncUsersWithBioeelAuth() {
             // Optional enrichment from centralized UserRoles
         }
         const departments = new Map();
+        for (const pd of posDepts) {
+            const rawComp = String(pd.CompanyCode || 'main-entity').trim();
+            const normComp = (rawComp === 'BIOEEL' || rawComp === 'main-entity') ? 'main-entity' : (rawComp === 'BIOEEL_PROD' || rawComp.toLowerCase().includes('manuf')) ? 'bioeel-manufacturing-srl-3190' : rawComp.toLowerCase().includes('pharma') ? 'pharmapark-3912' : rawComp;
+            if (pd.Name) departments.set(String(pd.Name).trim(), normComp);
+        }
 
         for (const emp of employees) {
             if (emp.CompanieCode) {
@@ -1543,8 +1548,18 @@ async function syncUsersWithBioeelAuth() {
         for (const pd of posDepts) {
             const respEmail = pd.ResponsibleEmail ? String(pd.ResponsibleEmail).toLowerCase().trim() : '';
             const mgrUser = respEmail ? userByEmail.get(respEmail) : null;
-            if (mgrUser && pd.Name) {
-                await pool.request().input('mid', mgrUser.id).input('dname', String(pd.Name).trim()).query('UPDATE departments SET manager_id = COALESCE(manager_id, @mid) WHERE name = @dname');
+            if (mgrUser && (pd.Name || pd.Code)) {
+                await pool.request()
+                    .input('mid', mgrUser.id)
+                    .input('dname', String(pd.Name || pd.Code).trim())
+                    .input('dcode', String(pd.Code || pd.Name).trim())
+                    .query(`
+                        UPDATE departments
+                        SET manager_id = @mid, email_notifications = 1
+                        WHERE LOWER(LTRIM(RTRIM(name))) IN (LOWER(@dname), LOWER(@dcode))
+                           OR LOWER(LTRIM(RTRIM(name))) LIKE LOWER(@dcode) + '%'
+                           OR LOWER(@dname) LIKE LOWER(LTRIM(RTRIM(name))) + '%'
+                    `);
             }
         }
         await pool.request().query(`
