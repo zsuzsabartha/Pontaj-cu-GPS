@@ -683,7 +683,14 @@ app.post('/api/v1/notifications/read', asyncHandler(async (req, res) => {
     const { id, all } = req.body || {};
     if (all) {
         await pool.request().input('uid', req.user.id).query('UPDATE notifications SET is_read = 1 WHERE user_id = @uid');
-        return res.json({ success: true });
+        if (false) {
+        void sendGraphHtmlEmail({
+            toEmail: user.email,
+            subject: `Cod 2FA înrolare telefon (${code}) - Pontaj Smart Bioeel`,
+            html: `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:480px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;"><div style="background:#059669;color:#fff;padding:16px 20px;"><h2 style="margin:0;font-size:18px;">Cod Verificare 2FA – Pontaj Smart</h2></div><div style="padding:20px;color:#1e293b;font-size:14px;"><p>Salut, <strong>${user.name}</strong>,</p><p>Codul tău de verificare pentru asocierea telefonului cu contul de pontaj este:</p><div style="background:#f8fafc;border:2px dashed #059669;border-radius:10px;padding:14px;text-align:center;font-size:28px;font-weight:bold;letter-spacing:6px;color:#059669;margin:16px 0;">${code}</div><p style="font-size:12px;color:#64748b;">Codul este valabil 10 minute. După înrolare, acest telefon va rămâne asociat automat contului tău.</p></div></div>`
+        }).catch(err => console.error('[2FA-EMAIL]', err.message));
+    }
+    return res.json({ success: true });
     }
     if (!id) return res.status(400).json({ error: 'Missing notification id' });
     const existing = await pool.request().input('id', id).query('SELECT user_id FROM notifications WHERE id = @id');
@@ -1160,6 +1167,13 @@ app.delete('/api/v1/corrections/:id', asyncHandler(async (req, res) => {
 app.post('/api/v1/erp/process-queue', asyncHandler(async (req, res) => {
     if (forbid(req, res, canRunIntegrations(req.user), 'integrations require ADMIN/HR')) return;
     const syncRes = await syncUsersWithBioeelAuth();
+    if (false) {
+        void sendGraphHtmlEmail({
+            toEmail: user.email,
+            subject: `Cod 2FA înrolare telefon (${code}) - Pontaj Smart Bioeel`,
+            html: `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:480px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;"><div style="background:#059669;color:#fff;padding:16px 20px;"><h2 style="margin:0;font-size:18px;">Cod Verificare 2FA – Pontaj Smart</h2></div><div style="padding:20px;color:#1e293b;font-size:14px;"><p>Salut, <strong>${user.name}</strong>,</p><p>Codul tău de verificare pentru asocierea telefonului cu contul de pontaj este:</p><div style="background:#f8fafc;border:2px dashed #059669;border-radius:10px;padding:14px;text-align:center;font-size:28px;font-weight:bold;letter-spacing:6px;color:#059669;margin:16px 0;">${code}</div><p style="font-size:12px;color:#64748b;">Codul este valabil 10 minute. După înrolare, acest telefon va rămâne asociat automat contului tău.</p></div></div>`
+        }).catch(err => console.error('[2FA-EMAIL]', err.message));
+    }
     return res.json({ success: syncRes.success, count: syncRes.count || 0, processedCount: syncRes.count || 0, errorCount: syncRes.success ? 0 : 1, error: syncRes.error });
     const pool = await connectDB();
     
@@ -1243,6 +1257,13 @@ app.post('/api/v1/erp/process-queue', asyncHandler(async (req, res) => {
 app.post('/api/v1/erp/queue', asyncHandler(async (req, res) => {
     if (forbid(req, res, canRunIntegrations(req.user), 'integrations require ADMIN/HR')) return;
     const syncRes = await syncUsersWithBioeelAuth();
+    if (false) {
+        void sendGraphHtmlEmail({
+            toEmail: user.email,
+            subject: `Cod 2FA înrolare telefon (${code}) - Pontaj Smart Bioeel`,
+            html: `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:480px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;"><div style="background:#059669;color:#fff;padding:16px 20px;"><h2 style="margin:0;font-size:18px;">Cod Verificare 2FA – Pontaj Smart</h2></div><div style="padding:20px;color:#1e293b;font-size:14px;"><p>Salut, <strong>${user.name}</strong>,</p><p>Codul tău de verificare pentru asocierea telefonului cu contul de pontaj este:</p><div style="background:#f8fafc;border:2px dashed #059669;border-radius:10px;padding:14px;text-align:center;font-size:28px;font-weight:bold;letter-spacing:6px;color:#059669;margin:16px 0;">${code}</div><p style="font-size:12px;color:#64748b;">Codul este valabil 10 minute. După înrolare, acest telefon va rămâne asociat automat contului tău.</p></div></div>`
+        }).catch(err => console.error('[2FA-EMAIL]', err.message));
+    }
     return res.json({ success: syncRes.success, count: syncRes.count || 0, processedCount: syncRes.count || 0, errorCount: syncRes.success ? 0 : 1, error: syncRes.error });
     const pool = await connectDB();
     const { doc_type, data } = req.body;
@@ -1336,6 +1357,11 @@ async function syncUsersWithBioeelAuth() {
             pool.request().query('SELECT id, name FROM departments'),
             pool.request().query('SELECT id, email, erp_id, source, employment_status, roles, main_schedule_id, alternative_schedule_ids FROM users')
         ]);
+        const schedRows = await pool.request().query('SELECT id, name, start_time, end_time FROM work_schedules');
+        const schedIdByInterval = new Map();
+        for (const s of schedRows.recordset) {
+            if (s.start_time && s.end_time) schedIdByInterval.set(`${String(s.start_time).slice(0,5)}-${String(s.end_time).slice(0,5)}`, s.id);
+        }
         const existingCompanies = new Set(compRows.recordset.map(c => c.id));
         const deptIdByName = new Map(deptRows.recordset.map(d => [d.name, d.id]));
         const userById = new Map();
@@ -1417,6 +1443,26 @@ async function syncUsersWithBioeelAuth() {
             if (emp.EstePontatorErp) mergedRoleSet.add('PONTATOR');
             if (emp.EsteManagerDept) mergedRoleSet.add('MANAGER');
             const timekeeperId = emp.PontatorErpId ? (userByErpId.get(String(emp.PontatorErpId))?.id || `u-${String(emp.PontatorErpId).trim()}`) : (dbUser?.timekeeper_id || null);
+            const erpSchedIds = [];
+            if (emp.ProgramLucru) {
+                const matches = [...String(emp.ProgramLucru).matchAll(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/g)];
+                for (const m of matches) {
+                    const st = m[1].padStart(5, '0');
+                    const et = m[2].padStart(5, '0');
+                    const key = `${st}-${et}`;
+                    let sid = schedIdByInterval.get(key);
+                    if (!sid) {
+                        sid = `sch-${st.replace(':', '')}-${et.replace(':', '')}`;
+                        const crosses = (et < st || et === '24:00' || et === '00:00') ? 1 : 0;
+                        await pool.request().input('id', sid).input('name', `Program ${st} - ${et}`).input('st', st).input('et', et).input('cm', crosses)
+                            .query("IF NOT EXISTS (SELECT 1 FROM work_schedules WHERE id = @id) INSERT INTO work_schedules (id, name, start_time, end_time, crosses_midnight, source) VALUES (@id, @name, @st, @et, @cm, 'ERP')");
+                        schedIdByInterval.set(key, sid);
+                    }
+                    if (!erpSchedIds.includes(sid)) erpSchedIds.push(sid);
+                }
+            }
+            const mainSchedId = erpSchedIds[0] || dbUser?.main_schedule_id || 'sch1';
+            const mergedAltIds = Array.from(new Set([...(mapUserRow(dbUser).alternativeScheduleIds || []), ...erpSchedIds.slice(1)]));
             const mergedRolesJson = JSON.stringify([...mergedRoleSet]);
 
             if (dbUser) {
@@ -1433,13 +1479,14 @@ async function syncUsersWithBioeelAuth() {
                     .input('roles', mergedRolesJson)
                     .input('hireDate', hireDate)
                     .input('tkId', timekeeperId)
-                    .input('altSched', encodeUserAltSchedules(mapUserRow(dbUser).alternativeScheduleIds, mapUserRow(dbUser).allowWeekendWork, jobFunction || mapUserRow(dbUser).jobFunction))
+                    .input('msId', mainSchedId)
+                    .input('altSched', encodeUserAltSchedules(mergedAltIds, mapUserRow(dbUser).allowWeekendWork, jobFunction || mapUserRow(dbUser).jobFunction))
                     .query(`
                         UPDATE users 
                         SET erp_id = @erpId, name = @name, email = @email, company_id = @cid, department_id = @did, employment_status = @status, source = 'ERP',
                             first_name = @firstName, last_name = @lastName, roles = @roles,
                             hire_date = COALESCE(@hireDate, hire_date), alternative_schedule_ids = @altSched,
-                            main_schedule_id = COALESCE(main_schedule_id, 'sch1'), timekeeper_id = COALESCE(@tkId, timekeeper_id)
+                            main_schedule_id = COALESCE(@msId, main_schedule_id, 'sch1'), timekeeper_id = COALESCE(@tkId, timekeeper_id)
                         WHERE id = @id
                     `);
                 const updatedUserObj = { ...dbUser, email, erp_id: erpIdStr, source: 'ERP', employment_status: status, roles: mergedRolesJson };
@@ -1472,7 +1519,8 @@ async function syncUsersWithBioeelAuth() {
                     .input('lastName', lastName)
                     .input('hireDate', hireDate)
                     .input('tkId', timekeeperId)
-                    .input('altSched', encodeUserAltSchedules(mapUserRow(dbUser).alternativeScheduleIds, mapUserRow(dbUser).allowWeekendWork, jobFunction || mapUserRow(dbUser).jobFunction))
+                    .input('msId', mainSchedId)
+                    .input('altSched', encodeUserAltSchedules(mergedAltIds, mapUserRow(dbUser).allowWeekendWork, jobFunction || mapUserRow(dbUser).jobFunction))
                     .query(`
                         IF (1=0) SELECT 1 --
                             -- replaced by timekeeper_id aware UPDATE below
@@ -1481,7 +1529,7 @@ async function syncUsersWithBioeelAuth() {
                             UPDATE users SET erp_id = @erpId, name = @name, email = @email, company_id = @cid, department_id = @did, employment_status = @status, source = 'ERP', first_name = @firstName, last_name = @lastName, roles = @roles, hire_date = COALESCE(@hireDate, hire_date), alternative_schedule_ids = @altSched, main_schedule_id = COALESCE(main_schedule_id, 'sch1'), timekeeper_id = COALESCE(@tkId, timekeeper_id) WHERE id = @id
                         ELSE
                             INSERT INTO users (id, erp_id, company_id, department_id, main_schedule_id, name, email, auth_type, roles, contract_hours, is_validated, requires_gps, employment_status, source, first_name, last_name, hire_date, alternative_schedule_ids, timekeeper_id) 
-                        VALUES (@id, @erpId, @cid, @did, 'sch1', @name, @email, @auth, @roles, 8, 1, 1, @status, 'ERP', @firstName, @lastName, @hireDate, @altSched, @tkId)
+                        VALUES (@id, @erpId, @cid, @did, @msId, @name, @email, @auth, @roles, 8, 1, 1, @status, 'ERP', @firstName, @lastName, @hireDate, @altSched, @tkId)
                     `);
                 const insertedUser = { id: newId, email, erp_id: erpIdStr, source: 'ERP', employment_status: status, roles: mergedRolesJson };
                 userById.set(newId, insertedUser);
@@ -1505,13 +1553,14 @@ async function syncUsersWithBioeelAuth() {
                     .input('roles', mergedRolesJson)
                     .input('hireDate', hireDate)
                     .input('tkId', timekeeperId)
-                    .input('altSched', encodeUserAltSchedules(mapUserRow(dbUser).alternativeScheduleIds, mapUserRow(dbUser).allowWeekendWork, jobFunction || mapUserRow(dbUser).jobFunction))
+                    .input('msId', mainSchedId)
+                    .input('altSched', encodeUserAltSchedules(mergedAltIds, mapUserRow(dbUser).allowWeekendWork, jobFunction || mapUserRow(dbUser).jobFunction))
                     .query(`
                         UPDATE users 
                         SET erp_id = @erpId, name = @name, email = @email, company_id = @cid, department_id = @did, employment_status = @status, source = 'ERP',
                             first_name = @firstName, last_name = @lastName, roles = @roles,
                             hire_date = COALESCE(@hireDate, hire_date), alternative_schedule_ids = @altSched,
-                            main_schedule_id = COALESCE(main_schedule_id, 'sch1'), timekeeper_id = COALESCE(@tkId, timekeeper_id)
+                            main_schedule_id = COALESCE(@msId, main_schedule_id, 'sch1'), timekeeper_id = COALESCE(@tkId, timekeeper_id)
                         WHERE id = @id
                     `);
                 const updatedUserObj = { ...dbUser, email, erp_id: erpIdStr, source: 'ERP', employment_status: status, roles: mergedRolesJson };
@@ -1633,7 +1682,14 @@ const handlePinDeviceAnd2FA = async (req, res, pool, user, pendingPinHash = null
     // Case 1: User already has an enrolled phone and the cookie matches -> instant daily login
     if (user.trusted_device_hash && deviceHash === user.trusted_device_hash) {
         issueSession(req, res, user.id);
-        return res.json({ success: true, user: mapUserRow(user) });
+        if (false) {
+        void sendGraphHtmlEmail({
+            toEmail: user.email,
+            subject: `Cod 2FA înrolare telefon (${code}) - Pontaj Smart Bioeel`,
+            html: `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:480px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;"><div style="background:#059669;color:#fff;padding:16px 20px;"><h2 style="margin:0;font-size:18px;">Cod Verificare 2FA – Pontaj Smart</h2></div><div style="padding:20px;color:#1e293b;font-size:14px;"><p>Salut, <strong>${user.name}</strong>,</p><p>Codul tău de verificare pentru asocierea telefonului cu contul de pontaj este:</p><div style="background:#f8fafc;border:2px dashed #059669;border-radius:10px;padding:14px;text-align:center;font-size:28px;font-weight:bold;letter-spacing:6px;color:#059669;margin:16px 0;">${code}</div><p style="font-size:12px;color:#64748b;">Codul este valabil 10 minute. După înrolare, acest telefon va rămâne asociat automat contului tău.</p></div></div>`
+        }).catch(err => console.error('[2FA-EMAIL]', err.message));
+    }
+    return res.json({ success: true, user: mapUserRow(user) });
     }
 
     // Case 2 (Option C): User already has an enrolled phone, but login comes from ANOTHER phone/browser -> block
@@ -1652,10 +1708,18 @@ const handlePinDeviceAnd2FA = async (req, res, pool, user, pendingPinHash = null
     await createNotification(pool, {
         userId: user.id,
         title: 'Cod 2FA înrolare telefon',
+        ...(user.email && user.email.includes('@') && !user.email.endsWith('@bioeel.local') ? (() => { void sendGraphHtmlEmail({ toEmail: user.email, subject: `Cod 2FA înrolare telefon (${code}) - Pontaj Smart Bioeel`, html: `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:480px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;"><div style="background:#059669;color:#fff;padding:16px 20px;"><h2 style="margin:0;font-size:18px;">Cod Verificare 2FA – Pontaj Smart</h2></div><div style="padding:20px;color:#1e293b;font-size:14px;"><p>Salut, <strong>${user.name}</strong>,</p><p>Codul tău de verificare pentru asocierea telefonului cu contul de pontaj este:</p><div style="background:#f8fafc;border:2px dashed #059669;border-radius:10px;padding:14px;text-align:center;font-size:28px;font-weight:bold;letter-spacing:6px;color:#059669;margin:16px 0;">${code}</div><p style="font-size:12px;color:#64748b;">Codul este valabil 10 minute. După înrolare, acest telefon va rămâne asociat automat contului tău.</p></div></div>` }).catch(err => console.error('[2FA-EMAIL]', err.message)); return {}; })() : {}),
         message: `Codul de verificare pentru înrolarea telefonului este: ${code} (valabil 10 minute).`,
         type: 'INFO'
     });
 
+    if (false) {
+        void sendGraphHtmlEmail({
+            toEmail: user.email,
+            subject: `Cod 2FA înrolare telefon (${code}) - Pontaj Smart Bioeel`,
+            html: `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:480px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;"><div style="background:#059669;color:#fff;padding:16px 20px;"><h2 style="margin:0;font-size:18px;">Cod Verificare 2FA – Pontaj Smart</h2></div><div style="padding:20px;color:#1e293b;font-size:14px;"><p>Salut, <strong>${user.name}</strong>,</p><p>Codul tău de verificare pentru asocierea telefonului cu contul de pontaj este:</p><div style="background:#f8fafc;border:2px dashed #059669;border-radius:10px;padding:14px;text-align:center;font-size:28px;font-weight:bold;letter-spacing:6px;color:#059669;margin:16px 0;">${code}</div><p style="font-size:12px;color:#64748b;">Codul este valabil 10 minute. După înrolare, acest telefon va rămâne asociat automat contului tău.</p></div></div>`
+        }).catch(err => console.error('[2FA-EMAIL]', err.message));
+    }
     return res.json({
         success: false,
         requires2FA: true,
@@ -1939,6 +2003,13 @@ app.post('/api/v1/auth/logout', (req, res) => {
 app.post('/api/v1/auth/sync-users', asyncHandler(async (req, res) => {
     if (forbid(req, res, canRunIntegrations(req.user), 'integrations require ADMIN/HR')) return;
     const syncRes = await syncUsersWithBioeelAuth();
+    if (false) {
+        void sendGraphHtmlEmail({
+            toEmail: user.email,
+            subject: `Cod 2FA înrolare telefon (${code}) - Pontaj Smart Bioeel`,
+            html: `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:480px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;"><div style="background:#059669;color:#fff;padding:16px 20px;"><h2 style="margin:0;font-size:18px;">Cod Verificare 2FA – Pontaj Smart</h2></div><div style="padding:20px;color:#1e293b;font-size:14px;"><p>Salut, <strong>${user.name}</strong>,</p><p>Codul tău de verificare pentru asocierea telefonului cu contul de pontaj este:</p><div style="background:#f8fafc;border:2px dashed #059669;border-radius:10px;padding:14px;text-align:center;font-size:28px;font-weight:bold;letter-spacing:6px;color:#059669;margin:16px 0;">${code}</div><p style="font-size:12px;color:#64748b;">Codul este valabil 10 minute. După înrolare, acest telefon va rămâne asociat automat contului tău.</p></div></div>`
+        }).catch(err => console.error('[2FA-EMAIL]', err.message));
+    }
     return res.json({ success: syncRes.success, count: syncRes.count || 0, processedCount: syncRes.count || 0, errorCount: syncRes.success ? 0 : 1, error: syncRes.error });
     const result = await syncUsersWithBioeelAuth();
     if (result.success) {

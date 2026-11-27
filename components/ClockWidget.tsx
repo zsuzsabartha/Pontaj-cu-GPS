@@ -39,7 +39,26 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
     const timerRef = useRef<number | null>(null);
 
     const [showBreakSelector, setShowBreakSelector] = useState(false);
+    // confirmData state declared below
+    const [autoGpsEnabled, setAutoGpsEnabled] = useState<boolean>(() => {
+        const saved = localStorage.getItem('pontaj_auto_gps');
+        return saved !== null ? saved === 'true' : true;
+    });
+    const [liveGeo, setLiveGeo] = useState<{ coords: Coordinates; office: Office; distance: number; accuracy: number } | null>(null);
+    const [autoCountdown, setAutoCountdown] = useState<{ type: 'IN' | 'OUT'; seconds: number; coords: Coordinates; office: Office; distance: number } | null>(null);
+    const autoDismissedRef = useRef<{ inDate: string | null; outShiftStart: string | null; outsideCount: number; lastAutoInDate: string | null }>({
+        inDate: null, outShiftStart: null, outsideCount: 0, lastAutoInDate: null
+    });
+    const toggleAutoGps = () => {
+        const next = !autoGpsEnabled;
+        setAutoGpsEnabled(next);
+        localStorage.setItem('pontaj_auto_gps', String(next));
+    };
     const [confirmData, setConfirmData] = useState<{ coords: Coordinates, office: Office, distance: number } | null>(null);
+    const _unusedToggleEnd = () => {
+        setAutoCountdown(null);
+    };
+    // confirmData state declared below
 
     const todayDateObj = new Date();
     const todayDateStr = toLocalDateISO(todayDateObj);
@@ -161,6 +180,75 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
     };
 
     const { elapsed, breakTimer } = calculateTimers();
+
+    // --- AUTO GPS GEOFENCING (Auto Clock-In & Auto Clock-Out while app is open) ---
+    useEffect(() => {
+        if (!autoGpsEnabled || !user.isValidated || offices.length === 0 || !navigator.geolocation) {
+            setAutoCountdown(null);
+            return;
+        }
+        const assignedOff = user.assignedOfficeId ? offices.find(o => o.id === user.assignedOfficeId) : null;
+        const targetOffices = assignedOff ? [assignedOff] : offices;
+
+        const watchId = navigator.geolocation.watchPosition(
+            (pos) => {
+                const coords = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+                const accuracy = Math.round(pos.coords.accuracy || 50);
+                const { office, distance } = findNearestOffice(coords, targetOffices);
+                if (!office) return;
+                setLiveGeo({ coords, office, distance, accuracy });
+
+                const hasApprovedLeave = activeLeaveRequest?.status === LeaveStatus.APPROVED && !activeLeaveRequest?.typeName.includes('Delegatie');
+                const insideRadius = distance <= (office.radiusMeters || 100) && accuracy <= 200;
+                const outsideWithBuffer = distance > ((office.radiusMeters || 100) + 50) && accuracy <= 100;
+
+                if (currentStatus === ShiftStatus.NOT_STARTED && !shiftEndTime && !isRestrictedDay && !hasApprovedLeave) {
+                    if (insideRadius && autoDismissedRef.current.inDate !== todayDateStr && autoDismissedRef.current.lastAutoInDate !== todayDateStr) {
+                        setAutoCountdown(prev => prev?.type === 'IN' ? prev : { type: 'IN', seconds: 5, coords, office, distance });
+                    } else if (!insideRadius) {
+                        setAutoCountdown(prev => prev?.type === 'IN' ? null : prev);
+                    }
+                } else if (currentStatus === ShiftStatus.WORKING && shiftStartTime) {
+                    if (outsideWithBuffer && autoDismissedRef.current.outShiftStart !== shiftStartTime) {
+                        autoDismissedRef.current.outsideCount += 1;
+                        if (autoDismissedRef.current.outsideCount >= 3) {
+                            setAutoCountdown(prev => prev?.type === 'OUT' ? prev : { type: 'OUT', seconds: 15, coords, office, distance });
+                        }
+                    } else if (distance <= (office.radiusMeters || 100) + 30) {
+                        autoDismissedRef.current.outsideCount = 0;
+                        setAutoCountdown(prev => prev?.type === 'OUT' ? null : prev);
+                    }
+                } else {
+                    setAutoCountdown(null);
+                }
+            },
+            () => {},
+            { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 }
+        );
+        return () => navigator.geolocation.clearWatch(watchId);
+    }, [autoGpsEnabled, user.isValidated, user.assignedOfficeId, offices, currentStatus, shiftStartTime, shiftEndTime, isRestrictedDay, activeLeaveRequest, todayDateStr]);
+
+    useEffect(() => {
+        if (!autoCountdown) return;
+        if (autoCountdown.seconds <= 0) {
+            const action = autoCountdown;
+            setAutoCountdown(null);
+            if (action.type === 'IN' && currentStatus === ShiftStatus.NOT_STARTED) {
+                autoDismissedRef.current.lastAutoInDate = todayDateStr;
+                onClockIn(action.coords, action.office, action.distance);
+                showToast(`Pontat automat la intrare (${action.office.name} • ${action.distance}m)!`, 'success');
+            } else if (action.type === 'OUT' && currentStatus === ShiftStatus.WORKING) {
+                autoDismissedRef.current.outsideCount = 0;
+                onClockOut(action.coords, `Închis automat prin GPS la părăsirea razei sediului ${action.office.name} (${action.distance}m)`);
+                showToast(`Pontaj încheiat automat la părăsirea sediului (${action.distance}m)!`, 'info');
+            }
+            return;
+        }
+        const t = window.setTimeout(() => {
+            setAutoCountdown(prev => prev ? { ...prev, seconds: prev.seconds - 1 } : null);
+        }, 1000);
+        return () => clearTimeout(t);
+    }, [autoCountdown, currentStatus, onClockIn, onClockOut, todayDateStr]);
 
     const handleClockIn = async () => {
         if (!user.isValidated) return; // double check
@@ -349,9 +437,41 @@ const ClockWidget: React.FC<ClockWidgetProps> = ({
                     </div>
                 </div>
 
-                <div className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
-                    <Satellite size={12} className={user.requiresGPS ? "text-emerald-500 dark:text-emerald-400" : "text-gray-300 dark:text-gray-700"} />
-                    {user.requiresGPS ? "Localizare obligatorie" : "Localizare opțională"}
+                <div className="flex items-center justify-between gap-2 text-xs text-gray-400 dark:text-gray-500">
+                    <div className="flex items-center gap-1">
+                    {false && (<div></div>)}
+                        <Satellite size={12} className="text-emerald-500" /><span>{liveGeo ? `${liveGeo.office.name} (${liveGeo.distance}m)` : (user.requiresGPS ? "Localizare obligatorie" : "Localizare opțională")}</span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={toggleAutoGps}
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${autoGpsEnabled ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 border-gray-200 dark:border-gray-700'}`}
+                    >
+                        GPS Auto: {autoGpsEnabled ? 'ACTIV' : 'OPRIT'}
+                    </button>
+                </div>
+                {autoCountdown && (
+                    <div className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between gap-2 animate-pulse ${autoCountdown.type === 'IN' ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200' : 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200'}`}>
+                        <div>
+                            {autoCountdown.type === 'IN'
+                                ? `📍 În raza ${autoCountdown.office.name} (${autoCountdown.distance}m). Pontare Intrare în ${autoCountdown.seconds}s...`
+                                : `🚶 În afara razei ${autoCountdown.office.name} (${autoCountdown.distance}m). Închidere tură în ${autoCountdown.seconds}s...`}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (autoCountdown.type === 'IN') autoDismissedRef.current.inDate = todayDateStr;
+                                else if (shiftStartTime) { autoDismissedRef.current.outShiftStart = shiftStartTime; autoDismissedRef.current.outsideCount = 0; }
+                                setAutoCountdown(null);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 shrink-0"
+                        >
+                            {autoCountdown.type === 'IN' ? 'Anulează' : 'Sunt la birou'}
+                        </button>
+                    </div>
+                )}
+                {false && (<div></div>)}
+                <div className="hidden">
                 </div>
             </div>
 
