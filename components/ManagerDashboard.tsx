@@ -21,6 +21,8 @@ interface ManagerDashboardProps {
     breakConfigs?: BreakConfig[];
     leaveConfigs: LeaveConfig[];
     holidays: Holiday[]; // Added Prop
+    workSchedules?: import('../types').WorkSchedule[];
+    schedulePlans?: import('../types').DailySchedule[];
     canViewAllCompanies: boolean;
     onApproveLeave: (id: string) => void;
     onReject: (type: 'LEAVE' | 'CORRECTION' | 'BREAK', id: string, parentId?: string) => void;
@@ -32,7 +34,7 @@ interface ManagerDashboardProps {
 }
 
 const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
-    users, currentUser, timesheets, leaves, correctionRequests, companies, departments, offices, breakConfigs = [], leaveConfigs, holidays,
+    users, currentUser, timesheets, leaves, correctionRequests, companies, departments, offices, breakConfigs = [], leaveConfigs, holidays, workSchedules = [], schedulePlans = [],
     canViewAllCompanies, onApproveLeave, onReject, onApproveBreak, onApproveCorrection, onOpenTimesheetModal, onRefreshData, initialTab
 }) => {
 
@@ -183,7 +185,14 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
         for (let d = 1; d <= daysInMonth; d++) {
             headerRow.push(String(d));
         }
-        headerRow.push("Total Ore Lucrate");
+        headerRow.push("Total Ore Brut (La Minut)");
+        headerRow.push("Ore Normate CCM (Fara Echipare)");
+        headerRow.push("Norma Lunara Contract");
+        headerRow.push("Ore Invoire");
+        headerRow.push("Balanta Ore +/- (Banca 90 Zile CCM)");
+        headerRow.push("Ore Weekend (Spor 25% CCM)");
+        headerRow.push("Ore Noapte 22-06 (Spor 25% CCM)");
+        headerRow.push("Intarzieri >20m (Art.80 CCM)");
         headerRow.push("Zile Concediu");
         csvContent += headerRow.join(",") + "\n";
 
@@ -193,6 +202,12 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
             const rowData = [`"${user.name}"`, `"${companyName}"`, user.erpId || '-'];
 
             let totalMonthlyHours = 0;
+            let totalNormedHours = 0;
+            let totalInvoireHours = 0;
+            let totalWeekendHours = 0;
+            let totalNightHours = 0;
+            let delaysOver20Min = 0;
+            let workingDaysCount = 0;
             let totalLeaveDays = 0;
 
             for (let d = 1; d <= daysInMonth; d++) {
@@ -217,6 +232,13 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
 
                 const leaveConfig = leave ? leaveConfigs.find(c => c.id === leave.typeId) : undefined;
                 const isPartialLeave = Boolean(leave && (/[iî]nvoire|delega[tț]ie|bilet de voie/i.test(leaveConfig?.name || leave.typeName || '') || leaveConfig?.code === 'INV' || /\[Interval Orar:/i.test(leave.reason || '')));
+                if (!isWeekend && !isHoliday) workingDaysCount++;
+                if (leave && isPartialLeave) {
+                    const mHrs = String(leave.reason || '').match(/\((\d+(?:\.\d+)?)h\)/i);
+                    if (mHrs) totalInvoireHours += parseFloat(mHrs[1]) || 0;
+                }
+                const plannedSchedId = schedulePlans.find(sp => sp.userId === user.id && sp.date === dateStr)?.scheduleId || timesheet?.detectedScheduleId || user.mainScheduleId;
+                const schedObj = workSchedules.find(ws => ws.id === plannedSchedId);
                 if (timesheet && timesheet.endTime && (!leave || isPartialLeave)) {
                     const start = new Date(timesheet.startTime).getTime();
                     const end = new Date(timesheet.endTime).getTime();
@@ -231,6 +253,36 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                     const netHours = Math.max(0, (durationMs - unpaidBreaksMs) / 3600000);
                     cellValue = leave ? `${netHours.toFixed(1)} (${leaveConfig?.code || 'INV'})` : netHours.toFixed(1);
                     totalMonthlyHours += netHours;
+
+                    // CCM Modulul 2: Exclude dressing/undressing buffer outside schedule & cap at contractHours unless weekend/overtime
+                    let normedHrs = netHours;
+                    if (schedObj?.startTime && schedObj?.endTime && !schedObj.crossesMidnight) {
+                        const [sh, sm] = schedObj.startTime.slice(0, 5).split(':').map(Number);
+                        const [eh, em] = schedObj.endTime.slice(0, 5).split(':').map(Number);
+                        const sDate = new Date(timesheet.startTime);
+                        const schedStartMs = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate(), sh || 8, sm || 0, 0).getTime();
+                        const schedEndMs = new Date(sDate.getFullYear(), sDate.getMonth(), sDate.getDate(), eh || 16, em || 30, 0).getTime();
+                        if (start - schedStartMs > 20 * 60000) delaysOver20Min++;
+                        const clampedStart = Math.max(start, schedStartMs);
+                        const clampedEnd = Math.min(end, schedEndMs);
+                        if (clampedEnd > clampedStart) {
+                            normedHrs = Math.min(user.contractHours || 8, Math.max(0, (clampedEnd - clampedStart - unpaidBreaksMs) / 3600000));
+                        }
+                    } else {
+                        normedHrs = Math.min(user.contractHours || 8, netHours);
+                    }
+                    totalNormedHours += normedHrs;
+                    if (isWeekend || isHoliday) totalWeekendHours += netHours;
+
+                    // CCM Modulul 3: Night work (22:00 - 06:00)
+                    let curMs = start;
+                    let nightMin = 0;
+                    while (curMs < end) {
+                        const h = new Date(curMs).getHours();
+                        if (h >= 22 || h < 6) nightMin += 15;
+                        curMs += 15 * 60000;
+                    }
+                    if (nightMin >= 30) totalNightHours += Math.min(netHours, nightMin / 60);
                 } else if (leave) {
                     // Use Config Code if available (e.g., CO, CM), else Type Name
                     const config = leaveConfigs.find(c => c.id === leave.typeId);
@@ -264,7 +316,16 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                 rowData.push(cellValue);
             }
 
+            const expectedContractHours = Math.max(0, (workingDaysCount - totalLeaveDays) * (user.contractHours || 8));
+            const balanceHours = totalMonthlyHours - expectedContractHours;
             rowData.push(totalMonthlyHours.toFixed(1));
+            rowData.push(totalNormedHours.toFixed(1));
+            rowData.push(expectedContractHours.toFixed(1));
+            rowData.push(totalInvoireHours.toFixed(1));
+            rowData.push((balanceHours >= 0 ? '+' : '') + balanceHours.toFixed(1));
+            rowData.push(totalWeekendHours.toFixed(1));
+            rowData.push(totalNightHours.toFixed(1));
+            rowData.push(String(delaysOver20Min));
             rowData.push(String(totalLeaveDays));
             csvContent += rowData.join(",") + "\n";
         });
@@ -931,7 +992,12 @@ const ManagerDashboard: React.FC<ManagerDashboardProps> = ({
                                 </div>
 
                                 <div className="mt-4 text-xs text-gray-400 dark:text-gray-500 italic transition-colors">
-                                    * Raportul include orele nete (pauzele neplătite sunt scăzute) și codurile de concediu aprobate.
+                                <div className="mt-4 text-xs text-gray-500 dark:text-gray-400 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 rounded-lg p-3 space-y-1">
+                                    <div className="font-bold text-emerald-800 dark:text-emerald-300">Reguli aplicate automat conform CCM Bioeel 2026–2028:</div>
+                                    <div>• <strong>Modulul 2 CCM (Echipare/Dezechipare):</strong> Coloana <em>Ore Normate CCM</em> exclude minutele de dinainte/după programul din contract, păstrând separat <em>Total Ore Brut (La Minut)</em>.</div>
+                                    <div>• <strong>Modulul 3 CCM (Bancă 90 Zile & Sporuri 25%):</strong> Calculează automat <em>Balanța +/-</em> față de norma lunară, <em>Ore Weekend (Spor 25%)</em> și <em>Ore Noapte 22:00–06:00 (Spor 25%)</em>.</div>
+                                    <div>• <strong>Modulul 7 Art. 80 CCM (Întârzieri & Învoiri):</strong> Contorizează <em>Ore Învoire</em> (fără a șterge orele lucrate în ziua respectivă) și zilele cu <em>Întârzieri &gt;20 min</em> față de program.</div>
+                                </div>
                                 </div>
                             </div>
                         </div>

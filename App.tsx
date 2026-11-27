@@ -313,7 +313,7 @@ export default function App() {
                     holidays={holidays}
 
                     schedulePlans={schedulePlans}
-                    workSchedules={workSchedules}
+                    // workSchedules passed above
                     activeLeaveRequest={activeLeaveRequest}
                     shiftStartTime={activeOrTodayTimesheet?.startTime}
                     shiftEndTime={activeOrTodayTimesheet?.endTime}
@@ -556,11 +556,13 @@ export default function App() {
                                 offices={offices}
                                 breakConfigs={breakConfigs}
                                 holidays={holidays}
-                                schedulePlans={schedulePlans}
+                        // workSchedules passed above
+                        schedulePlans={schedulePlans}
+                                // schedulePlans passed above
 
 
 
-                    workSchedules={workSchedules}
+                    // workSchedules passed above
                     activeLeaveRequest={activeLeaveRequest}
                                 shiftStartTime={activeOrTodayTimesheet?.startTime}
                                 shiftEndTime={activeOrTodayTimesheet?.endTime}
@@ -608,6 +610,8 @@ export default function App() {
                         leaveConfigs={leaveConfigs}
                         breakConfigs={breakConfigs}
                         holidays={holidays}
+                        // workSchedules passed above
+                        schedulePlans={schedulePlans}
 
                         canViewAllCompanies={isAdmin}
                         onApproveLeave={handleApproveLeave}
