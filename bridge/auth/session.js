@@ -42,6 +42,7 @@ export const encodeUserAltSchedules = (altIds = [], allowWeekendWork = false, jo
 };
 /** Maps a `users` DB row to the API shape used by the frontend (never includes PIN or device secret hashes). */
 export const mapUserRow = (u) => {
+    if (!u) return { roles: [], alternativeScheduleIds: [], allowWeekendWork: false, jobFunction: undefined };
     // eslint-disable-next-line no-unused-vars
     const { pin, pin_hash, trusted_device_hash, totp_secret, ...rest } = u;
     const rawAlt = safeJsonArray(u.alternative_schedule_ids);

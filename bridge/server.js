@@ -1318,9 +1318,11 @@ async function syncUsersWithBioeelAuth() {
         ]);
         const existingCompanies = new Set(compRows.recordset.map(c => c.id));
         const deptIdByName = new Map(deptRows.recordset.map(d => [d.name, d.id]));
+        const userById = new Map();
         const userByEmail = new Map();
         const userByErpId = new Map();
         for (const u of userRows.recordset) {
+            if (u.id) userById.set(String(u.id), u);
             if (u.email) userByEmail.set(u.email.toLowerCase().trim(), u);
             if (u.erp_id) userByErpId.set(String(u.erp_id), u);
         }
@@ -1369,7 +1371,7 @@ async function syncUsersWithBioeelAuth() {
             if (!email) continue;
 
             const erpIdStr = String(emp.Marca);
-            const dbUser = userByEmail.get(email) || userByErpId.get(erpIdStr) || null;
+            const dbUser = userById.get(`u-${erpIdStr}`) || userByErpId.get(erpIdStr) || userByEmail.get(email) || null;
 
             const status = emp.EsteActiv ? 'ACTIVE' : 'TERMINATED';
             const deptId = emp.Departament ? (deptIdByName.get(emp.Departament) || null) : null;
@@ -1416,6 +1418,12 @@ async function syncUsersWithBioeelAuth() {
                             main_schedule_id = COALESCE(main_schedule_id, 'sch1')
                         WHERE id = @id
                     `);
+                const updatedUserObj = { ...dbUser, email, erp_id: erpIdStr, source: 'ERP', employment_status: status, roles: mergedRolesJson };
+                userById.set(String(dbUser.id), updatedUserObj);
+                userByEmail.set(email, updatedUserObj);
+                userByErpId.set(erpIdStr, updatedUserObj);
+            } else if (false) {
+                await pool.request().query(`SELECT 1`);
             } else if (false) {
                 await pool.request()
                     .query(`
@@ -1441,10 +1449,14 @@ async function syncUsersWithBioeelAuth() {
                     .input('hireDate', hireDate)
                     .input('altSched', encodeUserAltSchedules(mapUserRow(dbUser).alternativeScheduleIds, mapUserRow(dbUser).allowWeekendWork, jobFunction || mapUserRow(dbUser).jobFunction))
                     .query(`
-                        INSERT INTO users (id, erp_id, company_id, department_id, main_schedule_id, name, email, auth_type, roles, contract_hours, is_validated, requires_gps, employment_status, source, first_name, last_name, hire_date, alternative_schedule_ids) 
+                        IF EXISTS (SELECT 1 FROM users WHERE id = @id)
+                            UPDATE users SET erp_id = @erpId, name = @name, email = @email, company_id = @cid, department_id = @did, employment_status = @status, source = 'ERP', first_name = @firstName, last_name = @lastName, roles = @roles, hire_date = COALESCE(@hireDate, hire_date), alternative_schedule_ids = @altSched, main_schedule_id = COALESCE(main_schedule_id, 'sch1') WHERE id = @id
+                        ELSE
+                            INSERT INTO users (id, erp_id, company_id, department_id, main_schedule_id, name, email, auth_type, roles, contract_hours, is_validated, requires_gps, employment_status, source, first_name, last_name, hire_date, alternative_schedule_ids) 
                         VALUES (@id, @erpId, @cid, @did, 'sch1', @name, @email, @auth, @roles, 8, 1, 1, @status, 'ERP', @firstName, @lastName, @hireDate, @altSched)
                     `);
                 const insertedUser = { id: newId, email, erp_id: erpIdStr, source: 'ERP', employment_status: status, roles: mergedRolesJson };
+                userById.set(newId, insertedUser);
                 userByEmail.set(email, insertedUser);
                 userByErpId.set(erpIdStr, insertedUser);
                 if (false) {
@@ -1473,6 +1485,12 @@ async function syncUsersWithBioeelAuth() {
                             main_schedule_id = COALESCE(main_schedule_id, 'sch1')
                         WHERE id = @id
                     `);
+                const updatedUserObj = { ...dbUser, email, erp_id: erpIdStr, source: 'ERP', employment_status: status, roles: mergedRolesJson };
+                userById.set(String(dbUser.id), updatedUserObj);
+                userByEmail.set(email, updatedUserObj);
+                userByErpId.set(erpIdStr, updatedUserObj);
+            } else if (false) {
+                await pool.request().query(`SELECT 1`);
             } else if (false) {
                 await pool.request()
                     .query(`
